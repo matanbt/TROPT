@@ -1,0 +1,7 @@
+defaults:
+  - huggingface-lm/default@_here_
+  - _self_
+
+model_name: "google/gemma-3-270m-it"
+
+

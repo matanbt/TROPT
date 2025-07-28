@@ -1,0 +1,20 @@
+_target_: tropt.optimizer.gasliteplus_optimizer.GASLITEPlusOptimizer
+_partial_: true
+
+# Original paper parameters:
+num_steps: 100
+n_candidates: 128
+n_grad: 10
+n_flip: 30
+token_constraints:
+  _target_: tropt.optimizer.utils.token_constraints.TokenConstraints
+  disallow_non_ascii: True
+  disallow_special_tokens: True
+use_retokenize: True
+
+buffer_size: 10
+decline_n_flip_from_step: 0.5
+
+# Early stopping parameters
+early_stopping_patience: 5
+early_stopping_threshold: 0.005

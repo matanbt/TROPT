@@ -1,0 +1,9 @@
+_target_: tropt.optimizer.beast_optimizer.BEASTOptimizer
+_partial_: true
+
+# Original paper parameters:
+num_steps: 40
+beam_size: 15
+branching_factor: 15
+top_p: 0.9
+temperature: 1.0

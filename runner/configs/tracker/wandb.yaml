@@ -1,0 +1,9 @@
+defaults:
+  - base@_here_
+  - _self_
+
+_target_: tropt.tracker.base.WandbTracker
+project_name: "tropt"
+tags: []
+
+

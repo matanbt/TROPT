@@ -1,0 +1,15 @@
+_target_: tropt.optimizer.laslite_optimizer.LASLITEOptimizer
+_partial_: true
+
+# parameters:
+num_steps: 100
+n_candidates: 128
+n_flip: 20
+token_constraints:
+  _target_: tropt.optimizer.utils.token_constraints.TokenConstraints
+  disallow_non_ascii: True
+  disallow_special_tokens: True
+use_retokenize: True
+use_random_logits: False
+flip_pos_method: "random"
+# TODO consider putting util_model here (by improting the model config)

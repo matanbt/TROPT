@@ -1,0 +1,331 @@
+import logging
+from typing import Any, List, Optional
+import math
+
+import numpy as np
+import torch
+from jaxtyping import Float, Int
+from torch import Tensor
+from tqdm import tqdm
+
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.buffer import TriggerBuffer
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.loss.base import BaseLoss
+from tropt.models.base import (
+    BaseModel,
+    GradientTokenAccessMixin,
+    LossTokenAccessMixin,
+    TargetsDict,
+)
+from tropt.tracker.base import BaseTracker
+
+logger = logging.getLogger(__name__)
+
+
+class GASLITEPlusOptimizer(BaseOptimizer):
+    """
+    Implements the GASLITE optimization algorithm (Algorithm 1) from the paper:
+    "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
+    (https://arxiv.org/abs/2412.20953)
+
+    """
+
+    model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
+
+    def __init__(
+        self,
+        model: BaseModel,
+        loss: BaseLoss,
+        tracker: Optional[BaseTracker] = None,
+        seed: Optional[int] = None,
+        # attack parameters:
+        num_steps: int = 100,
+        n_grad: int = 50,
+        n_flip: int = 20,
+        n_candidates: int = 128,
+        token_constraints: TokenConstraints = TokenConstraints(),
+        use_retokenize: bool = True,
+        use_random_gradient: bool = False,
+
+        buffer_size: int = 10,
+        decline_n_flip_from_step: Optional[int | float] = None,
+        early_stopping_patience: Optional[int] = None,
+        early_stopping_threshold: float = 0.005,  # relative improvement threshold
+    ):
+        """
+        Initializes the GASLITE Optimizer.
+
+        Args:
+            model (HuggingFaceModel): The model to be attacked.
+            loss (BaseLoss): The loss function to be optimized.
+            seed (int, optional): Random seed for reproducibility.
+
+            num_steps (int): Number of optimization iterations.
+            n_grad (int): Number of random flips for gradient averaging.
+                          Set to 1 to disable averaging.
+            n_flip (int): Number of token positions to greedily optimize per step.
+            n_candidates (int): Number of top candidate tokens to evaluate for each position.
+
+            token_constraints (TokenConstraints): An object to manage token blacklisting.
+            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer.
+        """
+        super().__init__(model, loss=loss, tracker=tracker, seed=seed)
+
+        # save params:
+        self.num_steps = num_steps
+        self.n_grad = n_grad
+        self.n_flip = n_flip
+        self.n_candidates = n_candidates
+        self.token_constraints = token_constraints
+        self.use_retokenize = use_retokenize
+        self.use_random_gradient = use_random_gradient
+
+        self.buffer_size = buffer_size
+        self.decline_n_flip_from_step = decline_n_flip_from_step
+
+        # early stopping params
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_threshold = early_stopping_threshold  # relative improvement threshold
+
+    def _get_trigger_variations(
+        self,
+        trigger_ids: Float[Tensor, "trigger_seq_len"],
+        vocab_size: int,
+    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
+        """
+        Creates a list of `n_grad` trigger variations. The first is the
+        original trigger, and the rest are random single-token flips of its.
+        """
+        trigger_seq_len = len(trigger_ids)
+        device = self.model.device
+        trigger_vars_ids = trigger_ids.repeat(
+            self.n_grad, 1
+        )  # shape: (n_grad, trigger_seq_len)
+
+        for idx in range(1, self.n_grad):  # (keep the first intact)
+            # select a random position and a random token
+            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            # apply the flip
+            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
+
+        return trigger_vars_ids
+
+    def optimize_trigger(
+        self,
+        texts: List[str],
+        initial_trigger: Optional[str] = "! " * 20,
+        targets: TargetsDict = None,
+    ) -> OptimizerResult:
+        # Initialization:
+        inputs, trigger_ids = self.model.prepare_token_inputs(
+            texts=texts,
+            initial_trigger=initial_trigger,
+            targets=targets,
+        )
+        trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
+        vocab_size, tokenizer = inputs.vocab_size, inputs.tokenizer
+        blacklist_ids = self.token_constraints.get_blacklist_ids(
+            tokenizer, vocab_size
+        )
+
+        n_flip = self.n_flip
+
+        trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
+        trigger_seq_len = len(trigger_ids)
+        trigger_str = initial_trigger
+
+        loss_per_step = []
+        trigger_strings = []
+        trigger_ids_per_step = []
+        current_loss = float("inf")
+
+        pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
+
+        # Form buffer_size initial triggers
+        triggers_for_buffer = [trigger_ids]
+        for _ in range(self.buffer_size - 1):
+            random_trigger_ids = get_printable_random_trigger(
+                trigger_seq_len, tokenizer=tokenizer, return_ids=True
+            ).to(self.model.device)
+            triggers_for_buffer.append(random_trigger_ids)
+
+        # Compute losses for initial triggers
+        losses = self.model.compute_loss_from_tokens(
+            torch.stack(triggers_for_buffer),
+            inputs,
+            self.loss_func,
+        ) # (n_cands,)
+
+        # Create the buffer:
+        buffer = TriggerBuffer(
+            triggers=[triggers_for_buffer[i] for i in range(self.buffer_size)],
+            losses=[losses[i].item() for i in range(self.buffer_size)],
+        )
+
+        self.tracker.log({"loss": buffer.get_lowest_loss()})
+
+        for step in pbar:
+            pbar.set_description(
+                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
+            )
+
+            # Get the best trigger from the buffer
+            trigger_ids = buffer.get_best_trigger()
+            trigger_str = inputs.toks_to_strs(trigger_ids)
+
+            # --- Gradient and candidate selection step ---
+            if self.use_random_gradient:
+                # Replace model gradient with random values
+                trigger_grad = torch.randn(
+                    (trigger_seq_len, vocab_size), device=self.model.device
+                )
+            else:
+                # Compute grad over a list of `n_grad` triggers one-flip away from the current
+                trigger_vars = self._get_trigger_variations(trigger_ids, vocab_size)
+                grads = self.model.compute_grad_from_tokens(
+                    candidate_trigger_ids=trigger_vars,
+                    inputs=inputs,
+                    loss_func=self.loss_func,
+                )  # (n_trigger_vars, trigger_seq_len, vocab_size)
+
+                # Average the gradients to get the final approximation
+                trigger_grad = grads.mean(dim=0)
+                trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"]
+                trigger_grad = -trigger_grad  # we want to minimize the loss
+
+            # Get Top-k Candidates *per position*
+            trigger_grad[:, blacklist_ids] = float("-inf")
+            topk_ids: Float[Tensor, "trigger_seq_len n_candidates"]
+            topk_ids = trigger_grad.topk(self.n_candidates, dim=-1).indices
+
+            # --- Greedy coordinate ascent step ---
+            current_trigger_ids = trigger_ids.clone()
+            # Sample `n_flip` unique positions to optimize
+            sampled_positions = torch.randperm(trigger_seq_len, device=self.model.device)[: n_flip]
+            sampled_positions, _ = sampled_positions.sort()
+
+            # Sequentially optimize each position
+            for pos in sampled_positions:
+                # Get candidate tokens for this position
+                all_candidate_tokens = torch.unique(
+                    torch.cat(
+                        [
+                            current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
+                            topk_ids[pos],
+                        ]
+                    )
+                )
+                n_unique_candidates = len(all_candidate_tokens)
+
+                # Create all candidate triggers by flipping this *single* position
+                candidate_triggers = current_trigger_ids.repeat(n_unique_candidates, 1)
+                candidate_triggers[:, pos] = all_candidate_tokens
+
+                # (Optional) Retokenize filtering
+                if self.use_retokenize:
+                    candidate_triggers = retokenize_filtering(
+                        candidate_triggers, tokenizer
+                    )
+                    if len(candidate_triggers) == 0:
+                        logger.warning(
+                            f"Retokenize filtering removed all candidates for pos {pos}. Skipping step."
+                        )
+                        continue  # Keep `current_trigger_ids` as is for this position
+
+                # Compute losses on candidate flips
+                losses = self.model.compute_loss_from_tokens(
+                    candidate_triggers,
+                    inputs,
+                    self.loss_func,
+                    keep_message_dim=True,  # Get per-message loss
+                ).mean(
+                    dim=0
+                )  # Average over messages -> (n_cands,)
+
+                # Find the best token for this position
+                losses_sorted_indices = torch.argsort(losses)
+                best_candidate_idx = losses_sorted_indices[0]
+
+                # Update `current_trigger_ids` *in-place* for the next iteration of the greedy (inner) loop
+                current_trigger_ids = candidate_triggers[best_candidate_idx].clone()
+                current_loss = losses[best_candidate_idx].item()
+
+                # Update the trigger buffer, how much needed
+                # We go over the buffer-size best candidates and try to add them to the buffer
+                for j in range(buffer.size):
+                    cand_idx = losses_sorted_indices[j]
+                    buffer.add_if_better(
+                        candidate_triggers[cand_idx].clone(),
+                        losses[cand_idx].item(),
+                    )
+
+            # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
+            trigger_ids = current_trigger_ids
+            trigger_str = inputs.toks_to_strs(trigger_ids)
+
+            # (Optional) update n_flip if needed (linear scheduling)
+            if self.decline_n_flip_from_step is not None:
+                # Determine start step
+                if isinstance(self.decline_n_flip_from_step, float):
+                    decline_step = int(self.num_steps * self.decline_n_flip_from_step)
+                else:
+                    decline_step = int(self.decline_n_flip_from_step)
+
+                # If past the step, linearly decline n_steps to 1
+                if step >= decline_step:
+                    final_step = self.num_steps
+                    # final_step = int(self.num_steps * 0.8)  # if we want the end to be flattened
+                    steps_remaining = final_step - step
+                    decline_duration = final_step - decline_step
+
+                    if decline_duration > 0:
+                        # Ratio goes from 1.0 down to 0.0
+                        ratio = steps_remaining / decline_duration
+                        # Scale initial value by ratio, round up, clamp to min 1
+                        n_flip = max(1, math.ceil(self.n_flip * ratio))
+
+            # Logging:
+            self.tracker.log({"loss": current_loss})
+            loss_per_step.append(current_loss)
+            trigger_strings.append(trigger_str)
+            trigger_ids_per_step.append(trigger_ids)
+
+            # (Optional) Early stopping if no improvement in the buffer
+            if self.early_stopping_patience is not None:
+                if step == 0:
+                    best_loss_global = current_loss
+
+                # define the relative improvement
+                denominator = abs(best_loss_global) if best_loss_global != 0 else 1.0
+                relative_improvement = (best_loss_global - current_loss) / denominator
+
+                # Check if improvement is greater than the relative threshold
+                if relative_improvement > self.early_stopping_threshold:
+                    steps_without_improvement = 0
+                else:
+                    steps_without_improvement += 1
+
+                if steps_without_improvement >= self.early_stopping_patience:
+                    logger.info(f"Early stopping triggered at step {step+1}. No relative improvement (of > {self.early_stopping_threshold*100:.2%}) in the last {self.early_stopping_patience} steps.")
+                    break
+
+                # Update the best loss globally
+                best_loss_global = min(best_loss_global, current_loss)
+
+
+        # Return the best trigger found
+        best_loss_idx = np.argmin(loss_per_step)
+        best_trigger_str = trigger_strings[best_loss_idx]
+        best_trigger_ids = trigger_ids_per_step[best_loss_idx]
+
+        return OptimizerResult(
+            best_loss=loss_per_step[best_loss_idx],
+            best_trigger_str=best_trigger_str,
+            best_trigger=best_trigger_ids,
+            losses=loss_per_step,
+            trigger_strs=trigger_strings,
+        )

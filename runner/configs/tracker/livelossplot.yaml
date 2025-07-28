@@ -1,0 +1,6 @@
+defaults:
+  - base@_here_
+  - _self_
+
+_target_: tropt.tracker.LiveLossPlotTracker
+focus_on_metrics: ["loss"]

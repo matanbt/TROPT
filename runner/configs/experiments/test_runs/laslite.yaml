@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - /model@util_lm: huggingface-lm/gemma-3-270m-it
+  - override /model: huggingface-encoder/all-minilm-l6-v2
+  - override /loss: similarity
+  - override /optimizer: laslite/default
+  - override /tracker: json
+
+texts:
+  - "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}"
+targets:
+  target_vectors: ${rand_tensor:1,384}
+initial_trigger: "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
+
+optimizer:
+  num_steps: 5
+  n_candidates: 32
+  n_flip: 3
+  use_random_logits: False
