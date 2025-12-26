@@ -54,6 +54,9 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         decline_n_flip_from_step: Optional[int | float] = None,
         early_stopping_patience: Optional[int] = None,
         early_stopping_threshold: float = 0.005,  # relative improvement threshold
+
+        n_bulk_flips: int = 5,
+        flip_pos_method: str = "random",  # "random" or "ordered"
     ):
         """
         Initializes the GASLITE Optimizer.
@@ -71,6 +74,20 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             token_constraints (TokenConstraints): An object to manage token blacklisting.
             use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer.
+
+            use_random_gradient (bool): If True, uses random gradients instead of model gradients (for ablation).
+            buffer_size (int): Size of the trigger buffer to maintain.
+
+            decline_n_flip_from_step (int | float, optional): If set, linearly declines `n_flip` to 1
+                starting from this step (int) or fraction of total steps (float).
+
+            early_stopping_patience (int, optional): If set, enables early stopping if no improvement
+                is seen in the buffer for this many consecutive steps.
+            early_stopping_threshold (float): Relative improvement threshold for early stopping.
+
+            n_bulk_flips (int): Number of bulk flips to perform per step (lower => less sequential model calls, faster).
+
+            flip_pos_method (str): Method to select positions to flip - "random" or "ordered".
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -89,6 +106,8 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         # early stopping params
         self.early_stopping_patience = early_stopping_patience
         self.early_stopping_threshold = early_stopping_threshold  # relative improvement threshold
+        self.n_bulk_flips = n_bulk_flips
+        self.flip_pos_method = flip_pos_method
 
     def _get_trigger_variations(
         self,
@@ -206,24 +225,28 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             current_trigger_ids = trigger_ids.clone()
             # Sample `n_flip` unique positions to optimize
             sampled_positions = torch.randperm(trigger_seq_len, device=self.model.device)[: n_flip]
-            sampled_positions, _ = sampled_positions.sort()
+            if self.flip_pos_method == "ordered":
+                sampled_positions, _ = sampled_positions.sort()
 
-            # Sequentially optimize each position
-            for pos in sampled_positions:
-                # Get candidate tokens for this position
-                all_candidate_tokens = torch.unique(
-                    torch.cat(
-                        [
-                            current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
-                            topk_ids[pos],
-                        ]
-                    )
-                )
-                n_unique_candidates = len(all_candidate_tokens)
-
-                # Create all candidate triggers by flipping this *single* position
+            # Perform bulk flips in chunks
+            bulk_pos_list = torch.chunk(sampled_positions, self.n_bulk_flips)
+            for bulk_pos in bulk_pos_list:
+                n_unique_candidates = self.n_candidates + 1
                 candidate_triggers = current_trigger_ids.repeat(n_unique_candidates, 1)
-                candidate_triggers[:, pos] = all_candidate_tokens
+
+                # Inject candidate tokens at all positions in the bulk
+                for pos in bulk_pos:
+                    # Get candidate tokens for this position
+                    all_candidate_tokens = torch.unique(
+                        torch.cat(
+                            [
+                                current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
+                                topk_ids[pos],
+                            ]
+                        )
+                    )
+                    # Create all candidate triggers by flipping this *single* position
+                    candidate_triggers[:, pos] = all_candidate_tokens
 
                 # (Optional) Retokenize filtering
                 if self.use_retokenize:
@@ -298,6 +321,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             if self.early_stopping_patience is not None:
                 if step == 0:
                     best_loss_global = current_loss
+                    steps_without_improvement = 0
 
                 # define the relative improvement
                 denominator = abs(best_loss_global) if best_loss_global != 0 else 1.0

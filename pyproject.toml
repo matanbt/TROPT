@@ -1,10 +1,46 @@
-[tool.mypy]
-ignore_missing_imports = true
-disallow_untyped_defs = true
-warn_redundant_casts = true
-[tool.black]
-line-length = 88
-target-version = ['py38']
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tropt"
+version = "0.0.1a1"
+description = "A toolbox for optimizing discrete text triggers."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [
+  {name = "Matan Ben-Tov"}
+]
+
+dependencies = [
+  "torch>=2.4.0",
+  "tqdm",
+  "jaxtyping",
+  "numpy>=2.0.0",
+  "transformers>=4.45.0",
+  "accelerate>=1.0.0",
+  "hydra-core>=1.3.0",
+  "omegaconf",
+  "sentence-transformers>=5.1.0",
+  "wandb",
+  "livelossplot",
+  "openai",
+]
+
+[project.urls]
+Repository = "https://github.com/matanbt/tropt"
+Issues = "https://github.com/matanbt/tropt/issues"
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+  "pre-commit",
+]
+
+[tool.setuptools.packages.find]
+exclude = ["tests", "tests.*"]
 
 [tool.ruff]
 line-length = 88
@@ -23,6 +59,3 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-
-[tool.ruff.lint.isort]
-known-first-party = ["ttop"]

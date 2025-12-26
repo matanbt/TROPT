@@ -1,5 +1,7 @@
 # Textual Trigger Optimization Toolbox (TROPT)
 
+[TODO banner]
+
 ***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various NLP models (LLMs, encoders, etc). Such triggers are useful, and can serve many purposes, suc as:
 - **_Red-teaming_**: The triggers can be (and are commonly) optimized towards a malicious/undesired behaviour of the model (e.g., Zou et al. '23).
 - **_Prompt Tuning_**: Triggers can also be used to enhance a desired bahviour, by optimizing a repsective behaviour (e.g., success in a classification task).   [TODO e.g., AutoPrompt]
@@ -10,10 +12,10 @@
 
 ## Installation
 
-Install the `ttop` package directly from the repository:
+Install the `tropt` package via pip:
 
 ```bash
-pip install git+https://github.com/matanbt/text-trigger-opt-toolbox.git
+pip install tropt
 ```
 
 ## Usage

@@ -3,7 +3,7 @@ _partial_: true
 
 # Original paper parameters:
 num_steps: 100
-n_candidates: 128
+n_candidates: 256  # 128? 512?
 n_grad: 10
 n_flip: 30
 token_constraints:
@@ -12,9 +12,12 @@ token_constraints:
   disallow_special_tokens: True
 use_retokenize: True
 
-buffer_size: 10
-decline_n_flip_from_step: 0.5
+buffer_size: 10  # ?
+decline_n_flip_from_step: 0.5  # ?
 
 # Early stopping parameters
 early_stopping_patience: 5
 early_stopping_threshold: 0.005
+
+n_bulk_flips: 5  # 1? 5? 10? 15? 20? # the number of bulks to flip at once (the lower the faster; as these are sequentially optimized)
+flip_pos_method: "ordered"  # "random"? "ordered"?
