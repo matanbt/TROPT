@@ -27,6 +27,7 @@ dependencies = [
   "livelossplot",
   "openai",
   "litellm",
+  "ipython",
 ]
 
 [project.urls]
