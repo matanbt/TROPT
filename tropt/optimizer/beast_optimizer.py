@@ -178,9 +178,11 @@ class BEASTOptimizer(BaseOptimizer):
 
         min_loss_index = np.argmin(loss_per_step)
 
-        return OptimizerResult(
+        result =  OptimizerResult(
             best_loss=loss_per_step[min_loss_index],
             best_trigger_str=trigger_strings[min_loss_index],
             best_trigger=trigger_tensors[min_loss_index].squeeze(),
             trigger_strs=trigger_strings,
         )
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        return result

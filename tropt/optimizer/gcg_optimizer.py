@@ -201,10 +201,12 @@ class GCGOptimizer(BaseOptimizer):
 
         min_loss_index = loss_per_step.index(min(loss_per_step))
 
-        return OptimizerResult(
+        result = OptimizerResult(
             best_loss=loss_per_step[min_loss_index],
             best_trigger_str=trigger_strings[min_loss_index],
             best_trigger=trigger_ids_per_step[min_loss_index],
             losses=loss_per_step,
             trigger_strs=trigger_strings,
         )
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        return result

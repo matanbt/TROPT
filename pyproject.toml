@@ -43,6 +43,10 @@ dev = [
   "pre-commit",
 ]
 
+evaluate = [
+  "git+https://github.com/dsbowen/strong_reject.git@main"
+]
+
 [tool.setuptools.packages.find]
 exclude = ["tests", "tests.*"]
 

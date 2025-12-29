@@ -375,7 +375,7 @@ class LMHFModel(
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
         return_full_template: bool = False,
-    ) -> str:
+    ) -> List[str]:
         """Get the embeddings for the given texts."""
         # TODO this doubles the BOS - resolve!
         assert isinstance(texts, list), "texts must be a string or a list of strings."

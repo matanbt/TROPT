@@ -230,10 +230,12 @@ class LASLITEOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
-        return OptimizerResult(
+        result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
             best_trigger=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
         )
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        return result
