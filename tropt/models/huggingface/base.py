@@ -179,7 +179,7 @@ class HFTokenInputsManager(TokenInputsManager):
         if trigger_ids is not None:
             trigger_embeds = self.embed_func(trigger_ids)
 
-        # add message dim -> (n_messages, n_candidates, trigger_seq_len, embd_dim)
+        # add message dim to triggers -> (n_messages, n_candidates, trigger_seq_len, embd_dim)
         trigger_embeds = trigger_embeds.unsqueeze(0).repeat(self.n_messages, 1, 1, 1)
         n_candidates = trigger_embeds.shape[1]
 
@@ -380,6 +380,28 @@ class HuggingFaceModelMixins:
     model: transformers.PreTrainedModel
     embedding_layer: torch.nn.Embedding
 
+    @cached_property
+    def effective_embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
+        """
+        Compuates the effective embedding matrix used by the model.
+
+        Explanation:
+            Sometimes the input embedding function is not a simple matmul embedding layer, but rather it's
+            enriched with some additional logic (e.g. scaling the embeddings).
+            See Gemma3 for example: https://github.com/huggingface/transformers/blob/a7f29523361b2cc12e51c1f5133d95f122f6f45c/src/transformers/models/gemma3/modular_gemma3.py#L348
+            Since our (gradient) calculation operates on the matrix *directly*, we need to take this into account.
+            In this non-matmul case, merely multiplying the one-hot encoding with the matrix may provide
+            an incorrect embedding. One possible fix is to require the "effective" embedding matrix, and
+            operate on it instead, as we do here.
+            Naturally, this assumes that the embedding function works position-wise, which is usually the case.
+
+        Returns:
+            Tensor of shape (vocab_size, embd_dim)
+        """
+        all_token_ids = torch.arange(self.embedding_layer.num_embeddings, device=self.model.device)
+        effective_embedding_matrix = self.embedding_layer(all_token_ids)  # (vocab_size, dim)
+        return effective_embedding_matrix  # shape: (vocab_size, embd_dim)
+
     def compute_grad_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
@@ -409,6 +431,9 @@ class HuggingFaceModelMixins:
                 num_classes=embedding_layer.num_embeddings,
             ).to(model.device, model.dtype)
 
+            # Prepare the effective embedding matrix:
+            embedding_matrix = self.effective_embedding_matrix  # (vocab_size, embd_dim)
+
             for cand_idx_start in range(0, n_candidates, batch_size):
                 # for each batch we calculate its gradients, through the per-message loss
                 batch_losses = []  # of len n_messages
@@ -425,7 +450,15 @@ class HuggingFaceModelMixins:
 
                     # 2. Apply embedding to get trigger_embeds
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
-                    candidate_embeds = candidate_ids_onehot @ embedding_layer.weight
+                    candidate_embeds = candidate_ids_onehot @ embedding_matrix
+
+                    assert torch.allclose(
+                        candidate_embeds,
+                        inputs.embed_func(
+                            candidate_trigger_ids[cand_idx_start:cand_idx_end]
+                        )
+                    )  ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
+                    "a model with non-standard embedding logic. Please report this issue on GitHub.")
 
                     # 3. Get batched inputs & compute loss:
                     loss = self._loss_hook(
@@ -499,9 +532,8 @@ class HuggingFaceModelMixins:
             ]  # list of list of tensors, to be concatenated later
 
             for message_idx, cand_idx in itertools.product(
-                range(
-                    0, n_messages
-                ),  # we avoid mixing messages, per a potentially different objective
+                # we avoid mixing messages, per a potentially different objective
+                range(0, n_messages),
                 range(0, n_candidates, batch_size),
             ):
                 cand_idx_end = min(cand_idx + batch_size, n_candidates)
