@@ -57,6 +57,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
         n_bulk_flips: int = 5,
         flip_pos_method: str = "random",  # "random" or "ordered"
+        **kwargs
     ):
         """
         Initializes the GASLITE Optimizer.
@@ -88,6 +89,16 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             n_bulk_flips (int): Number of bulk flips to perform per step (lower => less sequential model calls, faster).
 
             flip_pos_method (str): Method to select positions to flip - "random" or "ordered".
+
+        References:
+        - GASLITE: https://arxiv.org/abs/2412.20953
+            It is based on the GASLITE algorithm proposed in the paper, and extends it with
+            multiple enhancements.
+        - ACG: https://www.haizelabs.com/blog/making-a-sota-adversarial-attack-on-llms-38x-faster
+            GASLITEPlus implements (i) multiple trigger random intiizliation, (ii) trigger buffer,
+            and (iii) flipping bulk of positions at once, (iv) early stopping. Thus, it effectively
+            includes most of the enhancements described Haize's ACG.
+        - QCG? PAL? RAL?
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -231,22 +242,39 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             # Perform bulk flips in chunks
             bulk_pos_list = torch.chunk(sampled_positions, self.n_bulk_flips)
             for bulk_pos in bulk_pos_list:
-                n_unique_candidates = self.n_candidates + 1
-                candidate_triggers = current_trigger_ids.repeat(n_unique_candidates, 1)
+                candidate_triggers = current_trigger_ids.repeat(self.n_candidates, 1)
 
                 # Inject candidate tokens at all positions in the bulk
                 for pos in bulk_pos:
                     # Get candidate tokens for this position
-                    all_candidate_tokens = torch.unique(
-                        torch.cat(
-                            [
-                                current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
-                                topk_ids[pos],
-                            ]
+                    all_candidate_tokens = torch.cat([
+                        current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
+                        topk_ids[pos, :self.n_candidates // 2],
+                    ])
+                    if len(bulk_pos) > 1:
+                        # If the bulk has multiple positions, we add more candidates to increase diversity
+                        # sample more token ids, with replacements
+                        more_cand_indices = torch.randint(
+                            high=topk_ids[pos].size(0),
+                            size=(self.n_candidates - len(all_candidate_tokens),),
+                            device=topk_ids.device
                         )
-                    )
+                    else:
+                        more_cand_indices = torch.arange(
+                            self.n_candidates // 2,
+                            self.n_candidates // 2 + (self.n_candidates - len(all_candidate_tokens)),
+                            device=topk_ids.device
+                        )
+                    all_candidate_tokens = torch.cat([
+                        all_candidate_tokens,
+                        topk_ids[pos, more_cand_indices]
+                    ])
+
                     # Create all candidate triggers by flipping this *single* position
                     candidate_triggers[:, pos] = all_candidate_tokens
+
+                # keep only unique candidates
+                candidate_triggers = torch.unique(candidate_triggers, dim=0)
 
                 # (Optional) Retokenize filtering
                 if self.use_retokenize:
