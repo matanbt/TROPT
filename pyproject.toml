@@ -43,6 +43,7 @@ dev = [
   "pre-commit",
 ]
 
+# TODO the default pip should not install `evaluate` or `dev`
 evaluate = [
   "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]

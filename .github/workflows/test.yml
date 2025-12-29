@@ -10,11 +10,13 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
-    container:
-      image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-devel
-      options: --user root  # Ensure we have permission to install Ollama/curl
-
     steps:
+    # Optional: Free up disk space if you still hit limits
+    - name: Free Disk Space (Ubuntu)
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: false
+  
     - uses: actions/checkout@v4
     
     - name: Set up Python ${{ matrix.python-version }}
