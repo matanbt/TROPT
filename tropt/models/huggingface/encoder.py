@@ -8,7 +8,7 @@ from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import BaseLoss, EmbeddingBasedLoss
+from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
 from tropt.models.base import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
@@ -153,25 +153,47 @@ class EncoderHFModel(
     def _loss_hook(
         self,
         inputs_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        attention_mask:  Float[Tensor, "bsz seq_len"],
+        attention_mask: Float[Tensor, "bsz seq_len"],
         targets: MessageBatchedTargetsDict,
         loss_func: BaseLoss,
         **kwargs,
     ) -> Float[Tensor, "n_messages"] | Float[Tensor, "bsz"]:
+
+        # Forward pass
         outputs = self.model(
             dict(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
-        if isinstance(loss_func, EmbeddingBasedLoss):
-            loss = loss_func(output_emb, targets["target_vectors"])  # shape: (bsz,)
-        else:
-            raise NotImplementedError(
-                f"Loss function {loss_func} not supported for HuggingFace models yet."
-            )
+        # Recursive loss calculation helper
+        def _calc_loss_from_outputs(_output_emb, _targets, _loss_func):
+            if isinstance(_loss_func, EmbeddingBasedLoss):
+                # Base case: Compute embedding loss
+                return _loss_func(
+                    _output_emb,
+                    _targets["target_vectors"]
+                    )  # shape: (bsz,)
 
-        return loss
+            elif isinstance(_loss_func, CombinedLoss):
+                # Recursive case: Compute all child losses
+                losses = []
+                for _nested_loss_func in _loss_func.loss_funcs:
+                    losses.append(
+                        _calc_loss_from_outputs(_output_emb, _targets, _nested_loss_func)
+                    )
 
+                # Stack results: (n_losses, bsz)
+                losses = torch.stack(losses, dim=0)
+
+                # Apply combination logic (e.g. weighted sum) -> (bsz,)
+                return _loss_func(losses)
+
+            else:
+                raise NotImplementedError(
+                    f"Loss function {_loss_func} not supported for HuggingFace models yet."
+                )
+
+        return _calc_loss_from_outputs(output_emb, targets, loss_func)
     @torch.no_grad()
     def __call__(self, texts: List[str]) -> Float[Tensor, "n_texts d_model"]:
         """

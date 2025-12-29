@@ -11,7 +11,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import AttentionBasedLoss, BaseLoss, LogitBasedLoss
+from tropt.loss.base import AttentionBasedLoss, BaseLoss, CombinedLoss, LogitBasedLoss
 from tropt.models.base import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -143,6 +143,10 @@ class LMHFModel(
                 raise ValueError(
                     "Tokenizer does not have a pad token or an eos token. Please set a pad token."
                 )
+
+    @property
+    def n_layers(self) -> int:
+        return self.model.config.num_hidden_layers
 
     def prepare_token_inputs(
         self,
@@ -326,47 +330,62 @@ class LMHFModel(
         outputs = self.model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            output_attentions=isinstance(loss_func, AttentionBasedLoss),
+            output_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
             **prefix_cache_kwargs,
         )
         # hidden_states = outputs.hidden_states [TODO]
 
-        if isinstance(loss_func, LogitBasedLoss):
-            logits = outputs.logits
-            response_target_ids = targets["target_outputs_toks"]  # bsz of (target_seq_len)
-            response_slcs = [slices['appended'] for slices in targets["slices"]]  # bsz of `slice`
-            response_logits = [
-                logits[i, response_slcs[i].start - 1 : response_slcs[i].stop - 1, :]
-                for i in range(logits.shape[0])
-            ]  # bsz of (target_seq_len[i], vocab_size)
-            # Pad logits to the same length
-            response_logits = pad_sequence(
-                response_logits, batch_first=True, padding_value=0.0
-            )
-            # Pad targets and place -100 where we have padding (to ignore in loss)
-            response_target_ids = pad_sequence(
-                response_target_ids, batch_first=True, padding_value=-100
-            )
-            # Compute loss
-            loss = loss_func(
-                response_logits,
-                response_target_ids,
-            )  # shape: (bsz,)
+        def _calc_loss_from_outputs(_outputs, _targets, _loss_func):
+            if isinstance(_loss_func, LogitBasedLoss):
+                logits = _outputs.logits
+                response_target_ids = _targets["target_outputs_toks"]  # bsz of (target_seq_len)
+                response_slcs = [slices['appended'] for slices in _targets["slices"]]  # bsz of `slice`
+                response_logits = [
+                    logits[i, response_slcs[i].start - 1 : response_slcs[i].stop - 1, :]
+                    for i in range(logits.shape[0])
+                ]  # bsz of (target_seq_len[i], vocab_size)
+                # Pad logits to the same length
+                response_logits = pad_sequence(
+                    response_logits, batch_first=True, padding_value=0.0
+                )
+                # Pad targets and place -100 where we have padding (to ignore in loss)
+                response_target_ids = pad_sequence(
+                    response_target_ids, batch_first=True, padding_value=-100
+                )
+                # Compute loss
+                loss = _loss_func(
+                    response_logits,
+                    response_target_ids,
+                )  # shape: (bsz,)
 
-        elif isinstance(loss_func, AttentionBasedLoss):
-            attentions = torch.stack(
-                outputs.attentions, dim=1
-            )  # (bsz, n_layers, n_heads, seq_len[dst], seq_len[src])
-            loss = loss_func(
-                attentions,
-                slices=targets['slices'],  # optionally contains slices
-            )  # shape: (bsz,)
-        else:
-            raise NotImplementedError(
-                f"Loss function {loss_func} not supported for HuggingFace models yet."
-            )
+            elif isinstance(_loss_func, AttentionBasedLoss):
+                attentions = torch.stack(
+                    _outputs.attentions, dim=1
+                )  # (bsz, n_layers, n_heads, seq_len[dst], seq_len[src])
+                loss = _loss_func(
+                    attentions,
+                    slices=_targets['slices'],  # optionally contains slices
+                )  # shape: (bsz,)
 
-        return loss
+            elif isinstance(_loss_func, CombinedLoss):
+                losses = []
+                for _nested_loss_func in _loss_func.loss_funcs:
+                    # Recursive call to compute each loss
+                    losses.append(
+                        _calc_loss_from_outputs(_outputs, _targets, _nested_loss_func)
+                    ) # shape: (bsz,)
+
+                # combine the losses (by calling the loss function on them)
+                losses = torch.stack(losses, dim=0)  # (n_losses, bsz)
+                loss = _loss_func(losses)  # shape: (bsz,)
+
+            else:
+                raise NotImplementedError(
+                    f"Loss function {loss_func} not supported for HuggingFace models yet."
+                )
+            return loss
+
+        return _calc_loss_from_outputs(outputs, targets, loss_func)
 
     @torch.no_grad()
     def __call__(

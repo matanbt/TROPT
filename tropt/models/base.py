@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
-from tropt.loss.base import BaseLoss, EmbeddingBasedLoss
+from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
 
 from .inputs import (
     BatchedTargetsDict,
@@ -158,7 +158,32 @@ class LossTextAccessMixin(TextAccessMixin):
         # n_candidates = len(candidate_trigger_strs)
         # candidate_triggered_strs: List[List[str]] = inputs.get_triggered_inputs(candidate_trigger_strs)
 
-        # for each message, we compute the loss for all candidates
+
+        # Helper function to calculate loss from outputs
+        def _calc_loss_from_outputs(_outputs, _curr_targets, _loss_func):
+            if isinstance(_loss_func, EmbeddingBasedLoss):
+                return _loss_func(
+                    _outputs, _curr_targets[_loss_func.TARGET_KEY]
+                )  # shape: (n_candidates,)
+
+            elif isinstance(_loss_func, CombinedLoss):
+                child_losses = []
+                for _nested_loss_func in _loss_func.loss_funcs:
+                    # Recursive call
+                    child_losses.append(
+                        _calc_loss_from_outputs(_outputs, _nested_loss_func, _curr_targets)
+                    )
+
+                # Stack child losses: (n_candidates, n_losses)
+                child_losses = torch.stack(child_losses, dim=1)
+
+                # Apply the combinator (e.g. weighted sum) -> (n_candidates,)
+                return _loss_func(child_losses)
+
+            else:
+                raise NotImplementedError(f"Loss function {_loss_func} not supported.")
+
+        # Main Loop: for each message, we compute the loss for all candidates
         losses = []
         for message_idx in range(n_messages):
             curr_inputs_dict = inputs.get_triggered_inputs(
@@ -168,20 +193,19 @@ class LossTextAccessMixin(TextAccessMixin):
                 curr_inputs_dict["inputs_texts"],
                 curr_inputs_dict["targets"],
             )
+            
+            # Forward pass once per message bulk
             outputs = self(
                 curr_texts
-            )  # shape: (n_candidates, d_model), or n_candidate response texts, etc.
+            )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
 
-            if isinstance(loss_func, EmbeddingBasedLoss):
-                loss = loss_func(
-                    outputs, curr_targets[loss_func.TARGET_KEY]
-                )  # shape: (bsz,)
-            # Add more black-box loss types here when desired
-            else:
-                raise NotImplementedError(f"Loss function {loss_func} not supported.")
-            losses.append(loss)  # shape: (n_candidates,)
+            # Calculate loss
+            loss = _calc_loss_from_outputs(outputs, curr_targets, loss_func) # shape: (n_candidates,)
+            losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)
+        
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # shape: (n_candidates,)
+
         return losses
