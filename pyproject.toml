@@ -44,7 +44,7 @@ dev = [
 ]
 
 evaluate = [
-  "git+https://github.com/dsbowen/strong_reject.git@main"
+  "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]
 
 [tool.setuptools.packages.find]
