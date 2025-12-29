@@ -26,6 +26,7 @@ dependencies = [
   "wandb",
   "livelossplot",
   "openai",
+  "litellm",
 ]
 
 [project.urls]
@@ -34,7 +35,10 @@ Issues = "https://github.com/matanbt/tropt/issues"
 
 [project.optional-dependencies]
 dev = [
+  # Testing:
   "pytest",
+  "litellm[proxy]",
+  # Linting:
   "ruff",
   "pre-commit",
 ]
