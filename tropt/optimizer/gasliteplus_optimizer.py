@@ -307,7 +307,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
                 # Update the trigger buffer, how much needed
                 # We go over the buffer-size best candidates and try to add them to the buffer
-                for j in range(buffer.size):
+                for j in range(min(buffer.size, len(losses))):
                     cand_idx = losses_sorted_indices[j]
                     buffer.add_if_better(
                         candidate_triggers[cand_idx].clone(),
