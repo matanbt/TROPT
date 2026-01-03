@@ -8,6 +8,7 @@ from typing import Any, Dict, List
 import pandas as pd
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
+
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.models.base import LMBaseModel
 from tropt.optimizer.base import OptimizerResult
@@ -66,17 +67,29 @@ def evaluate_jailbreakness_of_responses(
 def evaluate_triggers(
     model: LMBaseModel,
     trigger_strs: List[str],
+    trigger_ids: List[Any]=None,
     eval_dataset_path: str="scripts/attack_evaluate/advbench_plus.csv",
     batch_size: int = 128,
-):
+) -> pd.DataFrame:
+    """
+    Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
+
+    Args:
+        model (LMBaseModel): The language model to evaluate.
+        trigger_strs (List[str]): List of trigger strings to evaluate.
+
+    """
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
     base_df = pd.read_csv(eval_dataset_path)
     base_df['message_id'] = range(len(base_df))
 
+    if trigger_ids is None:
+        trigger_ids = list(range(len(trigger_strs)))
+
     all_results = []
 
-    for trigger_id, trigger_str in enumerate(trigger_strs):
+    for trigger_id, trigger_str in zip(trigger_ids, trigger_strs):
         # Create a copy for this specific trigger to avoid modifying base_df
         df = base_df.copy()
 

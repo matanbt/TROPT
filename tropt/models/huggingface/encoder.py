@@ -68,6 +68,11 @@ class EncoderHFModel(
         self.tokenizer = self.model.tokenizer
         self.embedding_layer = self._get_input_embeddings()
 
+        # Set model to eval mode
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
         # To make sure the placeholder will be tokenizer as is
         self.tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}

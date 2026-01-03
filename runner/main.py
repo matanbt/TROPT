@@ -1,6 +1,7 @@
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
+
 from tropt.optimizer.utils.token_initializers import (
     get_printable_random_trigger,
 )

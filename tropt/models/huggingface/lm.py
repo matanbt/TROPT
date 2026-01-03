@@ -106,6 +106,11 @@ class LMHFModel(
         self.embedding_layer = self.model.get_input_embeddings()
         self.use_prefix_cache = use_prefix_cache
 
+        # Set model to eval mode
+        self.model.eval()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
         # To make sure the placeholder will be tokenizer as is
         self.tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
@@ -312,7 +317,8 @@ class LMHFModel(
         if not keep_message_dim:
             if not (return_trigger_logits_only or return_after_trigger_logits_only):
                 logger.warning(
-                    "`keep_message_dim` is False but neither `return_trigger_logits_only` nor `return_after_trigger_logits_only` is True. Averaging over messages might mix logits from different slices if the trigger is not aligned across message templates."
+                    "`keep_message_dim` is False but neither `return_trigger_logits_only` nor `return_after_trigger_logits_only` is True. " \
+                    "Averaging over messages might mix logits from different slices if the trigger is not aligned across message templates."
                 )
             logits = logits.mean(dim=0)  # (n_candidates, seq_len, vocab_size)
 

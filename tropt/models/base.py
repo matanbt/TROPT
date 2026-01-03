@@ -193,7 +193,7 @@ class LossTextAccessMixin(TextAccessMixin):
                 curr_inputs_dict["inputs_texts"],
                 curr_inputs_dict["targets"],
             )
-            
+
             # Forward pass once per message bulk
             outputs = self(
                 curr_texts
@@ -204,7 +204,7 @@ class LossTextAccessMixin(TextAccessMixin):
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)
-        
+
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # shape: (n_candidates,)
 

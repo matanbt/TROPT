@@ -95,6 +95,7 @@ class HFTokenInputsManager(TokenInputsManager):
     @property
     def vocab_size(self):
         # TODO some models might have slightly different effecive vocab size in weight (?)
+        #      it's possible that each caller need to receive different vocab size; go over these.
         return self.tokenizer.vocab_size
 
     @property
@@ -452,12 +453,13 @@ class HuggingFaceModelMixins:
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
                     candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
+                    # TODO move to this check to the tests, to avoid slowing down this function
                     assert torch.allclose(
                         candidate_embeds,
                         inputs.embed_func(
                             candidate_trigger_ids[cand_idx_start:cand_idx_end]
                         )
-                    )  ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
+                    ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
                     "a model with non-standard embedding logic. Please report this issue on GitHub.")
 
                     # 3. Get batched inputs & compute loss:

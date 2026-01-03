@@ -2,12 +2,13 @@
 
 [TODO banner]
 
-***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various NLP models (LLMs, encoders, etc). Such triggers are useful, and can serve many purposes, suc as:
+***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various NLP models (LLMs, encoders, etc). Such triggers are useful, and can serve many purposes, such as:
 - **_Red-teaming_**: The triggers can be (and are commonly) optimized towards a malicious/undesired behaviour of the model (e.g., Zou et al. '23).
 - **_Prompt Tuning_**: Triggers can also be used to enhance a desired bahviour, by optimizing a repsective behaviour (e.g., success in a classification task).   [TODO e.g., AutoPrompt]
 - **_Model Inspection_**: Triggers can also be used for research, inspecting certain inputs and the possible responses (e.g., crafting couterfactuals).
 > [TODO combine the following ones] (i) this repo can serve you a red teaming tool for evaluating NLP models' robustness. (ii) similarly, this repo can serve as a robustness benchmark and evaluation of potential defenses.  (iii) can serve you to develop new attack with minimal friction (by implementing new optimizers, or playing around with the configuration of existing ones).
 > [TODO]Readme should clearly define the types of attack we're interested in  - all attacks/optimizers that involve a trigger that is optimized toward a quantifiable end, for when it is combined with the user template(s).
+> a factory for endless jailbreaks / otehr attacks, by easily designing optimizers that can be used to optimize text triggers for various NLP models.
 
 
 ## Installation

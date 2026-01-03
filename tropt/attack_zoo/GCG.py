@@ -1,9 +1,10 @@
 import torch
+
+from tropt.loss.base import PrefillCELoss
+from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.loss.base import PrefillCELoss
-from tropt.models.huggingface.lm import LMHFModel
 
 
 def run_gcg(

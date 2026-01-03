@@ -2,12 +2,14 @@
 Allows filtering of candidate token sequences based on retokenization.
 """
 
+import logging
+from typing import Any, List, Tuple
+
 import torch
 import transformers
-from torch import Tensor
 from jaxtyping import Float
-from typing import List, Tuple, Any
-import logging
+from torch import Tensor
+
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 
 logger = logging.getLogger(__name__)
@@ -15,7 +17,7 @@ logger = logging.getLogger(__name__)
 # TODO need to profile whether these functions are bottlenecks, and if so parallelize them. 
 
 def retokenize_filtering(
-        ids: Tensor,
+        ids: Float[Tensor, "bsz n_ids"],
         tokenizer: transformers.PreTrainedTokenizer
     ) -> Float[Tensor, "new_search_width n_optim_ids"]:
     """
@@ -25,8 +27,8 @@ def retokenize_filtering(
     to improve performance.
 
     Args:
-        ids : Tensor, shape = (search_width, n_optim_ids)
-            token ids
+        ids : Tensor, shape = (bsz, n_ids)
+            batch of token ids to be filtered
         tokenizer : ~transformers.PreTrainedTokenizer
             the model's tokenizer
 

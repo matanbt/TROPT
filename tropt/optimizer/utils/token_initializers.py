@@ -2,10 +2,9 @@ import random
 import string
 
 import transformers
-import torch
-from typing import List
 from jaxtyping import Float
 from torch import Tensor
+
 
 def get_printable_random_trigger(
     trigger_len: int,
@@ -13,11 +12,12 @@ def get_printable_random_trigger(
     tokenizer: transformers.PreTrainedTokenizer = None,
 ) -> str | Float[Tensor, "trigger_seq_len"]:
     """
-    Generates a random initial trigger consisting of printable ASCII characters.
+    Generates a random initial trigger consisting of printable ASCII english letters.
     If the tokenizer is provided, the trigger is tokenized and truncated to ensure it fits within the specified length.
     Otherwise, the trigger is generated as a string of the specified length.
     """
-    _chars = string.ascii_letters + string.digits + string.punctuation
+    _chars = string.ascii_letters + string.digits + ' '  # + string.punctuation
+    _chars += ' ' * 10  # adding more spaces to increase their appearance
     initial_trigger = ''.join(random.choices(_chars, k=trigger_len * 4))
 
     if tokenizer is not None:
