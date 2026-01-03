@@ -1,7 +1,8 @@
 import itertools
+import logging
 from abc import abstractmethod
 from functools import cached_property
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -20,6 +21,8 @@ from tropt.models.base import (
     TokenInputsManager,
 )
 
+logger = logging.getLogger(__name__)
+
 # ======================= Input/Output Handlers logic =======================
 
 
@@ -33,9 +36,7 @@ class HFTokenInputsManager(TokenInputsManager):
     tokenizer: transformers.PreTrainedTokenizer
 
     # Optional prefix cache (for models that support it)
-    prefix_cache: Optional[
-        tuple[Float[Tensor, "n_messages num_heads bef_len head_dim"]]
-    ] = None
+    prefix_cache: Optional[List[tuple]] = None
 
     @torch.no_grad()
     def __init__(
@@ -84,13 +85,37 @@ class HFTokenInputsManager(TokenInputsManager):
         targets = targets.to_device(model.device)
         self.targets = targets
 
-        # [LM Only for now: currently disabled] Compute the KV Cache for tokens that appear before the optimized tokens
-        # prefix_cache = None
-        # if use_prefix_cache:
-        #     before_embeds = embed_func(before_ids)
-        #     output = model(inputs_embeds=before_embeds, attention_mask=before_attn_mask, use_cache=True)
-        #     prefix_cache = output.past_key_values.to_legacy_cache()
-        # self.prefix_cache = prefix_cache
+        # Compute the KV Cache for tokens that appear before the optimized tokens
+        if self.n_messages > 1 and use_prefix_cache:
+            # Prefix cache is currently disabled for multiple messages until analyzing different edge cases [TODO]
+            logger.warning("Prefix cache is currently unsupported: prefix cahce is now manually set to disabled, since multiple messages are used.")
+            use_prefix_cache = False
+        prefix_cache: List[ # per message
+            Tuple[ # n_layers of these:
+                Tuple[
+                    Float[Tensor, "1 n_head seq_len head_dim"],  # keys
+                    Float[Tensor, "1 n_head seq_len head_dim"],  # values
+                ]
+            ]
+        ] = []
+
+        if use_prefix_cache:
+            for i in range(self.n_messages):
+                # (seq, emb) -> (1, seq, emb)
+                curr_embeds = self.before_embeds[i].unsqueeze(0)
+                curr_attn_mask = torch.ones(
+                    curr_embeds.shape[:2], device=model.device, dtype=torch.int64
+                )
+                output = model(
+                    inputs_embeds=curr_embeds,
+                    attention_mask=curr_attn_mask,
+                    use_cache=True,
+                )
+                curr_prefix = output.past_key_values.to_legacy_cache()
+                # tuple(layers) of tuple(k, v) where k,v are (1, n_head, seq_len, head_dim)
+                prefix_cache.append(curr_prefix)
+
+        self.prefix_cache = prefix_cache if use_prefix_cache else None
 
     @property
     def vocab_size(self):
@@ -132,8 +157,6 @@ class HFTokenInputsManager(TokenInputsManager):
         trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"] = None,
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
         append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_messages
-        # batching options:
-        batch_slice: slice = slice(None, None, None),
         chosen_message_idx: Optional[int] = None,
     ) -> dict[str, Tensor | BatchedTargetsDict | MessageBatchedTargetsDict]:
         """
@@ -158,7 +181,7 @@ class HFTokenInputsManager(TokenInputsManager):
                 optional embeddings to append at the end of each message (e.g., for planting response in LMs)
             batch_slice: slice
                 slice to apply on the n_candidates dimension for batching
-            message_idx: Optional[int]
+            chosen_message_idx: Optional[int]
                 if provided, selects only the given message (useful for batching); if None, all messages are returned.
 
         Returns:
@@ -180,23 +203,28 @@ class HFTokenInputsManager(TokenInputsManager):
         if trigger_ids is not None:
             trigger_embeds = self.embed_func(trigger_ids)
 
-        # add message dim to triggers -> (n_messages, n_candidates, trigger_seq_len, embd_dim)
-        trigger_embeds = trigger_embeds.unsqueeze(0).repeat(self.n_messages, 1, 1, 1)
+        # add message dim to triggers -> (curr_n_messages, n_candidates, trigger_seq_len, embd_dim)
+        messages = [chosen_message_idx] if chosen_message_idx is not None else range(self.n_messages)
+        curr_n_messages = len(messages)
+        trigger_embeds = trigger_embeds.unsqueeze(0).repeat(curr_n_messages, 1, 1, 1)
         n_candidates = trigger_embeds.shape[1]
 
         ## Construct the parts of the inputs:
         inputs_embeds_lst_parts: List[
             List[Float[Tensor, "n_candidates part_len embd_dim"]]
-        ] = [ [] for _ in range(self.n_messages) ]
+        ] = [ [] for _ in messages ]
+        attention_mask_lst_parts: List[
+            List[Float[Tensor, "n_candidates part_len"]]
+        ] = [ [] for _ in messages ]
         # keep track of the slices of each part, per message
         slices: List[dict[str, slice]] = []
 
         # we iterate over messages here, as we may have different lengths for each message
-        for message_idx in range(self.n_messages):
+        for i, message_idx in enumerate(messages):
             curr_before, curr_trigger, curr_after, curr_append = (
                  # seq, emb -> n_candidates, seq, embd
                 self.before_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1),
-                trigger_embeds[message_idx],
+                trigger_embeds[i],
                 self.after_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1),
                 (
                     append_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
@@ -206,29 +234,40 @@ class HFTokenInputsManager(TokenInputsManager):
             )
 
             # concatenate all parts:
-            curr_embeds = []
+            curr_embeds, curr_attns = [], []
 
             if not self.use_prefix_cache:
+                # only add 'before' part if not using prefix cache
                 curr_embeds.append(curr_before)
+            # as required, we add 'before' part attention even with prefix cache
+            curr_attns.append(torch.ones((n_candidates, curr_before.shape[-2])))
 
             curr_embeds.extend([curr_trigger, curr_after])
+            curr_attns.extend([
+                torch.ones((n_candidates, curr_trigger.shape[-2])),
+                torch.ones((n_candidates, curr_after.shape[-2])),
+            ])
             if append_embeds is not None:
                 curr_embeds.append(curr_append)
+                curr_attns.append(torch.ones((n_candidates, curr_append.shape[-2])))
 
-            inputs_embeds_lst_parts[message_idx] = curr_embeds
+            inputs_embeds_lst_parts[i] = curr_embeds
+            attention_mask_lst_parts[i] = curr_attns
+
+            before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
             curr_slices = dict(
                 adv=slice(
-                    curr_before.shape[-2],
-                    curr_before.shape[-2] + curr_trigger.shape[-2],
+                    before_offset,
+                    before_offset + curr_trigger.shape[-2],
                 ),
                 chat_template_after=slice(
                     # TODO this is currently only correct for LMs and suffix attacks (otherwise there might be more token in the "curr_after" other than the chat ones)-- need to generalize!
-                    curr_before.shape[-2] + curr_trigger.shape[-2],
-                    curr_before.shape[-2] + curr_trigger.shape[-2] + curr_after.shape[-2],  # noqa
+                    before_offset + curr_trigger.shape[-2],
+                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],  # noqa
                 ),
                 appended=slice(
-                    curr_before.shape[-2] + curr_trigger.shape[-2] + curr_after.shape[-2],
-                    curr_before.shape[-2] + curr_trigger.shape[-2] + curr_after.shape[-2] + curr_append.shape[-2],  # noqa
+                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
+                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] + curr_append.shape[-2],  # noqa
                 ) if curr_append is not None else None,
             )
             slices.append(curr_slices)
@@ -239,12 +278,11 @@ class HFTokenInputsManager(TokenInputsManager):
         max_seq_len = max(
             sum(part.shape[-2] for part in parts) for parts in inputs_embeds_lst_parts
         )
-        for message_idx in range(self.n_messages):
-            curr_embeds = inputs_embeds_lst_parts[message_idx]
+        for i, message_idx in enumerate(messages):
+            curr_embeds = inputs_embeds_lst_parts[i]
             curr_embeds_len = sum(part.shape[-2] for part in curr_embeds)
-            curr_attention_mask = torch.ones(
-                (n_candidates, curr_embeds_len), device=self.device, dtype=torch.int64
-            )
+            curr_attention_mask = torch.cat(attention_mask_lst_parts[i], dim=-1)
+            curr_attention_mask = curr_attention_mask.to(self.device, torch.int64)
 
             # pad to max_seq_len, according to padding_side
             if curr_embeds_len < max_seq_len:
@@ -262,6 +300,9 @@ class HFTokenInputsManager(TokenInputsManager):
                         dim=-1,
                     )
                 else:  # left padding
+                    if self.use_prefix_cache:
+                        raise ValueError("Active left padding with prefix cache is not supported. Either use input that does " \
+                        "not require padding, or disable prefix cache.")
                     curr_embeds = [pad_embeds] + curr_embeds
                     curr_attention_mask = torch.cat(
                         [
@@ -271,9 +312,9 @@ class HFTokenInputsManager(TokenInputsManager):
                         dim=-1,
                     )
                     # also need to shift the slices
-                    slices[message_idx] = {
+                    slices[i] = {
                         k: slice(v.start + pad_len, v.stop + pad_len)
-                        for k, v in slices[message_idx].items()
+                        for k, v in slices[i].items()
                     }
 
             inputs_embeds_lst.append(
@@ -283,36 +324,44 @@ class HFTokenInputsManager(TokenInputsManager):
 
         inputs_embeds = torch.stack(
             inputs_embeds_lst, dim=0
-        )  # (n_messages, n_candidates, seq_len, embd_dim)
+        )  # (curr_n_messages, n_candidates, seq_len, embd_dim)
         attention_mask = torch.stack(
             attention_mask_lst, dim=0
-        )  # (n_messages, n_candidates, seq_len)
+        )  # (curr_n_messages, n_candidates, seq_len)
+
+        ## expand slices for candidates
+        slices = [[msg_slices] * n_candidates for msg_slices in slices]
+
+        ## If a message is selected, discard the message dim
+        if chosen_message_idx is not None:
+            inputs_embeds = inputs_embeds.squeeze(0)
+            attention_mask = attention_mask.squeeze(0)
+            slices = slices[0]
 
         ## Also prepare the targets repeated for each candidate, if any
         targets: TargetsDictPlus = self.targets.copy()
-        targets['slices'] = slices  # add slices to targets for loss computation
         targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-
-        ## Apply batching options:
-        if batch_slice != slice(None, None, None):
-            inputs_embeds = inputs_embeds[:, batch_slice]
-            attention_mask = attention_mask[:, batch_slice]
-            targets: BatchedTargetsDict = TargetsDictPlus.get_candidate_batch_from_batched_targets(targets, batch_slice)
-
-
-        ## If message_idx is provided, select only that message
         if chosen_message_idx is not None:
-            inputs_embeds = inputs_embeds[chosen_message_idx]
-            attention_mask = attention_mask[chosen_message_idx]
             targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
                 targets, chosen_message_idx
             )
 
+        # add the slices info for loss computation
+        targets['slices'] = slices
+
+        # TODO move the batching and message_idx to another function, to avoid repeated calls of the _whole_ function
+        ## Apply batching options:
+        # if batch_slice != slice(None, None, None):
+        #     inputs_embeds = inputs_embeds[:, batch_slice]
+        #     attention_mask = attention_mask[:, batch_slice]
+        #     targets: BatchedTargetsDict = TargetsDictPlus.get_candidate_batch_from_batched_targets(targets, batch_slice)
+
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
-        if batch_slice != slice(None, None, None) and chosen_message_idx is not None:
+        if self.use_prefix_cache:
             prefix_cache_kwargs = self._get_prefix_cache_kwargs(
-                batch_size=inputs_embeds.shape[0], message_idx=chosen_message_idx
+                batch_size=n_candidates,
+                message_idx=chosen_message_idx,
             )
 
         return dict(
@@ -325,41 +374,44 @@ class HFTokenInputsManager(TokenInputsManager):
     # TODO add get_triggered_texts()  ???
 
     def _get_prefix_cache_kwargs(
-        self, batch_size: int = None, message_idx: int = None
-    ) -> dict:
+        self, batch_size: int = 1, message_idx: int = None
+    ) -> List[Dict[str, transformers.DynamicCache | bool]] | Dict[str, transformers.DynamicCache | bool]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
+        # TODO optimization: keep a dict of these for different batch sizes, to avoid recomputing them every time
+
         if not self.use_prefix_cache:
             return dict()
 
-        past_key_values = self.prefix_cache
-        # TODO optimization: keep a dict of these for different batch sizes, to avoid recomputing them every time
+        curr_prefix_caches = []
+        messages = [message_idx] if message_idx is not None else range(self.n_messages)
+        if message_idx is None:
+            # TODO to support multi-message with prefix cache, we need to make sure it's well-defined as the model input
+            raise ValueError("Prefix cache without specific message_idx is not supported yet.")
 
-        if batch_size is not None:
-            batch_prefix_cache = []
-            for k, v in past_key_values:
-                if message_idx is not None:
-                    k, v = k[message_idx], v[message_idx]  # now of shape 1, seq_len,
-                else:
-                    # TODO support also w/o message_idx
-                    raise NotImplementedError(
-                        "Batching with prefix cache is only supported when `message_idx` is provided."
-                    )
-                k, v = (
-                    k.expand(batch_size, -1, -1, -1),
-                    v.expand(batch_size, -1, -1, -1),
-                )
-                batch_prefix_cache.append((k, v))
-            past_key_values = transformers.DynamicCache.from_legacy_cache(
-                batch_prefix_cache
-            )
-        else:
-            past_key_values = transformers.DynamicCache.from_legacy_cache(
-                past_key_values
-            )
-        return dict(
-            past_key_values=past_key_values,
-            # use_cache=True,
-        )
+        for message_idx in messages:
+            # Retrieve the cache for this specific message
+            past_key_values = self.prefix_cache[message_idx]
+            # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
+
+            if batch_size != 1:
+                batch_prefix_cache = []
+                for k, v in past_key_values:
+                    # Expand batch dimension
+                    k = k.expand(batch_size, -1, -1, -1)
+                    v = v.expand(batch_size, -1, -1, -1)
+                    batch_prefix_cache.append((k, v))
+                past_key_values = tuple(batch_prefix_cache)
+
+            past_key_values = transformers.DynamicCache.from_legacy_cache(past_key_values)
+
+            curr_prefix_caches.append(dict(
+                past_key_values=past_key_values,
+                use_cache=True,
+            ))
+
+        if message_idx is not None:
+            return curr_prefix_caches[0]
+        return curr_prefix_caches
 
     def toks_to_strs(
         self,
@@ -463,6 +515,7 @@ class HuggingFaceModelMixins:
                     "a model with non-standard embedding logic. Please report this issue on GitHub.")
 
                     # 3. Get batched inputs & compute loss:
+                    logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
                     loss = self._loss_hook(
                         **inputs.get_triggered_inputs(
                             trigger_embeds=candidate_embeds,
@@ -477,6 +530,7 @@ class HuggingFaceModelMixins:
                     batch_losses, dim=0
                 )  # (n_messages, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
+                logger.debug(f"\tgrad: {batch_losses.mean().item()}")
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
                 candidate_onehot_grad = torch.autograd.grad(
@@ -539,11 +593,12 @@ class HuggingFaceModelMixins:
                 range(0, n_candidates, batch_size),
             ):
                 cand_idx_end = min(cand_idx + batch_size, n_candidates)
+                batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
+                logger.debug(f"from loss [msg={message_idx}]: {(cand_idx_end - cand_idx)}")
                 loss = self._loss_hook(
                     **inputs.get_triggered_inputs(
-                        trigger_ids=candidate_trigger_ids,
-                        batch_slice=slice(cand_idx, cand_idx_end),
+                        trigger_ids=batch_candidate_trigger_ids,
                         chosen_message_idx=message_idx,
                     ),
                     loss_func=loss_func,
@@ -554,6 +609,7 @@ class HuggingFaceModelMixins:
 
         losses = _compute_candidates_loss__batched()
         clear_device_cache()  # clear unused GPU memory
+        logger.debug(f"\tloss: {losses.mean().item()}")
 
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # reduce message dim -> (n_candidates,)
