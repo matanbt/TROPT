@@ -476,6 +476,14 @@ class HuggingFaceModelMixins:
         def _compute_grad__batched(
             batch_size: int,
         ) -> Float[Tensor, "n_messages n_candidates"]:
+
+            # --- Update backward batch size ---
+            # Automatically lower the default for future calls if this run required a downgrade
+            if batch_size < self.backward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing backward_pass_batch_size from {self.backward_pass_batch_size} to {batch_size}")
+                self.backward_pass_batch_size = batch_size
+            # --------------------
+
             all_grads = []  # of len `n_candidate // batch_size`
 
             # Prepare the one-hot encoding matrix
@@ -584,6 +592,14 @@ class HuggingFaceModelMixins:
         def _compute_candidates_loss__batched(
             batch_size: int,
         ) -> Float[Tensor, "n_messages n_candidates"]:
+
+            # --- Update forward batch size ---
+            # Automatically lower the default for future calls if this run required a downgrade
+            if batch_size < self.forward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing forward_pass_batch_size from {self.forward_pass_batch_size} to {batch_size}")
+                self.forward_pass_batch_size = batch_size
+            # --------------------
+
             all_loss = [
                 [] for _ in range(n_messages)
             ]  # list of list of tensors, to be concatenated later
