@@ -196,7 +196,8 @@ class HFTokenInputsManager(TokenInputsManager):
                     the targets dict, expanded to match the n_candidates dimension;
                     inclusion of all the n_messages depends on `chosen_message_idx` option.
         """
-        # TODO consider optimizing the following function, as it's called frequently (per grad/loss batch)
+        # TODO to simplify the flow (and possible shapes), allow this function only to handle a specific message_idx at a time
+        #     (i.e., `assert chosen_message_idx is not None`)
         assert [trigger_ids, trigger_embeds].count(None) == 1, \
             "Exactly one of `trigger_ids` or `trigger_embeds` must be provided."
 
@@ -540,7 +541,7 @@ class HuggingFaceModelMixins:
                     # create_graph=True  # [TODO: allow second order grads] <-- This tells PyTorch to make grads differentiable
                 )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
                 all_grads.append(candidate_onehot_grad)
-                clear_device_cache()  # clear unused GPU memory
+                # clear_device_cache()  # clear unused GPU memory
 
             return torch.cat(
                 all_grads, dim=0
@@ -608,7 +609,7 @@ class HuggingFaceModelMixins:
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)
 
         losses = _compute_candidates_loss__batched()
-        clear_device_cache()  # clear unused GPU memory
+        # clear_device_cache()  # clear unused GPU memory
         logger.debug(f"\tloss: {losses.mean().item()}")
 
         if not keep_message_dim:
@@ -625,7 +626,11 @@ class HuggingFaceModelMixins:
         prefix_cache_kwargs: dict = {},
         loss_kwargs: dict = {},
         **kwargs,
-    ) -> Float[Tensor, "bsz loss_len"]:
+    ) -> Float[Tensor, "bsz"]:
+        """
+        Hook for computing the loss on the given inputs, which are for *specific message* (for the input to be aligned).
+        Must be implemented in subclasses.
+        """
         raise NotImplementedError("_loss_hook must be implemented in subclasses.")
 
     @staticmethod

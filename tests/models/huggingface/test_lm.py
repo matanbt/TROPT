@@ -129,21 +129,6 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
     assert isinstance(tgt_slices_msg1_0['adv'], slice)
     assert tgt_slices_msg1_0['adv'].stop - tgt_slices_msg1_0['adv'].start == trigger_len
 
-def test_inputs_manager_batch_slice(lm_model):
-    texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B"]
-    targets = {"target_outputs": ["T1"]}
-    inputs, _ = lm_model.prepare_token_inputs(texts, targets)
-    
-    n_candidates, trigger_len = 4, 3
-    trigger_ids = torch.randint(0, 100, (n_candidates, trigger_len))
-    
-    # Slice first 2
-    batch_slice = slice(0, 2)
-    batch_size = batch_slice.stop - batch_slice.start
-    res = inputs.get_triggered_inputs(trigger_ids=trigger_ids, batch_slice=batch_slice)
-    assert res["inputs_embeds"].shape[1] == batch_size
-    assert res["targets"]["target_outputs_toks"][0].shape[0] == batch_size
-
 def test_inputs_manager_chosen_message(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
     targets = {"target_outputs": ["T1", "T2"]}

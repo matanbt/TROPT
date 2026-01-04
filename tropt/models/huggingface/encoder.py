@@ -162,7 +162,7 @@ class EncoderHFModel(
         targets: MessageBatchedTargetsDict,
         loss_func: BaseLoss,
         **kwargs,
-    ) -> Float[Tensor, "n_messages"] | Float[Tensor, "bsz"]:
+    ) -> Float[Tensor, "bsz"]:
 
         # Forward pass
         outputs = self.model(

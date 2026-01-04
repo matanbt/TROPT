@@ -118,28 +118,10 @@ def test_inputs_manager_get_triggered_inputs(encoder_model):
     assert "targets" in res
     assert "target_vectors" in res["targets"]
     
-    tgt_vecs = res["targets"]["target_vectors"]
-    assert isinstance(tgt_vecs, torch.Tensor)
-    assert tgt_vecs.shape == (n_messages, n_candidates, encoder_model.d_model)
-
-def test_inputs_manager_batch_slice(encoder_model):
-    texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B"]
-    targets = {"target_vectors": torch.randn(1, encoder_model.d_model)}
-    inputs, trigger_ids = encoder_model.prepare_token_inputs(texts, targets)
-    
-    n_candidates = 4
-    candidate_trigger_ids = torch.randint(0, 100, (n_candidates, trigger_ids.shape[1]))
-    
-    # Slice first 2
-    batch_slice = slice(0, 2)
-    batch_size = batch_slice.stop - batch_slice.start
-    res = inputs.get_triggered_inputs(trigger_ids=candidate_trigger_ids, batch_slice=batch_slice)
-    
-    assert res["inputs_embeds"].shape[1] == batch_size
-    
-    tgt_vecs = res["targets"]["target_vectors"]
-    assert isinstance(tgt_vecs, torch.Tensor)
-    assert tgt_vecs.shape[1] == batch_size
+    tgt_slices_msg1_0 = res["targets"]["slices"][1][0]  # message 1, candidate 0
+    assert isinstance(tgt_slices_msg1_0, dict)
+    assert isinstance(tgt_slices_msg1_0['adv'], slice)
+    assert tgt_slices_msg1_0['adv'].stop - tgt_slices_msg1_0['adv'].start == 4  # "C ! ! ! D" length
 
 def test_inputs_manager_chosen_message(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]

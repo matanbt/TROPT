@@ -75,7 +75,7 @@ class LMHFModel(
     def __init__(
         self,
         model_name: str,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
         dtype: str = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 32,
@@ -84,24 +84,26 @@ class LMHFModel(
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
         self.model_name = model_name
-        self.device = device
         self.forward_pass_batch_size = forward_pass_batch_size
         self.backward_pass_batch_size = backward_pass_batch_size
-        self.dtype = dtype
 
         if any(m in model_name.lower() for m in MODELS_TO_EAGER_ATTENTION):
+            # TODO this sub-optimal option should be triggered only if an attention-based loss is used
             # required for to support attention-based losses
             model_kwargs["attn_implementation"] = "eager"
             logger.info(
                 f"Using eager attention for model {model_name} to support attention-based loss."
             )
-        if self.dtype is not None:
-            model_kwargs["dtype"] = dtype
 
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name, **model_kwargs
-        ).to(device)
-        logger.info(f"Loaded model {model_name} on device {self.model.device}, with dtype {self.model.dtype}.")
+            model_name,
+            device_map=device or "auto",
+            torch_dtype=dtype or "auto",
+            **model_kwargs
+        )
+        self.device = self.model.device
+        self.dtype = self.model.dtype
+        logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.embedding_layer = self.model.get_input_embeddings()
         self.use_prefix_cache = use_prefix_cache
@@ -257,6 +259,7 @@ class LMHFModel(
         # Get the inputs with the candidate triggers inserted
         inputs_embeds_dict = inputs.get_triggered_inputs(
             trigger_ids=candidate_trigger_ids
+            # TODO: choose get input per message
         )
         inputs_embeds, attention_mask, slices = (
             inputs_embeds_dict["inputs_embeds"],
@@ -332,7 +335,10 @@ class LMHFModel(
         loss_func: BaseLoss,
         prefix_cache_kwargs: dict = {},
         **kwargs,
-    ) -> Float[Tensor, "n_messages"] | Float[Tensor, "bsz"]:
+    ) -> Float[Tensor, "bsz"]:
+        """
+        Hook for computing the loss on the given inputs, which are for *specific message* (for the inputs to be aligned).
+        """
         outputs = self.model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -344,20 +350,43 @@ class LMHFModel(
         def _calc_loss_from_outputs(_outputs, _targets, _loss_func):
             if isinstance(_loss_func, LogitBasedLoss):
                 logits = _outputs.logits
-                response_target_ids = _targets["target_outputs_toks"]  # bsz of (target_seq_len)
+                response_target_ids = _targets["target_outputs_toks"]  # (bsz, target_seq_len)
                 response_slcs = [slices['appended'] for slices in _targets["slices"]]  # bsz of `slice`
-                response_logits = [
-                    logits[i, response_slcs[i].start - 1 : response_slcs[i].stop - 1, :]
-                    for i in range(logits.shape[0])
-                ]  # bsz of (target_seq_len[i], vocab_size)
-                # Pad logits to the same length
-                response_logits = pad_sequence(
-                    response_logits, batch_first=True, padding_value=0.0
+
+                # Check if slices are aligned across the batch
+                first_slc = response_slcs[0]
+                are_slcs_aligned = all(
+                    s.start == first_slc.start and s.stop == first_slc.stop
+                    for s in response_slcs
                 )
-                # Pad targets and place -100 where we have padding (to ignore in loss)
-                response_target_ids = pad_sequence(
-                    response_target_ids, batch_first=True, padding_value=-100
-                )
+
+                assert isinstance(response_target_ids, torch.Tensor) and response_target_ids.dim() == 2 and response_target_ids.shape[0] == logits.shape[0], \
+                    "response_target_ids must be a tensor of shape (bsz, target_seq_len) matching the batch size of logits."
+                assert first_slc.stop - first_slc.start == response_target_ids.shape[1], \
+                    "Length of target sequences must match the length of the response slices."
+                assert not are_slcs_aligned, "Response slices are not aligned across the batch. Variable-length target sequences are not supported yet."
+
+                # If slices are aligned, we can simply stack them
+                start_idx = first_slc.start - 1
+                end_idx = first_slc.stop - 1
+                response_logits = logits[:, start_idx:end_idx, :]
+
+                ## [DISABLED] Currently not supported: variable-length target sequences
+                ## Otherwise, we fallback to padding of the variable lengths
+                # if not are_slcs_aligned:
+                # response_logits = [
+                #     logits[i, response_slcs[i].start - 1 : response_slcs[i].stop - 1, :]
+                #     for i in range(logits.shape[0])
+                # ]  # bsz of (target_seq_len[i], vocab_size)
+                # # Pad logits to the same length
+                # response_logits = pad_sequence(
+                #     response_logits, batch_first=True, padding_value=0.0
+                # )
+                # # Pad targets and place -100 where we have padding (to ignore in loss)
+                # response_target_ids = pad_sequence(
+                #     response_target_ids, batch_first=True, padding_value=-100
+                # )
+
                 # Compute loss
                 loss = _loss_func(
                     response_logits,

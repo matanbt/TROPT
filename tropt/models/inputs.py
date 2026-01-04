@@ -109,28 +109,28 @@ class TargetsDictPlus(dict):
 
         return targets
 
-    @staticmethod
-    def get_candidate_batch_from_batched_targets(
-        targets: BatchedTargetsDict,
-        cand_batch_slice: slice,
-    ) -> BatchedTargetsDict:
-        """
-        Selects a batch slice from each target entry in the BatchedTargetsDict.
-        Returns result in a new dict (BatchedTargetsDict).
-        """
-        targets = targets.copy()
+    # @staticmethod
+    # def get_candidate_batch_from_batched_targets(
+    #     targets: BatchedTargetsDict,
+    #     cand_batch_slice: slice,
+    # ) -> BatchedTargetsDict:
+    #     """
+    #     Selects a batch slice from each target entry in the BatchedTargetsDict.
+    #     Returns result in a new dict (BatchedTargetsDict).
+    #     """
+    #     targets = targets.copy()
 
-        for k in targets.keys():
-            if isinstance(targets[k], torch.Tensor):
-                targets[k] = targets[k][:, cand_batch_slice]
-            elif isinstance(targets[k], list) and isinstance(targets[k][0], torch.Tensor):
-                targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
-            elif isinstance(targets[k], list):
-                targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
-            else:
-                raise ValueError(f"Unsupported target type for key {k}: {type(targets[k])}")
+    #     for k in targets.keys():
+    #         if isinstance(targets[k], torch.Tensor):
+    #             targets[k] = targets[k][:, cand_batch_slice]
+    #         elif isinstance(targets[k], list) and isinstance(targets[k][0], torch.Tensor):
+    #             targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
+    #         elif isinstance(targets[k], list):
+    #             targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
+    #         else:
+    #             raise ValueError(f"Unsupported target type for key {k}: {type(targets[k])}")
 
-        return targets
+    #     return targets
 
     @staticmethod
     def get_message_from_batched_targets(
