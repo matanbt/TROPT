@@ -531,7 +531,7 @@ class HuggingFaceModelMixins:
                     batch_losses, dim=0
                 )  # (n_messages, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
-                logger.debug(f"\tgrad: {batch_losses.mean().item()}")
+                # logger.debug(f"\tgrad: {batch_losses.mean().item()}")
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
                 candidate_onehot_grad = torch.autograd.grad(
@@ -610,7 +610,7 @@ class HuggingFaceModelMixins:
 
         losses = _compute_candidates_loss__batched()
         # clear_device_cache()  # clear unused GPU memory
-        logger.debug(f"\tloss: {losses.mean().item()}")
+        # logger.debug(f"\tloss: {losses.mean().item()}")
 
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # reduce message dim -> (n_candidates,)

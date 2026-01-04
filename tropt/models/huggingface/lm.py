@@ -364,7 +364,7 @@ class LMHFModel(
                     "response_target_ids must be a tensor of shape (bsz, target_seq_len) matching the batch size of logits."
                 assert first_slc.stop - first_slc.start == response_target_ids.shape[1], \
                     "Length of target sequences must match the length of the response slices."
-                assert not are_slcs_aligned, "Response slices are not aligned across the batch. Variable-length target sequences are not supported yet."
+                assert are_slcs_aligned, "Response slices are not aligned across the batch. Variable-length target sequences are not supported yet."
 
                 # If slices are aligned, we can simply stack them
                 start_idx = first_slc.start - 1
