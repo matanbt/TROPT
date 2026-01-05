@@ -1,4 +1,4 @@
-_target_: tropt.optimizer.laslite_optimizer.LASLITEOptimizer
+_target_: tropt.optimizer.raslite_optimizer.RASLITEOptimizer
 _partial_: true
 
 # parameters:

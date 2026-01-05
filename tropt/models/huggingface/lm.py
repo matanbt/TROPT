@@ -98,7 +98,7 @@ class LMHFModel(
         self.model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map=device or "auto",
-            torch_dtype=dtype or "auto",
+            dtype=dtype or "auto",
             **model_kwargs
         )
         self.device = self.model.device

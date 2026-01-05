@@ -1,0 +1,399 @@
+import logging
+from typing import Any, List, Optional
+import math
+
+import numpy as np
+import torch
+from jaxtyping import Float, Int
+from torch import Tensor
+from tqdm import tqdm
+
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.buffer import TriggerBuffer
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.loss.base import BaseLoss
+from tropt.models.base import (
+    BaseModel,
+    LMBaseModel,
+    LogitsTokenAccessMixin,
+    LossTextAccessMixin,
+    TargetsDict,
+)
+from tropt.tracker.base import BaseTracker
+
+logger = logging.getLogger(__name__)
+
+
+class RASLITEPlusOptimizer(BaseOptimizer):
+    """
+    Implements the RASLITEPlus optimization algorithm, which combines the black-box/transfer 
+    approach of RASLITE (using a utility LM) with the enhanced optimization strategies of GASLITEPlus
+    (buffer, early stopping, decreasing n_flip, etc.).
+
+    Key components:
+    - Target Model: Accessed via text-based loss (black-box).
+    - Utility Model: Accessed via token-based logits (used for candidate generation).
+    - Optimization: Greedy coordinate ascent with buffer and adaptive scheduling.
+    """
+
+    model_requirements = (LossTextAccessMixin,)
+
+    def __init__(
+        self,
+        model: BaseModel,
+        loss: BaseLoss,
+        tracker: Optional[BaseTracker] = None,
+        seed: Optional[int] = None,
+        # attack parameters:
+        num_steps: int = 100,
+        n_grad: int = 1,
+        n_flip: int | float = 20,
+        n_candidates: int = 128,
+        token_constraints: TokenConstraints = TokenConstraints(),
+        use_retokenize: bool = True,
+        
+        util_lm: Optional[LMBaseModel] = None,  # for logits calc
+        use_random_logits: bool = False,  # for possible ablation
+
+        buffer_size: int = 10,
+        decline_n_flip_from_step: Optional[int | float] = None,
+        early_stopping_patience: Optional[int] = None,
+        early_stopping_threshold: float = 0.005,  # relative improvement threshold
+
+        n_bulk_flips: int = 5,
+        flip_pos_method: str = "random",  # "random" or "ordered"
+        **kwargs
+    ):
+        """
+        Initializes the RASLITEPlus Optimizer.
+
+        Args:
+            model (BaseModel): The target model to be attacked (black-box).
+            loss (BaseLoss): The loss function to be optimized.
+            seed (int, optional): Random seed for reproducibility.
+
+            num_steps (int): Number of optimization iterations.
+            n_grad (int): Number of random flips for logit averaging on util_lm.
+            n_flip (int): Number of token positions to greedily optimize per step.
+            n_candidates (int): Number of top candidate tokens to evaluate for each position.
+
+            token_constraints (TokenConstraints): An object to manage token blacklisting.
+            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer.
+
+            util_lm (LMBaseModel, optional): Utility model for logits calculation. Defaults to `model` (if it supports it).
+            use_random_logits (bool): If True, use random logits instead of actual logits from `util_lm`.
+
+            buffer_size (int): Size of the trigger buffer to maintain.
+            decline_n_flip_from_step (int | float, optional): Decline schedule for n_flip.
+            early_stopping_patience (int, optional): Early stopping patience steps.
+            early_stopping_threshold (float): Relative improvement threshold for early stopping.
+            n_bulk_flips (int): Number of bulk flips to perform per step.
+            flip_pos_method (str): Method to select positions to flip ("random" or "ordered").
+        """
+        super().__init__(model, loss=loss, tracker=tracker, seed=seed)
+
+        # save params:
+        self.num_steps = num_steps
+        self.n_grad = n_grad
+        self.n_flip = n_flip
+        self.n_candidates = n_candidates
+        self.token_constraints = token_constraints
+        self.use_retokenize = use_retokenize
+
+        self.util_lm = util_lm if util_lm is not None else model
+        assert isinstance(self.util_lm, LMBaseModel) and isinstance(
+            self.util_lm, LogitsTokenAccessMixin
+        ), "RASLITEPlus requires util_lm to be LM with token logits access"
+
+        self.use_random_logits = use_random_logits
+
+        self.buffer_size = buffer_size
+        self.decline_n_flip_from_step = decline_n_flip_from_step
+
+        # early stopping params
+        self.early_stopping_patience = early_stopping_patience
+        self.early_stopping_threshold = early_stopping_threshold
+        self.n_bulk_flips = n_bulk_flips
+        self.flip_pos_method = flip_pos_method
+
+    def _get_trigger_variations(
+        self,
+        trigger_ids: Float[Tensor, "trigger_seq_len"],
+        vocab_size: int,
+    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
+        """
+        Creates a list of `n_grad` trigger variations. The first is the
+        original trigger, and the rest are random single-token flips.
+        """
+        trigger_seq_len = len(trigger_ids)
+        device = self.util_lm.device
+        trigger_vars_ids = trigger_ids.repeat(
+            self.n_grad, 1
+        )  # shape: (n_grad, trigger_seq_len)
+
+        for idx in range(1, self.n_grad):  # (keep the first intact)
+            # select a random position and a random token
+            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            # apply the flip
+            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
+
+        return trigger_vars_ids
+
+    def optimize_trigger(
+        self,
+        texts: List[str],
+        initial_trigger: Optional[str] = "! " * 20,
+        targets: TargetsDict = None,
+    ) -> OptimizerResult:
+        # Initialization:
+        # We prepare inputs for both models.
+        # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_lm).
+        # The evaluation operates on `texts` via `model` (text space of target model).
+
+        inputs, _ = self.model.prepare_text_inputs(
+            texts=texts,
+            initial_trigger=initial_trigger,
+            targets=targets,
+        )
+        util_inputs, util_trigger_ids = self.util_lm.prepare_token_inputs(
+            texts=texts,
+            targets=targets,
+            initial_trigger=initial_trigger,
+        )
+        util_tokenizer = util_inputs.tokenizer
+        util_vocab_size = util_inputs.vocab_size
+        util_blacklist_ids = self.token_constraints.get_blacklist_ids(
+            util_tokenizer, util_vocab_size
+        )
+
+        # Take the only trigger (assuming single shared trigger for now)
+        util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_lm.device)
+        trigger_seq_len = len(util_trigger_ids)
+        trigger_str = initial_trigger
+
+        n_flip = self.n_flip
+        if isinstance(n_flip, float):
+            n_flip = math.ceil(n_flip * trigger_seq_len)
+
+        loss_per_step = []
+        trigger_strings = []
+        trigger_ids_per_step = []
+        current_loss = float("inf")
+
+        pbar = tqdm(range(self.num_steps), desc="Optimizing with RASLITEPlus...")
+
+        # Form buffer_size initial triggers
+        triggers_for_buffer = [util_trigger_ids]
+        for _ in range(self.buffer_size - 1):
+            random_trigger_ids = get_printable_random_trigger(
+                trigger_seq_len, tokenizer=util_tokenizer, return_ids=True
+            ).to(self.util_lm.device)
+            triggers_for_buffer.append(random_trigger_ids)
+            
+        # Compute losses for initial triggers (requires text conversion)
+        trigger_strs_buffer = [
+            util_inputs.toks_to_strs(t_ids) for t_ids in triggers_for_buffer
+        ]
+        losses = self.model.compute_loss_from_texts(
+            trigger_strs_buffer,
+            inputs,
+            self.loss_func,
+        ) # (n_cands,)
+
+        # Create the buffer:
+        buffer = TriggerBuffer(
+            triggers=[triggers_for_buffer[i] for i in range(self.buffer_size)],
+            losses=[losses[i].item() for i in range(self.buffer_size)],
+        )
+
+        self.tracker.log({"loss": buffer.get_lowest_loss()})
+
+        for step in pbar:
+            pbar.set_description(
+                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
+            )
+
+            # Get the best trigger from the buffer
+            util_trigger_ids = buffer.get_best_trigger()
+            trigger_str = util_inputs.toks_to_strs(util_trigger_ids)
+
+            # --- Candidate selection step (logit-based) ---
+            if self.use_random_logits:
+                # Random logits
+                trigger_grad = torch.rand(
+                    trigger_seq_len, util_vocab_size, device=self.util_lm.device
+                )
+            else:
+                if self.n_grad > 1:  # TODO unsure if useful
+                    # Average logits over variations
+                    trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size)
+                    logits = self.util_lm.compute_logits_from_tokens(
+                        trigger_vars,
+                        util_inputs,
+                        return_trigger_logits_only=True,
+                        keep_message_dim=False,
+                    ) # (n_vars, seq_len, vocab_size)
+                    trigger_grad = logits.mean(dim=0)
+                else:
+                    trigger_grad = self.util_lm.compute_logits_from_tokens(
+                        util_trigger_ids.unsqueeze(0),
+                        util_inputs,
+                        return_trigger_logits_only=True,
+                        keep_message_dim=False,
+                    ).squeeze(0)
+
+            # Get Top-k Candidates *per position*
+            trigger_grad[:, util_blacklist_ids] = float("-inf")
+            topk_ids: Float[Tensor, "trigger_seq_len n_candidates"]
+            topk_ids = trigger_grad.topk(self.n_candidates, dim=-1).indices
+
+            # --- Greedy coordinate ascent step ---
+            current_trigger_ids = util_trigger_ids.clone()
+
+            # Sample `n_flip` unique positions to optimize
+            sampled_positions = torch.randperm(trigger_seq_len, device=self.util_lm.device)[: n_flip]
+            if self.flip_pos_method == "ordered":
+                sampled_positions, _ = sampled_positions.sort()
+
+            # Perform bulk flips in chunks
+            bulk_pos_list = torch.chunk(sampled_positions, self.n_bulk_flips)
+            for bulk_pos in bulk_pos_list:
+                candidate_triggers = current_trigger_ids.repeat(self.n_candidates, 1)
+
+                # Inject candidate tokens at all positions in the bulk
+                for pos in bulk_pos:
+                    # Get candidate tokens for this position
+                    all_candidate_tokens = torch.cat([
+                        current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
+                        topk_ids[pos, :self.n_candidates // 2],
+                    ])
+
+                    if len(bulk_pos) > 1:
+                         # sample more token ids, with replacements if bulk is large
+                        more_cand_indices = torch.randint(
+                            high=topk_ids[pos].size(0),
+                            size=(self.n_candidates - len(all_candidate_tokens),),
+                            device=topk_ids.device
+                        )
+                    else:
+                        more_cand_indices = torch.arange(
+                            self.n_candidates // 2,
+                            self.n_candidates // 2 + (self.n_candidates - len(all_candidate_tokens)),
+                            device=topk_ids.device
+                        )
+                    all_candidate_tokens = torch.cat([
+                        all_candidate_tokens,
+                        topk_ids[pos, more_cand_indices]
+                    ])
+
+                    # Create all candidate triggers by flipping this *single* position
+                    candidate_triggers[:, pos] = all_candidate_tokens
+
+                # keep only unique candidates
+                candidate_triggers = torch.unique(candidate_triggers, dim=0)
+
+                # (Optional) Retokenize filtering
+                if self.use_retokenize:
+                    candidate_triggers = retokenize_filtering(
+                        candidate_triggers, util_tokenizer
+                    )
+                    if len(candidate_triggers) == 0:
+                        logger.warning(
+                            f"Retokenize filtering removed all candidates for pos {pos}. Skipping step."
+                        )
+                        continue 
+
+                # Compute losses on candidate flips (on TARGET model via text)
+                candidate_strs = [util_inputs.toks_to_strs(t) for t in candidate_triggers]
+
+                losses = self.model.compute_loss_from_texts(
+                    candidate_strs,
+                    inputs,
+                    self.loss_func,
+                    keep_message_dim=True,  # Get per-message loss
+                ).mean(
+                    dim=0
+                )  # Average over messages -> (n_cands,)
+
+                # Find the best token for this position
+                losses_sorted_indices = torch.argsort(losses)
+                best_candidate_idx = losses_sorted_indices[0]
+
+                # Update `current_trigger_ids` *in-place*
+                current_trigger_ids = candidate_triggers[best_candidate_idx].clone()
+                current_loss = losses[best_candidate_idx].item()
+
+                # Update buffer
+                for j in range(min(buffer.size, len(losses))):
+                    cand_idx = losses_sorted_indices[j]
+                    buffer.add_if_better(
+                        candidate_triggers[cand_idx].clone(),
+                        losses[cand_idx].item(),
+                    )
+
+            # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
+            util_trigger_ids = current_trigger_ids
+            trigger_str = util_inputs.toks_to_strs(util_trigger_ids)
+
+            # (Optional) update n_flip if needed (linear scheduling)
+            if self.decline_n_flip_from_step is not None:
+                # Determine start step
+                if isinstance(self.decline_n_flip_from_step, float):
+                    decline_step = int(self.num_steps * self.decline_n_flip_from_step)
+                else:
+                    decline_step = int(self.decline_n_flip_from_step)
+
+                # If past the step, linearly decline n_steps to 1
+                if step >= decline_step:
+                    final_step = self.num_steps
+                    steps_remaining = final_step - step
+                    decline_duration = final_step - decline_step
+
+                    if decline_duration > 0:
+                        ratio = steps_remaining / decline_duration
+                        n_flip = max(1, math.ceil(self.n_flip * ratio))
+
+            # Logging:
+            self.tracker.log({"loss": current_loss})
+            loss_per_step.append(current_loss)
+            trigger_strings.append(trigger_str)
+            trigger_ids_per_step.append(util_trigger_ids)
+
+            # (Optional) Early stopping
+            if self.early_stopping_patience is not None:
+                if step == 0:
+                    best_loss_global = current_loss
+                    steps_without_improvement = 0
+
+                denominator = abs(best_loss_global) if best_loss_global != 0 else 1.0
+                relative_improvement = (best_loss_global - current_loss) / denominator
+
+                if relative_improvement > self.early_stopping_threshold:
+                    steps_without_improvement = 0
+                else:
+                    steps_without_improvement += 1
+
+                if steps_without_improvement >= self.early_stopping_patience:
+                    logger.info(f"Early stopping triggered at step {step+1}. No relative improvement (of > {self.early_stopping_threshold*100:.2%}) in the last {self.early_stopping_patience} steps.")
+                    break
+
+                best_loss_global = min(best_loss_global, current_loss)
+
+
+        # Return the best trigger found
+        best_loss_idx = np.argmin(loss_per_step)
+        best_trigger_str = trigger_strings[best_loss_idx]
+        best_trigger_ids = trigger_ids_per_step[best_loss_idx]
+
+        result = OptimizerResult(
+            best_loss=loss_per_step[best_loss_idx],
+            best_trigger_str=best_trigger_str,
+            best_trigger=best_trigger_ids,
+            losses=loss_per_step,
+            trigger_strs=trigger_strings,
+        )
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        return result

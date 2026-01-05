@@ -3,7 +3,8 @@ from .GASLITE import run_gaslite
 from .GCG import run_gcg
 from .GCGEmb import run_gcg_embedding_variant
 from .GCGMult import run_gcg_mutl_instruction
-from .LASTLITE import run_laslite
+from .RASLITE import run_raslite
+from .RASLITEPlus import run_rasliteplus
 
 ATTACK_RECIPES = {
     "beast": run_beast,
@@ -11,7 +12,8 @@ ATTACK_RECIPES = {
     "gcg": run_gcg,
     "gcg_emb": run_gcg_embedding_variant,
     "gcg_mult": run_gcg_mutl_instruction,
-    "laslite": run_laslite,
+    "raslite": run_raslite,
+    "rasliteplus": run_rasliteplus,
 }
 
 def list_attacks():

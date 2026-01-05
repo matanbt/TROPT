@@ -2,7 +2,7 @@
 defaults:
   - override /model: huggingface-encoder/all-minilm-l6-v2
   - override /loss: similarity
-  - override /optimizer: laslite/default
+  - override /optimizer: raslite/default
 
 texts:
   - "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}"

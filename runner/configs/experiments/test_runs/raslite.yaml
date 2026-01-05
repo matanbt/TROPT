@@ -3,7 +3,7 @@ defaults:
   - /model@util_lm: huggingface-lm/gemma-3-270m-it
   - override /model: huggingface-encoder/all-minilm-l6-v2
   - override /loss: similarity
-  - override /optimizer: laslite/default
+  - override /optimizer: raslite/default
   - override /tracker: json
 
 texts:

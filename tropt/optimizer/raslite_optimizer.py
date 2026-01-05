@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # TODO add outer-beam search (like BEAST)
 
 
-class LASLITEOptimizer(BaseOptimizer):
+class RASLITEOptimizer(BaseOptimizer):
     """
     Implements a variant of the GASLITE optimization algorithm, that relies on a util LM's logits (instead of gradients).
     Originally from the paper: "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
@@ -52,7 +52,7 @@ class LASLITEOptimizer(BaseOptimizer):
         flip_pos_method: str = "random",  # "random" or "ordered"
     ):
         """
-        Initializes the LASLITE Optimizer.
+        Initializes the RASLITE Optimizer.
 
         Args:
             model (HuggingFaceModel): The model to be attacked.
@@ -87,7 +87,7 @@ class LASLITEOptimizer(BaseOptimizer):
         self.util_lm = util_lm if util_lm is not None else model
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
             self.util_lm, LogitsTokenAccessMixin
-        ), "LASLITE requires util_lm to be LM with token logits access"
+        ), "RASLITE requires util_lm to be LM with token logits access"
 
         self.use_random_logits = use_random_logits
         self.flip_pos_method = flip_pos_method
@@ -126,7 +126,7 @@ class LASLITEOptimizer(BaseOptimizer):
 
         # TODO calc loss before, for logger
 
-        pbar = tqdm(range(self.num_steps), desc="Optimizing with LASLITE...")
+        pbar = tqdm(range(self.num_steps), desc="Optimizing with RASLITE...")
 
         for step in pbar:
             pbar.set_description(
