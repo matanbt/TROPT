@@ -46,7 +46,8 @@ class EncoderHFModel(
     def __init__(
         self,
         model_name: str,
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = None,
+        dtype: str| torch.dtype = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
@@ -62,7 +63,10 @@ class EncoderHFModel(
             self.model = loaded_model
         else:
             self.model = SentenceTransformer(
-                model_name, device=device, **kwargs
+                model_name,
+                device=device,
+                model_kwargs=dict(dtype=dtype or "auto"),
+                **kwargs
             )  # TODO trust_remote_code when needed
         self.d_model = self.model.get_sentence_embedding_dimension()
         self.tokenizer = self.model.tokenizer

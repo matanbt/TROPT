@@ -48,7 +48,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 100,
-        n_grad: int = 1,
+        n_grad: int = None,
         n_flip: int | float = 20,
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
@@ -227,7 +227,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                     trigger_seq_len, util_vocab_size, device=self.util_lm.device
                 )
             else:
-                if self.n_grad > 1:  # TODO unsure if useful
+                if self.n_grad is not None and self.n_grad > 1:  # TODO unsure if useful
                     # Average logits over variations
                     trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size)
                     logits = self.util_lm.compute_logits_from_tokens(

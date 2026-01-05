@@ -24,6 +24,7 @@ def run_gcg(
     model = LMHFModel(
         model_name=model_name,
         device="cuda" if torch.cuda.is_available() else "cpu",
+        use_prefix_cache=True,
     )
     loss = PrefillCELoss()
 
