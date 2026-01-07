@@ -4,6 +4,7 @@ import torch
 from jaxtyping import Float
 from openai import OpenAI
 from torch import Tensor
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from tropt.models.base import EncoderBaseModel, LossTextAccessMixin
 
@@ -29,7 +30,7 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
             model_name: The name of the OpenAI embedding model to use.
             d_model: The dimensionality of the embeddings. If None, it is deduced via a dummy API call.
             api_key: The OpenAI API key. If None, it will be read from the OPENAI_API_KEY environment variable.
-            base_url: Optional base URL for the OpenAI client.
+            base_url: Optional base URL for the OpenAI client. If None, the default OpenAI API URL is used.
         """
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
@@ -37,9 +38,9 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
         if d_model is None:
             # Deduce d_model via a dummy request
             try:
-                # We use a single token "warmup" to check the dimensionality
+                # We use a single token to check the dimensionality
                 response = self.client.embeddings.create(
-                    input="warmup",
+                    input="test",
                     model=self.model_name,
                 )
                 d_model = len(response.data[0].embedding)
@@ -51,6 +52,14 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
 
         self.d_model = d_model
 
+        self._token_used = 0
+        self._call_count = 0
+        self._sample_count = 0
+
+    @retry(
+        wait=wait_exponential(multiplier=1, min=4, max=60),
+        stop=stop_after_attempt(5)
+    )
     def __call__(
         self, texts: List[str], **kwargs
     ) -> Float[Tensor, "n_texts d_model"]:
@@ -73,4 +82,19 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
         embeddings = [data.embedding for data in response.data]
         result = torch.tensor(embeddings, dtype=torch.float32)
 
+        # Update token usage
+        self._token_used += response.usage.total_tokens
+        self._call_count += 1
+        self._sample_count += len(texts)
+
         return result
+
+    def get_usage_stats(self) -> int:
+        """
+        Returns summary of API usage statistics.
+        """
+        return dict(
+            total_tokens=self._token_used,
+            call_count=self._call_count,
+            sample_count=self._sample_count,
+        )
