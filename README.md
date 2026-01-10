@@ -49,15 +49,15 @@ print("Jailbreak prompt:", instruction.replace("{{OPTIMIZED_TRIGGER}}", result.b
 print("Lowest loss achieved:", result.best_loss)
 ```
 
-### 🔧 Via Manual Configuration
+### 🔧 Via `yaml` Configuration
 
 For advanced research, you can construct the optimization pipeline manually. This allows you to mix and match different models, loss functions, and optimization strategies.
 
 *[Documentation and examples coming soon]*
 
-### 🫴 Via manual script
+### 🫴 Via Manual Script
 
-Naturally, you can also run optimization by composing the components manually in a Python script. An example demo script is provided in `demo.ipynb`, showcasing how to set up and execute an optimization run. [TODO make it]
+For maximal flexibility, you can also run optimization by composing the components manually in a Python script. An example demo script is provided in `demo.ipynb`, showcasing how to set up and execute an optimization run. [TODO make it]
 
 ## Roadmap
 

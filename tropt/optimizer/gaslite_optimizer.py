@@ -46,6 +46,7 @@ class GASLITEOptimizer(BaseOptimizer):
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = True,
         use_random_gradient: bool = False,
+        **kwargs
     ):
         """
         Initializes the GASLITE Optimizer.

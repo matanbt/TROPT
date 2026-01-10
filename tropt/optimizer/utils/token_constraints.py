@@ -11,6 +11,7 @@ class TokenConstraints:
     disallow_special_tokens: bool = (
         True  # it is reccomended to always disallow special tokens
     )
+    disallow_custom_token_ids: List[int] = field(default_factory=list)
     _cache: dict = field(
         default_factory=dict, init=False, repr=False, hash=False, compare=False
     )
@@ -25,12 +26,14 @@ class TokenConstraints:
             tokenizer.name_or_path,
             self.disallow_non_ascii,
             self.disallow_special_tokens,
+            tuple(self.disallow_custom_token_ids),
         )
         if cache_key in self._cache:
             return self._cache[cache_key]
 
         # Build blacklist:
-        blacklist_ids = set()
+        # initialize with any given custom ids
+        blacklist_ids = set(self.disallow_custom_token_ids)
         vocab_size = vocab_size or tokenizer.vocab_size
 
         if self.disallow_special_tokens:
