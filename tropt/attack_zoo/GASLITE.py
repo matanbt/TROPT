@@ -1,11 +1,11 @@
 import torch
 from jaxtyping import Float
 
+from tropt.loss.base import SimilarityLoss
+from tropt.models.huggingface.encoder import EncoderHFModel
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.loss.base import SimilarityLoss
-from tropt.models.huggingface.encoder import EncoderHFModel
 
 
 def run_gaslite(

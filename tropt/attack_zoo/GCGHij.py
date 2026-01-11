@@ -21,22 +21,18 @@ def run_gcghij(
         instruction (str): The instruction prompt with a placeholder for the trigger.
         target_output (str): The target output that the adversarial trigger aims to induce.
     """
-    model = LMHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        dtype='bfloat16',
-    )
+    model = LMHFModel(model_name=model_name)
     n_layers = model.n_layers
     loss = CombinedLoss(
         loss_funcs=[
             PrefillCELoss(),
-            AttentionEnhLoss( # attn[adv->chat] on the middle layers
+            AttentionEnhLoss(  # attn[adv->chat] on the middle layers
                 targeted_layers=slice(math.floor(0.1 * n_layers), math.ceil(0.9 * n_layers)),
                 src_slc_name="adv",
                 dst_slc_name="chat_template_after",
                 )
 
-            ## AttnGCG:
+            ## For the loss of the `AttnGCG` paper, use only this term instead of `AttentionEnhLoss`:
             # AttentionEnhLoss( # attn[adv->affirm] on the last layer
             #     targeted_layers=slice(n_layers-1, n_layers),  #
             #     src_slc_name="adv",

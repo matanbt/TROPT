@@ -1,11 +1,11 @@
 import torch
 from jaxtyping import Float
 
-from tropt.attacks.optimizer.base import OptimizerResult
-from tropt.attacks.optimizer.gasliteplus_optimizer import GASLITEPlusOptimizer
-from tropt.attacks.optimizer.utils.token_constraints import TokenConstraints
 from tropt.loss.base import SimilarityLoss
 from tropt.models.huggingface.encoder import EncoderHFModel
+from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer.gasliteplus_optimizer import GASLITEPlusOptimizer
+from tropt.optimizer.utils.token_constraints import TokenConstraints
 
 
 def run_gaslite_plus(
@@ -14,6 +14,7 @@ def run_gaslite_plus(
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
         1, 384
     ),  # random target vector for demo purposes
+    initial_trigger: str = ("! " * 100).strip(),
 ) -> OptimizerResult:
     """
     Run the GASLITE+ attack recipe on a given embedding model.
@@ -35,25 +36,28 @@ def run_gaslite_plus(
         model=model,
         loss=loss,
         # Set parameters from the default config:
-        num_steps=100,
-        n_candidates=128,
+        num_steps=150,
+        n_candidates=256,
         n_grad=10,
-        n_flip=30,
+        n_flip=0.3,
         token_constraints=TokenConstraints(
             disallow_non_ascii=True, disallow_special_tokens=True
         ),
         use_retokenize=True,
+
         # Plus-specific params:
+        n_bulk_flips=20,
+        flip_pos_method_vals=["ordered"],
         buffer_size=10,
         decline_n_flip_from_step=0.5,
-        early_stopping_patience=5,
-        early_stopping_threshold=0.005,
+        early_stopping_patience=30,
+        early_stopping_threshold=0.0001,
     )
 
     result = optimizer.optimize_trigger(
         texts=[prefix_info],
         targets={loss.TARGET_KEY: target_vector.to(model.device)},
-        initial_trigger=("! " * 100).strip(),
+        initial_trigger=initial_trigger,
     )
 
     return result

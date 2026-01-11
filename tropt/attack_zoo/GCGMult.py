@@ -1,11 +1,12 @@
-import torch
 from typing import List
 
+import torch
+
+from tropt.loss.base import PrefillCELoss
+from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.loss.base import PrefillCELoss
-from tropt.models.huggingface.lm import LMHFModel
 
 
 def run_gcg_mutl_instruction(
@@ -25,10 +26,7 @@ def run_gcg_mutl_instruction(
         instructions (List[str]): The instruction prompts with a placeholder for the trigger.
         target_output (List[str]): The target outputs that the adversarial trigger aims to induce.
     """
-    model = LMHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
+    model = LMHFModel(model_name=model_name)
     loss = PrefillCELoss()
 
     optimizer = GCGOptimizer(
