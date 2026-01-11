@@ -1,6 +1,7 @@
 import logging
-from typing import Any, List, Optional
 import math
+import time
+from typing import Any, List, Optional
 
 import numpy as np
 import torch
@@ -8,11 +9,6 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
-from tropt.optimizer.utils.retokenization import retokenize_filtering
-from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
-from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -20,6 +16,16 @@ from tropt.models.base import (
     LossTokenAccessMixin,
     TargetsDict,
 )
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.buffer import TriggerBuffer
+from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.scheduler import (
+    ConstantScheduler,
+    LinearScheduler,
+    NFlipScheduler,
+)
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker.base import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -57,6 +63,8 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
         n_bulk_flips: int = 5,
         flip_pos_method: str = "random",  # "random" or "ordered"
+        time_limit: Optional[float] = None,
+        n_flip_scheduler: Optional[NFlipScheduler] = None,
         **kwargs
     ):
         """
@@ -90,6 +98,9 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             flip_pos_method (str): Method to select positions to flip - "random" or "ordered".
 
+            n_flip_scheduler (NFlipScheduler, optional): A scheduler object to control `n_flip`.
+                If provided, overrides `decline_n_flip_from_step`.
+
         References:
         - GASLITE: https://arxiv.org/abs/2412.20953
             It is based on the GASLITE algorithm proposed in the paper, and extends it with
@@ -119,6 +130,19 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         self.early_stopping_threshold = early_stopping_threshold  # relative improvement threshold
         self.n_bulk_flips = n_bulk_flips
         self.flip_pos_method = flip_pos_method
+        self.time_limit = time_limit
+
+        if n_flip_scheduler is not None:
+            self.n_flip_scheduler = n_flip_scheduler
+        elif decline_n_flip_from_step is not None:
+            self.n_flip_scheduler = LinearScheduler(
+                initial_n_flip=n_flip,
+                total_steps=num_steps,
+                decline_start=decline_n_flip_from_step
+            )
+        else:
+            # default: constant n_flip
+            self.n_flip_scheduler = ConstantScheduler(n_flip)
 
     def _get_trigger_variations(
         self,
@@ -162,8 +186,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             tokenizer, vocab_size
         )
 
-        n_flip = self.n_flip
-
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
         trigger_str = initial_trigger
@@ -173,6 +195,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_ids_per_step = []
         current_loss = float("inf")
 
+        start_time = time.time()
         pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
 
         # Form buffer_size initial triggers
@@ -199,6 +222,8 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         self.tracker.log({"loss": buffer.get_lowest_loss()})
 
         for step in pbar:
+            n_flip = self.n_flip_scheduler.get_n_flip(step)
+
             pbar.set_description(
                 f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
             )
@@ -318,32 +343,16 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             trigger_ids = current_trigger_ids
             trigger_str = inputs.toks_to_strs(trigger_ids)
 
-            # (Optional) update n_flip if needed (linear scheduling)
-            if self.decline_n_flip_from_step is not None:
-                # Determine start step
-                if isinstance(self.decline_n_flip_from_step, float):
-                    decline_step = int(self.num_steps * self.decline_n_flip_from_step)
-                else:
-                    decline_step = int(self.decline_n_flip_from_step)
-
-                # If past the step, linearly decline n_steps to 1
-                if step >= decline_step:
-                    final_step = self.num_steps
-                    # final_step = int(self.num_steps * 0.8)  # if we want the end to be flattened
-                    steps_remaining = final_step - step
-                    decline_duration = final_step - decline_step
-
-                    if decline_duration > 0:
-                        # Ratio goes from 1.0 down to 0.0
-                        ratio = steps_remaining / decline_duration
-                        # Scale initial value by ratio, round up, clamp to min 1
-                        n_flip = max(1, math.ceil(self.n_flip * ratio))
-
             # Logging:
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(trigger_ids)
+
+            if self.time_limit is not None:
+                if time.time() - start_time > self.time_limit:
+                    logger.info(f"Time limit of {self.time_limit}s reached. Stopping optimization.")
+                    break
 
             # (Optional) Early stopping if no improvement in the buffer
             if self.early_stopping_patience is not None:
@@ -383,3 +392,4 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         return result
+

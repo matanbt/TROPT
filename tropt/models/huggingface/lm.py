@@ -474,4 +474,13 @@ class LMHFModel(
             skip_special_tokens=not return_full_template
         )
 
+        # Track usage
+        prompt_tokens = inputs.input_ids.numel()
+        gen_tokens = sum(len(t) for t in generation_toks)
+        self._update_usage_stats(
+            tokens=prompt_tokens + gen_tokens,
+            forward_calls=1,
+            forward_samples=len(texts)
+        )
+
         return generation_strs

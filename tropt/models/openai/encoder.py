@@ -52,10 +52,6 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
 
         self.d_model = d_model
 
-        self._token_used = 0
-        self._call_count = 0
-        self._sample_count = 0
-
     @retry(
         wait=wait_exponential(multiplier=1, min=4, max=60),
         stop=stop_after_attempt(5)
@@ -83,18 +79,11 @@ class OpenAIEncoderModel(EncoderBaseModel, LossTextAccessMixin):
         result = torch.tensor(embeddings, dtype=torch.float32)
 
         # Update token usage
-        self._token_used += response.usage.total_tokens
-        self._call_count += 1
-        self._sample_count += len(texts)
+        self._update_usage_stats(
+            tokens=response.usage.total_tokens,
+            forward_calls=1,
+            forward_samples=len(texts)
+        )
 
         return result
 
-    def get_usage_stats(self) -> int:
-        """
-        Returns summary of API usage statistics.
-        """
-        return dict(
-            total_tokens=self._token_used,
-            call_count=self._call_count,
-            sample_count=self._sample_count,
-        )

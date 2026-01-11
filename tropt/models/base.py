@@ -38,6 +38,40 @@ class BaseModel(ABC):
 
     # ... compute loss/grad/... methods will be added upon expansion ...
 
+    # ... usage stats methods will be added upon expansion ...
+    def get_usage_stats(self) -> Dict[str, int]:
+        """Returns summary of model usage statistics."""
+        return dict(
+            total_tokens=getattr(self, "_token_used", 0),
+            forward_calls=getattr(self, "_forward_call_count", 0),
+            forward_samples=getattr(self, "_forward_sample_count", 0),
+            grad_calls=getattr(self, "_grad_call_count", 0),
+            grad_samples=getattr(self, "_grad_sample_count", 0),
+        )
+
+    def _update_usage_stats(
+        self,
+        tokens: int = 0,
+        forward_calls: int = 0,
+        forward_samples: int = 0,
+        grad_calls: int = 0,
+        grad_samples: int = 0,
+    ):
+        """Updates the usage statistics."""
+        if not hasattr(self, "_token_used"):
+            # Initialize stats if not present
+            self._token_used = 0
+            self._forward_call_count = 0
+            self._forward_sample_count = 0
+            self._grad_call_count = 0
+            self._grad_sample_count = 0
+
+        self._token_used += tokens
+        self._forward_call_count += forward_calls
+        self._forward_sample_count += forward_samples
+        self._grad_call_count += grad_calls
+        self._grad_sample_count += grad_samples
+
 
 class LMBaseModel(BaseModel):
     """Language model base class."""

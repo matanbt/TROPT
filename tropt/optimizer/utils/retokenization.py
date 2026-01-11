@@ -39,6 +39,7 @@ def retokenize_filtering(
     ids_decoded = tokenizer.batch_decode(ids)
     filtered_ids = []
 
+    # TODO multi-thread this loop if becomes a bottleneck / batch encode in advance
     for i in range(len(ids_decoded)):
         # Retokenize the decoded token ids
         ids_encoded = tokenizer(

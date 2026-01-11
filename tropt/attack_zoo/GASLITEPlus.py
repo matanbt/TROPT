@@ -15,6 +15,7 @@ def run_gaslite_plus(
         1, 384
     ),  # random target vector for demo purposes
     initial_trigger: str = ("! " * 100).strip(),
+    quick_variant: bool = False,
 ) -> OptimizerResult:
     """
     Run the GASLITE+ attack recipe on a given embedding model.
@@ -32,26 +33,39 @@ def run_gaslite_plus(
     )
     loss = SimilarityLoss()
 
+    params = dict(
+        n_bulk_flips=20,
+        n_flip=0.3,
+        n_grad=10,
+        num_steps=150,
+        buffer_size=10,
+        n_candidates=256,
+        flip_pos_method=["ordered"],
+        decline_n_flip_from_step=0.5,
+        early_stopping_patience=30,
+        early_stopping_threshold=0.0001,
+    )
+    if quick_variant:
+        params.update(
+            dict(
+                n_bulk_flips=10,
+                n_grad=5,
+                num_steps=100,
+                n_candidates=128,
+            )
+        )
+
     optimizer = GASLITEPlusOptimizer(
         model=model,
         loss=loss,
         # Set parameters from the default config:
-        num_steps=150,
-        n_candidates=256,
-        n_grad=10,
-        n_flip=0.3,
         token_constraints=TokenConstraints(
             disallow_non_ascii=True, disallow_special_tokens=True
         ),
         use_retokenize=True,
 
-        # Plus-specific params:
-        n_bulk_flips=20,
-        flip_pos_method_vals=["ordered"],
-        buffer_size=10,
-        decline_n_flip_from_step=0.5,
-        early_stopping_patience=30,
-        early_stopping_threshold=0.0001,
+        # Attack params:
+        **params,
     )
 
     result = optimizer.optimize_trigger(

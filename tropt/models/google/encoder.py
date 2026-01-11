@@ -67,4 +67,10 @@ class GeminiEncoderModel(EncoderBaseModel, LossTextAccessMixin):
             [torch.tensor(emb.values) for emb in result.embeddings], dim=0
         )  # shape: (n_texts, d_model)
 
+        self._update_usage_stats(
+            forward_calls=1,
+            forward_samples=len(texts)
+            # TODO get total tokens
+        )
+
         return result

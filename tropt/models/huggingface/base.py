@@ -521,7 +521,7 @@ class HuggingFaceModelMixins:
                             candidate_trigger_ids[cand_idx_start:cand_idx_end]
                         )
                     ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
-                    "a model with non-standard embedding logic. Please report this issue on GitHub.")
+                    "a model with non-standard embedding logic. Please report this issue!")
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
@@ -540,6 +540,12 @@ class HuggingFaceModelMixins:
                 )  # (n_messages, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
                 # logger.debug(f"\tgrad: {batch_losses.mean().item()}")
+
+                # Update usage stats
+                self._update_usage_stats(
+                    grad_calls=1,
+                    grad_samples=len(batch_losses) * n_messages
+                )
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
                 candidate_onehot_grad = torch.autograd.grad(
@@ -621,6 +627,11 @@ class HuggingFaceModelMixins:
                     loss_func=loss_func,
                 )  # shape: (bsz,)
                 all_loss[message_idx].append(loss)
+
+                self._update_usage_stats(
+                    forward_calls=1,
+                    forward_samples=len(batch_candidate_trigger_ids)
+                )
 
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)
 
