@@ -1,6 +1,10 @@
-# Textual Trigger Optimization Toolbox (TROPT)
+<!-- # Textual Trigger Optimization Toolbox (TROPT) -->
 
-[TODO banner]
+<div align="center">
+  <img src="logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="100%">
+</div>
+
+[TODO] github stickers
 
 ***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various NLP models (LLMs, encoders, etc). Such triggers are useful, and can serve many purposes, such as:
 - **_Red-teaming_**: The triggers can be (and are commonly) optimized towards a malicious/undesired behaviour of the model (e.g., Zou et al. '23).
