@@ -1,6 +1,6 @@
 import logging
-from typing import Any, List, Optional
 import math
+from typing import Any, List, Optional
 
 import numpy as np
 import torch
@@ -8,11 +8,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
-from tropt.optimizer.utils.retokenization import retokenize_filtering
-from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
-from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -21,6 +17,11 @@ from tropt.models.base import (
     LossTextAccessMixin,
     TargetsDict,
 )
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.buffer import TriggerBuffer
+from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker.base import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
             self.util_lm, LogitsTokenAccessMixin
         ), "RASLITEPlus requires util_lm to be LM with token logits access"
+        # TODO in case of use_random_logits, util_lm is not needed, only a util tokenizer. We need to support this 
+        # with an additional model type or another abstraction.
 
         self.use_random_logits = use_random_logits
 
@@ -192,7 +195,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                 trigger_seq_len, tokenizer=util_tokenizer, return_ids=True
             ).to(self.util_lm.device)
             triggers_for_buffer.append(random_trigger_ids)
-            
+
         # Compute losses for initial triggers (requires text conversion)
         trigger_strs_buffer = [
             util_inputs.toks_to_strs(t_ids) for t_ids in triggers_for_buffer
@@ -388,12 +391,15 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
             best_trigger=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
+            full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         return result

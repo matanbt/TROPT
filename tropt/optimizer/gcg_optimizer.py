@@ -6,6 +6,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -32,7 +33,7 @@ class GCGOptimizer(BaseOptimizer):
         self,
         model: BaseModel,
         loss: BaseLoss,
-        tracker: Optional[BaseTracker] = None,
+        tracker: Optional[BaseTracker] = None,  # TODO tracker should be required initialized per RUN not per optimizer!
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 500,
@@ -128,7 +129,7 @@ class GCGOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         texts: List[str],
-        initial_trigger: Optional[str] = "! " * 20,  # TODO move to config
+        initial_trigger: Optional[str] = "! " * 20,
         # objective-specific args:
         targets: TargetsDict = None,  # depends on the objective
     ) -> OptimizerResult:
@@ -204,13 +205,17 @@ class GCGOptimizer(BaseOptimizer):
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
         min_loss_index = loss_per_step.index(min(loss_per_step))
+        best_trigger_str = trigger_strings[min_loss_index]
+
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
 
         result = OptimizerResult(
             best_loss=loss_per_step[min_loss_index],
-            best_trigger_str=trigger_strings[min_loss_index],
+            best_trigger_str=best_trigger_str,
             best_trigger=trigger_ids_per_step[min_loss_index],
             losses=loss_per_step,
             trigger_strs=trigger_strings,
+            full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         return result

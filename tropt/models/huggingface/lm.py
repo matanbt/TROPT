@@ -81,6 +81,7 @@ class LMHFModel(
         backward_pass_batch_size: int = 32,
         # more args:
         use_prefix_cache: bool = True,  # TODO make sure this works as intended
+        set_model_to_eval: bool = True,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
         self.model_name = model_name
@@ -109,9 +110,10 @@ class LMHFModel(
         self.use_prefix_cache = use_prefix_cache
 
         # Set model to eval mode
-        self.model.eval()
-        for param in self.model.parameters():
-            param.requires_grad = False
+        if set_model_to_eval:
+            self.model.eval()
+            for param in self.model.parameters():
+                param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
         self.tokenizer.add_special_tokens(
@@ -444,12 +446,11 @@ class LMHFModel(
             for text in texts
         ]
 
-        # Add padding and convert to tensors
-        inputs = self.tokenizer(
-            self.tokenizer.batch_decode(template_tok_ids),
+        # Use tokenizer's pad method for cleaner handling (avoids double BOS)
+        inputs = self.tokenizer.pad(
+            {"input_ids": template_tok_ids},
             padding=True,
-            return_tensors="pt",
-            add_special_tokens=False,
+            return_tensors="pt"
         ).to(self.device)
 
         # Keep prompt lengths

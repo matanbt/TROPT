@@ -9,6 +9,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -383,12 +384,15 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
             best_trigger=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
+            full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         return result

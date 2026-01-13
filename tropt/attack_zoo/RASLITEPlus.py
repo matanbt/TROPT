@@ -97,7 +97,7 @@ def run_rasliteplus(
     )
 
     if log_to_wandb:
-        usage_stats = model.get_usage_stats()  # TODO
+        usage_stats = model.get_usage_stats()
         tracker.log(usage_stats)
         tracker.finish()
 

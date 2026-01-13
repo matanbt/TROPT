@@ -45,14 +45,30 @@ class EncoderHFModel(
 ):
     def __init__(
         self,
-        model_name: str,
+        model_name: str = None,
         device: str = None,
         dtype: str| torch.dtype = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
+        trust_remote_code: bool = False,
+        set_model_to_eval: bool = True,
         **kwargs,
     ):
+        """
+        Wrapper for HuggingFace Sentence Transformer Encoder Model.
+
+        Args:
+            model_name (str): Name of the HuggingFace model. (irrelevant if `loaded_model` is provided)
+            device (str): Device to load the model onto. If None, defaults to 'cuda' if available else 'cpu'.
+            dtype (str or torch.dtype): Data type for the model. If None, uses the model's default dtype.
+            forward_pass_batch_size (int): Batch size for forward passes.
+            backward_pass_batch_size (int): Batch size for backward passes.
+            loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
+            trust_remote_code (bool): Whether to trust remote code when loading the model.
+            set_model_to_eval (bool): Whether to set the model to evaluation mode.
+            **kwargs: Additional arguments for SentenceTransformer.
+        """
         self.model_name = model_name
         self.device = device
         self.forward_pass_batch_size = forward_pass_batch_size
@@ -66,16 +82,18 @@ class EncoderHFModel(
                 model_name,
                 device=device,
                 model_kwargs=dict(dtype=dtype or "auto"),
+                trust_remote_code=trust_remote_code,
                 **kwargs
-            )  # TODO trust_remote_code when needed
+            )
         self.d_model = self.model.get_sentence_embedding_dimension()
         self.tokenizer = self.model.tokenizer
         self.embedding_layer = self._get_input_embeddings()
 
         # Set model to eval mode
-        self.model.eval()
-        for param in self.model.parameters():
-            param.requires_grad = False
+        if set_model_to_eval:
+            self.model.eval()
+            for param in self.model.parameters():
+                param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
         self.tokenizer.add_special_tokens(

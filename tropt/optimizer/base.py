@@ -17,7 +17,7 @@ class OptimizerResult:  # TODO rethink it
     best_loss: float
     trigger_strs: List[str]
     losses: Optional[List[float]] = None
-    # TODO add full prompt (with trigger inserted)
+    full_prompt: Optional[str | List[str]] = None
 
 ## ------- Base Optimizer ------- ##
 class BaseOptimizer(ABC):

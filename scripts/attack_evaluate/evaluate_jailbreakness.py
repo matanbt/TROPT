@@ -6,11 +6,14 @@ https://strong-reject.readthedocs.io/en/latest/api/index.html
 from typing import Any, Dict, List
 
 import pandas as pd
+import torch
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
 
+import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.models.base import LMBaseModel
+from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 
 
@@ -128,11 +131,75 @@ def evaluate_triggers(
 
     return final_df
 
-# TODO wrap the previous function with a function that:
-# (a) fetches the different triggers (loss and str) from Wandb (NanoGCG/ourGCG/other)
-# (b) runs the evaluate_triggers function
-# (c) adds the metadata per trigger
-# (d) saves the final results to a CSV
-# --> analyze the results in a separate script
-#     print summary statistics & plot the
-#     a violin plot of jailbreakness per method.
+#### Helper scripts to run evaluation from Wandb runs ####
+WANDB_ENTITY = "my_username_or_team"
+WANDB_PROJECT = "tropt-runs"
+DATASET_PATH = "scripts/attack_evaluate/advbench_plus.csv"
+def wandb_to_trigger_eval_pipeline(
+    model_name: str = "google/gemma-2-2b-it",
+    output_path: str = "evaluation_results.csv",
+
+    asr_measure = 'strongreject_finetuned',
+    output_csv_path: str = "universality_scores.csv"
+):
+    api = wandb.Api()
+    runs = api.runs(
+        path=f"{WANDB_ENTITY}/{WANDB_PROJECT}",
+        filters={"state": "finished"}
+    )
+
+    metadata_df = []
+
+    for run in runs:
+        # Extract the optimized trigger
+        trigger = run.summary['best_trigger_str']
+        metadata_df.append(dict(
+            trigger=trigger,
+            target_model=run.config['model_name'],
+            optimized_message_id=run.config['optimized_message_id'],
+            method=run.config['method'],
+            implementation=run.config['implementation'],
+            random_seed=run.config.get('random_seed', None),
+        ))
+
+    metadata_df = pd.DataFrame(metadata_df)
+    metadata_df['trigger_id'] = range(len(metadata_df))
+
+    # Load Model
+    print(f"Loading model {model_name} for evaluation...")
+    model = LMHFModel(
+        model_name=model_name,
+        device="cuda" if torch.cuda.is_available() else "cpu",
+    )
+
+    # Run Evaluation
+    eval_df = evaluate_triggers(  # TODO get from tropts
+        model=model,
+        trigger_strs=metadata_df['trigger'].tolist(),
+        trigger_ids=metadata_df['trigger_id'].tolist(),
+        eval_dataset_path=DATASET_PATH,
+        batch_size=8
+    )
+    eval_df['eval_model'] = model_name
+
+    # Merge the DFs by the trigger index
+    final_df = pd.merge(
+        eval_df,
+        metadata_df,
+        on='trigger_id',
+        how='left'
+    )
+
+    # Save
+    final_df.to_csv(output_path, index=False)
+    print(f"Evaluation complete. Results saved to {output_path}")
+
+    ## Create universality dataframe
+    universality_df = final_df.groupby(['implementation', 'method', 'trigger_id'])[asr_measure].mean().reset_index()
+    universality_df = universality_df[universality_df.implementation == 'tropt']
+    universality_df.rename(columns={asr_measure: 'universality_score'}, inplace=True)
+    universality_df['name'] = universality_df['implementation'] + '--' + universality_df['method']
+
+    # 3. Save to CSV
+    universality_df.to_csv(output_csv_path, index=False)
+    print(f"Universality scores saved to: {output_csv_path}")

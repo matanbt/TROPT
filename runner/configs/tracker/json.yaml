@@ -3,4 +3,4 @@ defaults:
   - _self_
 
 _target_: tropt.tracker.base.JSONTracker
-log_file_path: "./logs.json"  # TODO make it save in the Hydra outputs dir
+log_file_path: "logs.json"
