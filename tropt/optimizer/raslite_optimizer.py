@@ -7,10 +7,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
-from tropt.optimizer.utils.retokenization import retokenize_filtering
-from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.tracker.base import BaseTracker
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -19,6 +16,10 @@ from tropt.models.base import (
     LossTextAccessMixin,
     TargetsDict,
 )
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.tracker.base import BaseTracker
 
 logger = logging.getLogger(__name__)
 
@@ -122,9 +123,15 @@ class RASLITEOptimizer(BaseOptimizer):
         loss_per_step = []
         trigger_strings = []
         trigger_ids_per_step = []
-        current_loss = float("inf")
-
-        # TODO calc loss before, for logger
+        
+        # Calculate initial loss
+        current_loss = self.model.compute_loss_from_texts(
+            [initial_trigger],
+            inputs,
+            self.loss_func,
+            keep_message_dim=False,
+        ).item()
+        self.tracker.log({"loss": current_loss})
 
         pbar = tqdm(range(self.num_steps), desc="Optimizing with RASLITE...")
 
@@ -230,12 +237,15 @@ class RASLITEOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
             best_trigger=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
+            full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         return result

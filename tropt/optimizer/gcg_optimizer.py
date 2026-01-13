@@ -155,8 +155,12 @@ class GCGOptimizer(BaseOptimizer):
         trigger_strings = []
         trigger_ids_per_step = []
 
-        # TODO calc loss before, for logger
-        current_loss = float("inf")
+        # Compute loss before optimization
+        current_loss = self.model.compute_loss_from_tokens(
+            trigger_ids.unsqueeze(0), inputs, loss_func=self.loss_func
+        ).item()
+        self.tracker.log({"loss": current_loss})
+
         pbar = tqdm(range(self.num_steps))
 
         for _ in pbar:
