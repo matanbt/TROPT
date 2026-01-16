@@ -8,8 +8,6 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
 from tqdm.auto import tqdm
 
-from sentence_transformers import util
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -40,7 +38,6 @@ class CombiOptimizer(BaseOptimizer):
         # attack parameters:
         hot_start: bool = True,
         batch_size=128,
-        sim: str = "cos",  # TODO use loss
         best_sim: Optional[float] = None,
         total_tokens: int = 100,
 
@@ -86,7 +83,6 @@ class CombiOptimizer(BaseOptimizer):
         self.hot_start = hot_start
         self.hot_start_str = None
         self.batch_size = batch_size
-        self.sim = util.cos_sim if sim == "cos" else util.dot_score
         self.best_sim = best_sim
         self.total_tokens = total_tokens
 
@@ -101,30 +97,31 @@ class CombiOptimizer(BaseOptimizer):
         self.tokenizer = None
         self.openai_client = None
         self.target_text = None
-        self.target_vector = None
 
     def random_attack(
         self,
-        p_adv: str,
+        inputs,
         pbar: tqdm = None,
     ):
-        curr_p = p_adv
+        curr_p = ""
         tokens = []
         token_count = 0
         api_calls = 0
 
         if self.hot_start_str is not None:
-            curr_p += " " + self.hot_start_str
-            tokens = self.tokenizer.encode(self.hot_start_str, add_special_tokens=False)
+            curr_p = self.hot_start_str
+            # tokens = self.tokenizer.encode(self.hot_start_str, add_special_tokens=False)
             # TODO change this to use tokens instead of words
-            # tokens += hot_start.split(" ")
+            tokens += self.hot_start_str.split(" ")
+        print(tokens)
 
-        device = self.model.device
-
-        p_adv_emb = self.model([curr_p]).to(device)[0]
         token_count += self._get_token_count(curr_p)
         api_calls += 1
-        base_sim = self.sim(self.target_vector, p_adv_emb).item()
+        base_sim = -self.model.compute_loss_from_texts(
+            candidate_trigger_strs=[curr_p],
+            inputs=inputs,
+            loss_func=self.loss_func,
+        )[0]
         no_improve = 0
         # print(f"initial similarity: {base_sim}")
 
@@ -153,10 +150,13 @@ class CombiOptimizer(BaseOptimizer):
             pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,))
 
             # compute current baseline similarity for this iteration
-            p_adv_emb = self.model([curr_p]).to(device)[0]
             token_count += self._get_token_count(curr_p)
             api_calls += 1
-            iter_best_score = self.sim(self.target_vector, p_adv_emb).item()
+            iter_best_score = -self.model.compute_loss_from_texts(
+                candidate_trigger_strs=[curr_p],
+                inputs=inputs,
+                loss_func=self.loss_func,
+            )[0]
             best_token = None
 
             # evaluate candidates in parallel by batching
@@ -170,17 +170,21 @@ class CombiOptimizer(BaseOptimizer):
                 check_ps = [curr_p + " " + t for t in batch_tokens]
 
                 # encode all candidates as a single batch
-                embs = self.model(check_ps).to(device)
                 token_count += self._get_token_count(check_ps)
                 api_calls += 1
 
                 # vectorized cosine similarity against q_emb
-                scores = self.sim(self.target_vector, embs).squeeze(0)  # shape: [batch]
-                max_score, max_idx = torch.max(scores, dim=0)
-                ms = max_score.item()
-                if ms > iter_best_score:
-                    iter_best_score = ms
-                    best_token = batch_tokens[max_idx.item()]
+                losses = self.model.compute_loss_from_texts(
+                    candidate_trigger_strs=check_ps,
+                    inputs=inputs,
+                    loss_func=self.loss_func,
+                )
+                min_loss, min_idx = torch.min(losses, dim=0)
+                prop_best_sim = -min_loss.item()
+                best_idx = int(min_idx.item())
+                if prop_best_sim > iter_best_score:
+                    iter_best_score = prop_best_sim
+                    best_token = batch_tokens[best_idx]
 
             if best_token is not None:
                 tokens.append(best_token)
@@ -217,7 +221,7 @@ class CombiOptimizer(BaseOptimizer):
 
     def square_attack(
         self,
-        base_prompt: str,
+        inputs,
         initial_tokens: Optional[List[str]] = None,
         pbar: tqdm = None,
     ):
@@ -230,8 +234,6 @@ class CombiOptimizer(BaseOptimizer):
         """
         token_count = 0
         api_calls = 0
-
-        device = self.model.device
 
         valid_vocab_ids = self._get_valid_vocab_ids()
         if self.total_tokens <= 0:
@@ -253,16 +255,17 @@ class CombiOptimizer(BaseOptimizer):
                 appended_tokens.append(tok)
 
         def build_prompt(tokens_list):
-            if tokens_list:
-                return base_prompt + " " + " ".join(tokens_list)
-            return base_prompt
+            return " ".join(tokens_list)
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
-            emb = self.model([current_prompt]).to(device)[0]
             token_count += self._get_token_count(current_prompt)
             api_calls += 1
-            best_sim = self.sim(self.target_vector, emb).item()
+            best_sim = -self.model.compute_loss_from_texts(
+                candidate_trigger_strs=[current_prompt],
+                inputs=inputs,
+                loss_func=self.loss_func,
+            )[0]
 
         history = [
             {
@@ -304,13 +307,16 @@ class CombiOptimizer(BaseOptimizer):
             # Build all candidate prompts and evaluate in batches
             batch_prompts = [build_prompt(toks) for toks in proposals_tokens]
             with torch.no_grad():
-                embs = self.model(batch_prompts).to(device)
                 token_count += sum(self._get_token_count(bp) for bp in batch_prompts)
                 api_calls += 1
-                scores = self.sim(self.target_vector, embs).squeeze(0)  # [batch]
-                max_score, max_idx = torch.max(scores, dim=0)
-                prop_best_sim = max_score.item()
-                best_idx = int(max_idx.item())
+                losses = self.model.compute_loss_from_texts(
+                    candidate_trigger_strs=[" ".join(toks) for toks in proposals_tokens],
+                    inputs=inputs,
+                    loss_func=self.loss_func,
+                )
+                min_loss, min_idx = torch.min(losses, dim=0)
+                prop_best_sim = -min_loss.item()
+                best_idx = int(min_idx.item())
 
             if prop_best_sim > best_sim:
                 best_sim = prop_best_sim
@@ -350,36 +356,32 @@ class CombiOptimizer(BaseOptimizer):
         texts: List[str],
         initial_trigger: Optional[str] = "! " * 20,
         targets: TargetsDict = None,
+        target_text: Optional[str] = None
     ) -> OptimizerResult:
         if self.seed is not None:
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
-        # inputs, _ = self.model.prepare_text_inputs(
-        #     texts=texts,
-        #     initial_trigger=initial_trigger,
-        #     targets=targets,
-        # )
+        inputs, _ = self.model.prepare_text_inputs(
+            texts=texts,
+            initial_trigger=initial_trigger,
+            targets=targets,
+        )
         tokenizer = self.model.tokenizer
         # TODO is this the correct tokenizer?
         self.tokenizer = tokenizer
-        # TODO accept multiple texts
-        base_prompt = texts[0].replace(OPTIMIZED_TRIGGER_PLACEHOLDER, "")
-
-        # TODO proper targets support
-        self.target_text = targets["target_text"]
-        self.target_vector = self.model([self.target_text])[0]
-
         # TODO use tracker
 
-        if self.hot_start:
+        # TODO better way to pass hot_start
+        if target_text is not None and self.hot_start:
+            self.target_text = target_text
             self._get_hot_start()
 
         pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
 
         tokens, random_sim, random_history = self.random_attack(
-            p_adv=base_prompt,
-            pbar=pbar
+            inputs=inputs,
+            pbar=pbar,
         )
 
         # self.square_start = random_history[-1]["num_tokens"]
@@ -396,7 +398,7 @@ class CombiOptimizer(BaseOptimizer):
             return result
 
         s_tokens, _, square_history = self.square_attack(
-            base_prompt=base_prompt,
+            inputs=inputs,
             initial_tokens=tokens,
             pbar=pbar,
         )
