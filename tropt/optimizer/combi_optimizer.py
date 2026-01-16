@@ -37,8 +37,8 @@ class CombiOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         hot_start: bool = True,
-        batch_size=128,
-        best_sim: Optional[float] = None,
+        batch_size: int = 128,
+        best_sim: Optional[float] = 0.9,
         total_tokens: int = 100,
 
         random_num_pool: int = 500,
@@ -110,10 +110,7 @@ class CombiOptimizer(BaseOptimizer):
 
         if self.hot_start_str is not None:
             curr_p = self.hot_start_str
-            # tokens = self.tokenizer.encode(self.hot_start_str, add_special_tokens=False)
-            # TODO change this to use tokens instead of words
-            tokens += self.hot_start_str.split(" ")
-        print(tokens)
+            tokens = self.tokenizer.encode(self.hot_start_str, add_special_tokens=False)
 
         token_count += self._get_token_count(curr_p)
         api_calls += 1
@@ -157,6 +154,7 @@ class CombiOptimizer(BaseOptimizer):
                 inputs=inputs,
                 loss_func=self.loss_func,
             )[0]
+            best_id = None
             best_token = None
 
             # evaluate candidates in parallel by batching
@@ -184,10 +182,11 @@ class CombiOptimizer(BaseOptimizer):
                 best_idx = int(min_idx.item())
                 if prop_best_sim > iter_best_score:
                     iter_best_score = prop_best_sim
+                    best_id = int(batch_ids[best_idx])
                     best_token = batch_tokens[best_idx]
 
             if best_token is not None:
-                tokens.append(best_token)
+                tokens.append(best_id)
                 curr_p += " " + best_token
                 no_improve = 0
             else:
@@ -211,7 +210,7 @@ class CombiOptimizer(BaseOptimizer):
                 )
 
             if self.random_early_stop_patience and no_improve >= self.random_early_stop_patience:
-                pbar.update(self.total_tokens - len(tokens) - n)
+                pbar.update(self.total_tokens - len(tokens))
                 break
             if self.best_sim is not None and iter_best_score > self.best_sim:
                 break
@@ -222,7 +221,7 @@ class CombiOptimizer(BaseOptimizer):
     def square_attack(
         self,
         inputs,
-        initial_tokens: Optional[List[str]] = None,
+        initial_tokens: Optional[List[int]] = None,
         pbar: tqdm = None,
     ):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
@@ -251,11 +250,11 @@ class CombiOptimizer(BaseOptimizer):
                 tok_id = np.random.choice(valid_vocab_ids)
                 tok = self.tokenizer.decode(int(tok_id))
                 if not tok.strip():  # ensure non-empty
-                    tok = "the"  # fallback harmless common token
+                    tok = self.tokenizer.encode("the", add_special_tokens=False)[0]  # fallback harmless common token
                 appended_tokens.append(tok)
 
         def build_prompt(tokens_list):
-            return " ".join(tokens_list)
+            return self.tokenizer.decode(tokens_list, skip_special_tokens=True)
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
@@ -297,8 +296,8 @@ class CombiOptimizer(BaseOptimizer):
                         valid_vocab_ids, size=(self.square_random_pool_per_pos,)
                     )
                     chosen_id = np.random.choice(pool_ids)
-                    new_tok = self.tokenizer.decode(int(chosen_id))
-                    if not new_tok.strip():
+                    new_tok = int(chosen_id)
+                    if not self.tokenizer.decode(new_tok, skip_special_tokens=True).strip():
                         # skip empty; retain old token
                         continue
                     proposal[pos] = new_tok
@@ -310,7 +309,7 @@ class CombiOptimizer(BaseOptimizer):
                 token_count += sum(self._get_token_count(bp) for bp in batch_prompts)
                 api_calls += 1
                 losses = self.model.compute_loss_from_texts(
-                    candidate_trigger_strs=[" ".join(toks) for toks in proposals_tokens],
+                    candidate_trigger_strs=batch_prompts,
                     inputs=inputs,
                     loss_func=self.loss_func,
                 )
@@ -391,8 +390,8 @@ class CombiOptimizer(BaseOptimizer):
         if self.best_sim is not None and random_sim > self.best_sim:
             result = OptimizerResult(
                 best_loss=random_sim,
-                best_trigger_str=tokens,
-                best_trigger=self.tokenizer.encode(" ".join(tokens), add_special_tokens=False),
+                best_trigger_str=self.tokenizer.decode(tokens, skip_special_tokens=True),
+                best_trigger=tokens,
                 trigger_strs=[], # TODO what's this?
             )
             return result
@@ -416,8 +415,8 @@ class CombiOptimizer(BaseOptimizer):
 
         result = OptimizerResult(
             best_loss=history[-1]["best_score"],
-            best_trigger_str=s_tokens,
-            best_trigger=self.tokenizer.encode(" ".join(s_tokens), add_special_tokens=False),
+            best_trigger_str=self.tokenizer.decode(s_tokens, skip_special_tokens=True),
+            best_trigger=s_tokens,
             trigger_strs=[],  # TODO what's this?
         )
         return result
@@ -467,7 +466,7 @@ class CombiOptimizer(BaseOptimizer):
             return self.hot_start_str
 
         if self.openai_client is None:
-            self.openai_client = OpenAI()
+            self.openai_client = OpenAI(api_key="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")
 
         messages: list[ChatCompletionUserMessageParam] = [
             {
