@@ -30,7 +30,6 @@ class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
         self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-        self.device = torch.device("cpu")
     
     def __call__(self, *args, **kwargs):
         pass

@@ -41,7 +41,7 @@ class MockTargetModel(BaseModel, LossTextAccessMixin):
         return MagicMock()
 
     def __init__(self):
-        self.device = torch.device("cpu")
+        pass
         
     def __call__(self, *args, **kwargs):
         pass
@@ -68,7 +68,6 @@ class MockUtilModel(LMBaseModel, LogitsTokenAccessMixin):
         self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-        self.device = torch.device("cpu")
         self.vocab_size = self._tokenizer.vocab_size
     
     def __call__(self, *args, **kwargs):

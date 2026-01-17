@@ -102,7 +102,6 @@ class LMHFModel(
             dtype=dtype or "auto",
             **model_kwargs
         )
-        self.device = self.model.device
         self.dtype = self.model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -160,6 +159,10 @@ class LMHFModel(
     @property
     def tokenizer(self):
         return self._tokenizer
+    
+    @property
+    def device(self):
+        return self.model.device
 
     def prepare_token_inputs(
         self,
