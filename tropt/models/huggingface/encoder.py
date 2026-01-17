@@ -70,7 +70,6 @@ class EncoderHFModel(
             **kwargs: Additional arguments for SentenceTransformer.
         """
         self.model_name = model_name
-        self.device = device
         self.forward_pass_batch_size = forward_pass_batch_size
         self.backward_pass_batch_size = backward_pass_batch_size
 
@@ -110,6 +109,10 @@ class EncoderHFModel(
     @property
     def tokenizer(self):
         return self._tokenizer
+    
+    @property
+    def device(self):
+        return self.model.device
 
     def _get_input_embeddings(self):
         # this is a bit hacky way to extract the embedding layer from sentence transformers,
