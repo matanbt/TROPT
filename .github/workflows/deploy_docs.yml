@@ -27,6 +27,10 @@ jobs:
       - name: Install dependencies
         run: |
           pip install .[dev]
+      - name: Inject future annotations for Sphinx build
+        run: |
+          # Find all python files in the 'tropt' directory and prepend the future import
+          find tropt -name "*.py" -exec sed -i '1s/^/from __future__ import annotations\n/' {} +
       - name: Build Sphinx Docs
         run: |
           sphinx-build -b html docs docs/_build/html
