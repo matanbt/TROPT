@@ -4,6 +4,9 @@ Base definitions, classes, and mixins for targeted text models.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Union, Literal, Optional
+import numpy as np
+from transformers import BatchEncoding
 
 import torch
 from jaxtyping import Float, Int
@@ -22,6 +25,48 @@ from .inputs import (
     TokenTrigger,
     TokenTriggerCandidates,
 )
+# ====================== Tokenzier base classes ===================
+
+
+class BaseTokenizer(ABC):
+    """
+    Abstract base class for tokenizers to ensure a unified interface 
+    compatible with Hugging Face-style usage.
+    """
+
+    @property
+    @abstractmethod
+    def vocab_size(self) -> int:
+        """Returns the size of the vocabulary."""
+        pass
+    
+    @abstractmethod
+    def __call__(
+        self,
+        text: str | List[str],
+        return_tensors: Literal["list", "pt", "np"] = "list",
+        **kwargs,
+    ) -> BatchEncoding:
+        """
+        Main entry point for tokenization.
+        Should return a BatchEncoding containing 'input_ids'.
+        """
+        pass
+
+    @abstractmethod
+    def decode(self, ids: int | List[int] | torch.Tensor, **kwargs) -> str:
+        """Converts token IDs back to a string."""
+        pass
+
+    @abstractmethod
+    def batch_decode(self, ids: List[int] | List[List[int]] | torch.Tensor, **kwargs) -> List[str]:
+        """Converts a batch of token IDs back to a list of strings."""
+        pass
+    
+    @property
+    def name_or_path(self) -> str:
+        return "unknown"
+
 
 # ====================== Model Base Classes =======================
 
@@ -72,6 +117,14 @@ class BaseModel(ABC):
         self._forward_sample_count += forward_samples
         self._grad_call_count += grad_calls
         self._grad_sample_count += grad_samples
+    
+    @property
+    def device(self) -> torch.device:
+        """
+        Returns the default device.
+        Should be overriden by the device in which the model is loaded.
+        """
+        return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
 class LMBaseModel(BaseModel):
@@ -118,8 +171,11 @@ class TokenAccessMixin(ABC):
     
     @property
     @abstractmethod
-    def tokenizer(self):
-        """Force the class using this mixin to implement a tokenizer."""
+    def tokenizer(self) -> PreTrainedTokenizer | BaseTokenizer:
+        """
+        Force the class using this mixin to implement a tokenizer.
+        This tokenizer must be either HuggingFace tokenizer or one with the same interface.
+        """
         raise NotImplementedError
 
 

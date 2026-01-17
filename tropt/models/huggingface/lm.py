@@ -105,7 +105,7 @@ class LMHFModel(
         self.device = self.model.device
         self.dtype = self.model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.embedding_layer = self.model.get_input_embeddings()
         self.use_prefix_cache = use_prefix_cache
 
@@ -116,7 +116,7 @@ class LMHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self.tokenizer.add_special_tokens(
+        self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
@@ -129,25 +129,25 @@ class LMHFModel(
         if self.model.device == torch.device("cpu"):
             logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
-        if not self.tokenizer.chat_template:
+        if not self._tokenizer.chat_template:
             logger.warning(
                 "Tokenizer does not have a chat template. Assuming base model and setting chat template to empty."
             )
-            self.tokenizer.chat_template = (
+            self._tokenizer.chat_template = (
                 "{% for message in messages %}{{ message['content'] }}{% endfor %}"
             )
-        if self.tokenizer.padding_side != "left":
+        if self._tokenizer.padding_side != "left":
             logger.warning(
                 "Tokenizer padding side is not 'left'. Our code currenly assume left padding ."
             )
-            self.tokenizer.padding_side = "left"
+            self._tokenizer.padding_side = "left"
 
-        if not self.tokenizer.pad_token:
-            if self.tokenizer.eos_token:
+        if not self._tokenizer.pad_token:
+            if self._tokenizer.eos_token:
                 logger.warning(
                     "Tokenizer does not have a pad token. Setting pad token to eos token."
                 )
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self._tokenizer.pad_token = self._tokenizer.eos_token
             else:
                 raise ValueError(
                     "Tokenizer does not have a pad token or an eos token. Please set a pad token."
@@ -156,6 +156,10 @@ class LMHFModel(
     @property
     def n_layers(self) -> int:
         return self.model.config.num_hidden_layers
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
 
     def prepare_token_inputs(
         self,

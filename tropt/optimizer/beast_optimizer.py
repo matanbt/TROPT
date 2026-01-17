@@ -103,9 +103,9 @@ class BEASTOptimizer(BaseOptimizer):
             targets=targets,
             initial_trigger="",  # BEAST starts with an empty trigger
         )
-        util_tokenizer = util_inputs.tokenizer
+        util_tokenizer = self.util_lm.tokenizer
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
-            util_tokenizer, util_inputs.vocab_size
+            util_tokenizer, self.util_lm.vocab_size
         )
 
         # BEAST works token-by-token, so we start with an empty trigger

@@ -143,7 +143,7 @@ class GCGOptimizer(BaseOptimizer):
                 targets=targets,
             )
         )
-        tokenizer = inputs.tokenizer
+        tokenizer = self.model.tokenizer
         vocab_size = inputs.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(
             tokenizer, vocab_size

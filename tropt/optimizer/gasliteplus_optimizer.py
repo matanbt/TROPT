@@ -182,7 +182,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             targets=targets,
         )
         trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
-        vocab_size, tokenizer = inputs.vocab_size, inputs.tokenizer
+        vocab_size, tokenizer = inputs.vocab_size, self.model.tokenizer
         blacklist_ids = self.token_constraints.get_blacklist_ids(
             tokenizer, vocab_size
         )

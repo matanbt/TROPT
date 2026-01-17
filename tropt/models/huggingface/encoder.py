@@ -86,7 +86,7 @@ class EncoderHFModel(
                 **kwargs
             )
         self.d_model = self.model.get_sentence_embedding_dimension()
-        self.tokenizer = self.model.tokenizer
+        self._tokenizer = self.model.tokenizer
         self.embedding_layer = self._get_input_embeddings()
 
         # Set model to eval mode
@@ -96,7 +96,7 @@ class EncoderHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self.tokenizer.add_special_tokens(
+        self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
@@ -106,6 +106,10 @@ class EncoderHFModel(
                 f"Model is in {self.model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
             )
         logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
 
     def _get_input_embeddings(self):
         # this is a bit hacky way to extract the embedding layer from sentence transformers,

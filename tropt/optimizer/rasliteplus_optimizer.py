@@ -26,12 +26,17 @@ from tropt.tracker.base import BaseTracker
 
 logger = logging.getLogger(__name__)
 
+# TODO add outer-beam search (like BEAST)
+
 
 class RASLITEPlusOptimizer(BaseOptimizer):
     """
     Implements the RASLITEPlus optimization algorithm, which combines the black-box/transfer 
     approach of RASLITE (using a utility LM) with the enhanced optimization strategies of GASLITEPlus
     (buffer, early stopping, decreasing n_flip, etc.).
+
+    Builds on the paper: "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
+    (https://arxiv.org/abs/2412.20953)
 
     Key components:
     - Target Model: Accessed via text-based loss (black-box).
@@ -49,13 +54,13 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 100,
-        n_grad: int = None,
+        n_grad: int = None,  # TODO rename
         n_flip: int | float = 20,
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = True,
         
-        util_lm: Optional[LMBaseModel] = None,  # for logits calc
+        util_model: Optional[LMBaseModel] = None,  # for logits calc
         use_random_logits: bool = False,  # for possible ablation
 
         buffer_size: int = 10,
@@ -76,15 +81,16 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             seed (int, optional): Random seed for reproducibility.
 
             num_steps (int): Number of optimization iterations.
-            n_grad (int): Number of random flips for logit averaging on util_lm.
+            n_grad (int): Number of random flips for logit averaging on util_model.
             n_flip (int): Number of token positions to greedily optimize per step.
             n_candidates (int): Number of top candidate tokens to evaluate for each position.
 
             token_constraints (TokenConstraints): An object to manage token blacklisting.
             use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer.
 
-            util_lm (LMBaseModel, optional): Utility model for logits calculation. Defaults to `model` (if it supports it).
-            use_random_logits (bool): If True, use random logits instead of actual logits from `util_lm`.
+            util_model (LMBaseModel, optional): Utility model for tokenization, and also for logits calculation (if use_random_logits=False). 
+                If `None`, defaults to `model` (if it supports tokenization and logits calculation).
+            use_random_logits (bool): If True, use random logits instead of actual logits from `util_model`.
 
             buffer_size (int): Size of the trigger buffer to maintain.
             decline_n_flip_from_step (int | float, optional): Decline schedule for n_flip.
@@ -103,14 +109,16 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
 
-        self.util_lm = util_lm if util_lm is not None else model
-        assert isinstance(self.util_lm, LMBaseModel) and isinstance(
-            self.util_lm, LogitsTokenAccessMixin
-        ), "RASLITEPlus requires util_lm to be LM with token logits access"
-        # TODO in case of use_random_logits, util_lm is not needed, only a util tokenizer. We need to support this 
-        # with an additional model type or another abstraction.
+        self.util_model = self.model if util_model is None else util_model
 
-        self.use_random_logits = use_random_logits
+        # Ensure tokenization capability
+        assert isinstance(self.util_model, TokenAccessMixin), "Either provide a util model for tokenization, or ensure the target model supports tokenization."
+
+        # Ensure logits access capability (if not using random logits)
+        if not use_random_logits:
+            assert isinstance(self.util_model, LMBaseModel) and isinstance(
+                self.util_model, LogitsTokenAccessMixin
+            ), "RASLITEPlus requires util_model to be LM with token logits access"
 
         self.buffer_size = buffer_size
         self.decline_n_flip_from_step = decline_n_flip_from_step
@@ -125,13 +133,13 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self,
         trigger_ids: Float[Tensor, "trigger_seq_len"],
         vocab_size: int,
+        device: torch.device,
     ) -> Float[Tensor, "n_grad trigger_seq_len"]:
         """
         Creates a list of `n_grad` trigger variations. The first is the
         original trigger, and the rest are random single-token flips.
         """
         trigger_seq_len = len(trigger_ids)
-        device = self.util_lm.device
         trigger_vars_ids = trigger_ids.repeat(
             self.n_grad, 1
         )  # shape: (n_grad, trigger_seq_len)
@@ -153,7 +161,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
     ) -> OptimizerResult:
         # Initialization:
         # We prepare inputs for both models.
-        # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_lm).
+        # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).
         # The evaluation operates on `texts` via `model` (text space of target model).
 
         inputs, _ = self.model.prepare_text_inputs(
@@ -161,19 +169,20 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             initial_trigger=initial_trigger,
             targets=targets,
         )
-        util_inputs, util_trigger_ids = self.util_lm.prepare_token_inputs(
+        util_inputs, util_trigger_ids = self.util_model.prepare_token_inputs(
             texts=texts,
             targets=targets,
             initial_trigger=initial_trigger,
         )
         util_tokenizer = util_inputs.tokenizer
         util_vocab_size = util_inputs.vocab_size
+        
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
             util_tokenizer, util_vocab_size
         )
 
         # Take the only trigger (assuming single shared trigger for now)
-        util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_lm.device)
+        util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_model.device)
         trigger_seq_len = len(util_trigger_ids)
         trigger_str = initial_trigger
 
@@ -193,7 +202,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         for _ in range(self.buffer_size - 1):
             random_trigger_ids = get_printable_random_trigger(
                 trigger_seq_len, tokenizer=util_tokenizer, return_ids=True
-            ).to(self.util_lm.device)
+            ).to(self.util_model.device)
             triggers_for_buffer.append(random_trigger_ids)
 
         # Compute losses for initial triggers (requires text conversion)
@@ -227,13 +236,13 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             if self.use_random_logits:
                 # Random logits
                 trigger_grad = torch.rand(
-                    trigger_seq_len, util_vocab_size, device=self.util_lm.device
+                    trigger_seq_len, util_vocab_size, device=self.util_model.device
                 )
             else:
                 if self.n_grad is not None and self.n_grad > 1:  # TODO unsure if useful
                     # Average logits over variations
                     trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size)
-                    logits = self.util_lm.compute_logits_from_tokens(
+                    logits = self.util_model.compute_logits_from_tokens(
                         trigger_vars,
                         util_inputs,
                         return_trigger_logits_only=True,
@@ -241,7 +250,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                     ) # (n_vars, seq_len, vocab_size)
                     trigger_grad = logits.mean(dim=0)
                 else:
-                    trigger_grad = self.util_lm.compute_logits_from_tokens(
+                    trigger_grad = self.util_model.compute_logits_from_tokens(
                         util_trigger_ids.unsqueeze(0),
                         util_inputs,
                         return_trigger_logits_only=True,
@@ -257,7 +266,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             current_trigger_ids = util_trigger_ids.clone()
 
             # Sample `n_flip` unique positions to optimize
-            sampled_positions = torch.randperm(trigger_seq_len, device=self.util_lm.device)[: n_flip]
+            sampled_positions = torch.randperm(trigger_seq_len, device=self.util_model.device)[: n_flip]
             if self.flip_pos_method == "ordered":
                 sampled_positions, _ = sampled_positions.sort()
 

@@ -22,10 +22,14 @@ class MockInputsManager(TokenInputsManager):
         pass
 
 class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+
     def __init__(self):
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
         self.device = torch.device("cpu")
     
     def __call__(self, *args, **kwargs):
