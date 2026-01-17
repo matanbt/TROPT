@@ -10,6 +10,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.common import DEFAULT_INIT_TRIGGER
 
 from .inputs import (
     BatchedTargetsDict,
@@ -114,6 +115,12 @@ class TokenAccessMixin(ABC):
             A tuple of (prepared inputs, initial trigger).
         """
         raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def tokenizer(self):
+        """Force the class using this mixin to implement a tokenizer."""
+        raise NotImplementedError
 
 
 ## "Grey-box" Model Mixins:
@@ -160,7 +167,7 @@ class TextAccessMixin(ABC):
         self,
         texts: List[str],  # n_messages texts
         targets: TargetsDict = None,
-        initial_trigger: str = "! " * 20,
+        initial_trigger: str = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[TextInputsManager, List[str]]:
         """
         Prepares the text-based inputs manager from raw text templates.
@@ -205,7 +212,7 @@ class LossTextAccessMixin(TextAccessMixin):
                 for _nested_loss_func in _loss_func.loss_funcs:
                     # Recursive call
                     child_losses.append(
-                        _calc_loss_from_outputs(_outputs, _nested_loss_func, _curr_targets)
+                        _calc_loss_from_outputs(_outputs, _curr_targets, _nested_loss_func)
                     )
 
                 # Stack child losses: (n_candidates, n_losses)
