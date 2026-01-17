@@ -466,7 +466,7 @@ class CombiOptimizer(BaseOptimizer):
             return self.hot_start_str
 
         if self.openai_client is None:
-            self.openai_client = OpenAI(api_key="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")
+            self.openai_client = OpenAI()
 
         messages: list[ChatCompletionUserMessageParam] = [
             {
