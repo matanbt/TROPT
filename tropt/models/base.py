@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 from typing import List, Union, Literal, Optional
 import numpy as np
-from transformers import BatchEncoding
+from transformers import BatchEncoding, PreTrainedTokenizer
 
 import torch
 from jaxtyping import Float, Int
