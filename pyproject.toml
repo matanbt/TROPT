@@ -42,6 +42,11 @@ dev = [
   # Linting:
   "ruff",
   "pre-commit",
+  # Docs:
+  "sphinx",
+  "sphinx_rtd_theme",
+  "pydata_sphinx_theme",
+  "sphinx-autodoc-typehints",
 ]
 
 # TODO the default pip should not install `evaluate` or `dev`
