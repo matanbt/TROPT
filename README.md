@@ -1,7 +1,7 @@
 <!-- # Textual Trigger Optimization Toolbox (TROPT) -->
 
 <div align="center">
-  <img src="logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="100%">
+  <img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="100%">
 </div>
 
 [TODO] github stickers
