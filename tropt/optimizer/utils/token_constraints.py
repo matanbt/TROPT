@@ -55,6 +55,8 @@ class TokenConstraints:
                         blacklist_ids.add(i)
                 except Exception as e:
                     logger.warning(f"While perfoming listing token-blacklist: failed to decode token {i}: {e}")
+                    # If we can't decode the token, we can't use it, so we blacklist it
+                    blacklist_ids.add(i)
 
         blacklist_ids = sorted(list(blacklist_ids))
         # filter out negative / out-of-vocab ids (in case tokenizer has weird behavior)

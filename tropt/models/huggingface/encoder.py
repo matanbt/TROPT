@@ -18,13 +18,13 @@ from tropt.models import (
     TargetsDict,
     TargetsDictPlus,
 )
-from tropt.models.huggingface.base import HFTokenInputsManager, HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class EncoderHFTokenInputsManager(HFTokenInputsManager):
+class EncoderHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDict | TargetsDictPlus
     # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
     # to optimize towards an vector per message
@@ -36,7 +36,7 @@ class EncoderHFTokenInputsManager(HFTokenInputsManager):
 class EncoderHFModel(
     EncoderBaseModel,
     # adds implementation of common HF model methods:
-    HuggingFaceModelMixins,
+    _HuggingFaceModelMixins,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,

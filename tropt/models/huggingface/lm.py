@@ -22,13 +22,13 @@ from tropt.models import (
     TargetsDict,
     TargetsDictPlus,
 )
-from tropt.models.huggingface.base import HFTokenInputsManager, HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
 
 logger = logging.getLogger(__name__)
 
 
 # ======================= Input/Output Handlers logic =======================
-class LMHFTokenInputsManager(HFTokenInputsManager):
+class LMHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDictPlus | TargetsDict
     # includes `target_outputs_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
@@ -64,7 +64,7 @@ MODELS_TO_EAGER_ATTENTION = ["gemma"]
 class LMHFModel(
     LMBaseModel,
     # adds implementation of common HF model methods
-    HuggingFaceModelMixins,
+    _HuggingFaceModelMixins,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,

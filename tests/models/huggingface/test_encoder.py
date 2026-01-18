@@ -76,7 +76,7 @@ def test_encoder_compute_grad(encoder_model):
     assert grads.shape == (n_candidates, trigger_ids.shape[1], encoder_model.tokenizer.vocab_size)
     assert not torch.isnan(grads).any()
 
-# --- HFTokenInputsManager Tests (Encoder Context) ---
+# --- _HFTokenInputsManager Tests (Encoder Context) ---
 
 def test_inputs_manager_initialization(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]

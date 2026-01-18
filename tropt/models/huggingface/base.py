@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class HFTokenInputsManager(TokenInputsManager):
+class _HFTokenInputsManager(TokenInputsManager):
     before_ids: List[Float[Tensor, "bef_len"]]
     after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
     embed_func: torch.nn.Embedding
@@ -418,7 +418,7 @@ class HFTokenInputsManager(TokenInputsManager):
 # ======================= Model logic =======================
 
 
-class HuggingFaceModelMixins:
+class _HuggingFaceModelMixins:
     """Implementation of common methods for HuggingFace models."""
 
     model: transformers.PreTrainedModel
@@ -449,7 +449,7 @@ class HuggingFaceModelMixins:
     def compute_grad_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: HFTokenInputsManager,
+        inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
         """
@@ -563,7 +563,7 @@ class HuggingFaceModelMixins:
     def compute_loss_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: HFTokenInputsManager,
+        inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_messages n_candidates"]:
@@ -653,8 +653,8 @@ class HuggingFaceModelMixins:
     @staticmethod
     def cast_to_model_tokenizer(
         old_ids: Float[Tensor, "bsz seq_len"],
-        model_from: "HuggingFaceModelMixins",
-        model_to: "HuggingFaceModelMixins",
+        model_from: "_HuggingFaceModelMixins",
+        model_to: "_HuggingFaceModelMixins",
     ):
         """
         Given `ids` in the `model_from` tokenizer, heurisically casts them to the

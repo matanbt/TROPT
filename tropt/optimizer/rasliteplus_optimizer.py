@@ -59,7 +59,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         n_flip: int | float = 20,
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
-        use_retokenize: bool = True,
+        use_retokenize: bool = False,
         
         util_model: Optional[LMBaseModel] = None,  # for logits calc
         use_random_logits: bool = False,  # for possible ablation
@@ -87,7 +87,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             n_candidates (int): Number of top candidate tokens to evaluate for each position.
 
             token_constraints (TokenConstraints): An object to manage token blacklisting.
-            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer.
+            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer. Defaults 
+                to False, as we anyway only evaluate the target model with strings, and have no token-specific gradients.
 
             util_model (LMBaseModel, optional): Utility model for tokenization, and also for logits calculation (if use_random_logits=False). 
                 If `None`, defaults to `model` (if it supports tokenization and logits calculation).
@@ -182,6 +183,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
             util_tokenizer, util_vocab_size
         )
+
+        model_stats_before = self.model.get_usage_stats().copy()
 
         # Take the only trigger (assuming single shared trigger for now)
         util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_model.device)
@@ -371,7 +374,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         n_flip = max(1, math.ceil(self.n_flip * ratio))
 
             # Logging:
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(util_trigger_ids)
@@ -404,6 +407,9 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
 
+        model_stats_diff = {
+            k: v - model_stats_before[k] for k, v in self.model.get_usage_stats().items()
+        }
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
@@ -412,5 +418,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             trigger_strs=trigger_strings,
             full_prompt=full_prompt,
         )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str, **model_stats_diff})
+        logger.info(f"Best loss: {result.best_loss}| Usage stats: {model_stats_diff}")
         return result
