@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
-from tropt.models.base import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputsManager
+from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputsManager
 from tropt.loss.base import BaseLoss
 
 # TODO review & consider dropping the mocks
@@ -15,9 +15,6 @@ class MockInputsManager(TokenInputsManager):
         self.vocab_size = tokenizer.vocab_size
         self.n_messages = 1
     
-    def toks_to_strs(self, toks, **kwargs):
-        return self.tokenizer.decode(toks)
-        
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 

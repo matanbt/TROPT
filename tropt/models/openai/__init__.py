@@ -1,1 +1,1 @@
-from .encoder import OpenAIEncoderModel
+from .encoder import EncoderOpenAIModel

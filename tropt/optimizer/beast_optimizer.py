@@ -11,7 +11,7 @@ from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.beast_utils import sample_top_p
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
@@ -168,7 +168,7 @@ class BEASTOptimizer(BaseOptimizer):
             current_loss = top_losses[0].item()
 
             best_trigger_ids = beam_trigger_ids[0]
-            trigger_str = util_inputs.toks_to_strs(best_trigger_ids)
+            trigger_str = util_tokenizer.decode(best_trigger_ids, skip_special_tokens=True)
             trigger_strings.append(trigger_str)
             trigger_tensors.append(best_trigger_ids)
             loss_per_step.append(current_loss)

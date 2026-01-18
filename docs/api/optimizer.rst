@@ -12,8 +12,7 @@ Base Optimizer
    :show-inheritance:
 
 .. raw:: html
-
-   <hr style="margin-top: 20px; margin-bottom: 20px; border: 0; border-top: 1px solid #eee;">
+   <hr class="hr-major">
 
 Optimizers Implementations
 --------------------------

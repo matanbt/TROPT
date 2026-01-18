@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
@@ -199,7 +199,7 @@ class GCGOptimizer(BaseOptimizer):
             loss_per_step.append(current_loss)
             trigger_ids_per_step.append(trigger_ids)
 
-            trigger_str = inputs.toks_to_strs(trigger_ids)
+            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
             trigger_strings.append(trigger_str)
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")

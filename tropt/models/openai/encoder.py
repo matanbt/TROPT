@@ -9,7 +9,7 @@ import tiktoken
 import numpy as np
 from transformers import BatchEncoding
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
-from tropt.models.base import (
+from tropt.models import (
     EncoderBaseModel,
     LossTextAccessMixin,
     TokenAccessMixin,
@@ -55,7 +55,7 @@ class OpenAITokenizer(BaseTokenizer):
     @property
     def all_special_ids(self) -> List[int]:
         return [
-            self._encoding.encode(tok)[0]
+            self(tok, return_tensors="list").input_ids[0]
             for tok in list(self._encoding.special_tokens_set)
         ]
 
@@ -88,7 +88,7 @@ class OpenAITokenizer(BaseTokenizer):
         return BatchEncoding({"input_ids": input_ids})
     
     def encode(self, text, **kwargs):
-        return self(text, **kwargs)
+        return self(text, **kwargs).input_ids
 
     def _parse_ids(self, ids):
         return ids
@@ -219,7 +219,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
 # OpenAI Encoder Model
 # --------------------------------------------------------------------------
 
-class OpenAIEncoderModel(
+class EncoderOpenAIModel(
     EncoderBaseModel, 
     LossTextAccessMixin,
     TokenAccessMixin,  # tokenizer access, but not loss access on it

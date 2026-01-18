@@ -13,7 +13,7 @@ from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BatchedTargetsDict,
     MessageBatchedTargetsDict,
     TargetsDict,
@@ -413,16 +413,6 @@ class HFTokenInputsManager(TokenInputsManager):
         if message_idx is not None:
             return curr_prefix_caches[0]
         return curr_prefix_caches
-
-    def toks_to_strs(
-        self,
-        toks: Int[Tensor, "seq_len"],
-        skip_special_tokens=True,
-        **kwargs,
-    ) -> str:
-        """Converts a 1D token ids tensor to a string using the tokenizer."""
-        assert toks.dim() == 1, "expects a 1D tensor of token ids."
-        return self.tokenizer.decode(toks, skip_special_tokens=skip_special_tokens, **kwargs)
 
 
 # ======================= Model logic =======================

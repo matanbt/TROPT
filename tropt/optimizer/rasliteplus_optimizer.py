@@ -10,12 +10,13 @@ from tqdm import tqdm
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     TargetsDict,
+    TokenAccessMixin,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
@@ -108,6 +109,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self.n_candidates = n_candidates
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
+        self.use_random_logits = use_random_logits
 
         self.util_model = self.model if util_model is None else util_model
 
@@ -115,7 +117,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         assert isinstance(self.util_model, TokenAccessMixin), "Either provide a util model for tokenization, or ensure the target model supports tokenization."
 
         # Ensure logits access capability (if not using random logits)
-        if not use_random_logits:
+        if not self.use_random_logits:
             assert isinstance(self.util_model, LMBaseModel) and isinstance(
                 self.util_model, LogitsTokenAccessMixin
             ), "RASLITEPlus requires util_model to be LM with token logits access"
@@ -207,7 +209,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         # Compute losses for initial triggers (requires text conversion)
         trigger_strs_buffer = [
-            util_inputs.toks_to_strs(t_ids) for t_ids in triggers_for_buffer
+            util_tokenizer.decode(t_ids, skip_special_tokens=True) for t_ids in triggers_for_buffer
         ]
         losses = self.model.compute_loss_from_texts(
             trigger_strs_buffer,
@@ -230,7 +232,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # Get the best trigger from the buffer
             util_trigger_ids = buffer.get_best_trigger()
-            trigger_str = util_inputs.toks_to_strs(util_trigger_ids)
+            trigger_str = util_tokenizer.decode(util_trigger_ids, skip_special_tokens=True)
 
             # --- Candidate selection step (logit-based) ---
             if self.use_random_logits:
@@ -319,7 +321,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         continue 
 
                 # Compute losses on candidate flips (on TARGET model via text)
-                candidate_strs = [util_inputs.toks_to_strs(t) for t in candidate_triggers]
+                candidate_strs = [util_tokenizer.decode(t, skip_special_tokens=True) for t in candidate_triggers]
 
                 losses = self.model.compute_loss_from_texts(
                     candidate_strs,
@@ -348,7 +350,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             util_trigger_ids = current_trigger_ids
-            trigger_str = util_inputs.toks_to_strs(util_trigger_ids)
+            trigger_str = util_tokenizer.decode(util_trigger_ids, skip_special_tokens=True)
 
             # (Optional) update n_flip if needed (linear scheduling)
             if self.decline_n_flip_from_step is not None:
