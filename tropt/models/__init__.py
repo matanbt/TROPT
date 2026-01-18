@@ -14,6 +14,7 @@ from .inputs import (
     TargetsDict,
     TargetsDictPlus,
     TextInputsManager,
+    
     TokenInputsManager,
     TokenTrigger,
     TokenTriggerCandidates,
