@@ -133,7 +133,7 @@ class GASLITEOptimizer(BaseOptimizer):
             inputs,
             self.loss_func,
         ).item()
-        self.tracker.log({"loss": current_loss})
+        self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
 
         pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
 
@@ -225,7 +225,7 @@ class GASLITEOptimizer(BaseOptimizer):
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # Logging:
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(trigger_ids)
