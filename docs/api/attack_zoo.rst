@@ -1,5 +1,5 @@
 Attack Zoo
-==========
+==============
 
 .. automodule:: tropt.attack_zoo
    :members:
