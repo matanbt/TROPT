@@ -28,6 +28,7 @@ dependencies = [
   "openai",
   "litellm",
   "ipython",
+  "tenacity",
 ]
 
 [project.urls]
@@ -38,6 +39,7 @@ Issues = "https://github.com/matanbt/tropt/issues"
 dev = [
   # Testing:
   "pytest",
+  "litellm[proxy]",
 
   # Linting:
   "ruff",
@@ -49,15 +51,8 @@ dev = [
   "pydata_sphinx_theme",
   "sphinx-autodoc-typehints",
 ]
-
 # TODO the default pip should not install `evaluate` or `dev`
 
-# More model options:
-add_models = [
-  "litellm[proxy]",
-  "tenacity",
-  "openai",
-]
 evaluate = [
   "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]
