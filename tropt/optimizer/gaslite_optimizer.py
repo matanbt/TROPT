@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss
 from tropt.models.base import (
     BaseModel,
@@ -104,7 +104,7 @@ class GASLITEOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         texts: List[str],
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: TargetsDict = None,
     ) -> OptimizerResult:
         # Initialization:

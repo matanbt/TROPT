@@ -8,6 +8,7 @@ from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.common import DEFAULT_INIT_TRIGGER
 
 
 def run_rasliteplus(
@@ -17,7 +18,7 @@ def run_rasliteplus(
         1, 384
     ),  # random target vector for demo purposes
     util_lm_name: str = "google/gemma-3-270m-it",
-    initial_trigger: str = ("! " * 100).strip(),
+    initial_trigger: str = DEFAULT_INIT_TRIGGER,
     log_to_wandb: bool = False,
 ) -> OptimizerResult:
     """

@@ -8,7 +8,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 import tiktoken
 import numpy as np
 from transformers import BatchEncoding
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.models.base import (
     EncoderBaseModel,
     LossTextAccessMixin,
@@ -312,7 +312,7 @@ class OpenAIEncoderModel(
         self,
         texts: List[str],  # n_messages texts
         targets: TargetsDict | TargetsDictPlus = None,
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[OpenAITokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """
         Prepares the inputs object and initial trigger from raw texts.

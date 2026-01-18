@@ -10,7 +10,7 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import AttentionBasedLoss, BaseLoss, CombinedLoss, LogitBasedLoss
 from tropt.models.base import (
     GradientTokenAccessMixin,
@@ -168,7 +168,7 @@ class LMHFModel(
         self,
         texts: List[str],
         targets: TargetsDict | TargetsDictPlus,
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[LMHFInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """
         Prepares the inputs for the model, including tokenization and target processing.
