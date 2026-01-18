@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
 from tropt.models.base import (
     EncoderBaseModel,
@@ -151,7 +151,7 @@ class EncoderHFModel(
         self,
         texts: List[str],  # n_messages texts
         targets: TargetsDict | TargetsDictPlus,
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
 
         assert isinstance(texts, list), "texts must be a string or a list of strings."
