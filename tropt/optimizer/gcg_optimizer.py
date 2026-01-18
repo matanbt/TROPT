@@ -160,7 +160,7 @@ class GCGOptimizer(BaseOptimizer):
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0), inputs, loss_func=self.loss_func
         ).item()
-        self.tracker.log({"loss": current_loss})
+        self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
 
         pbar = tqdm(range(self.num_steps))
 
@@ -192,7 +192,7 @@ class GCGOptimizer(BaseOptimizer):
                 candidate_trigger_ids, inputs, loss_func=self.loss_func
             )  # shape: (n_messages, n_candidates)
             current_loss = losses.min().item()
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
             trigger_ids = candidate_trigger_ids[losses.argmin()]
 
             # Update the buffer based on the loss

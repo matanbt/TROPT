@@ -1,4 +1,3 @@
-import concurrent.futures
 import logging
 from typing import Dict, List, Optional
 

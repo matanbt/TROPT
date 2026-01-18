@@ -172,7 +172,7 @@ class BEASTOptimizer(BaseOptimizer):
             trigger_strings.append(trigger_str)
             trigger_tensors.append(best_trigger_ids)
             loss_per_step.append(current_loss)
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
