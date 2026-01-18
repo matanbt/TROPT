@@ -30,7 +30,7 @@ jobs:
       - name: Inject future annotations for Sphinx build
         run: |
           # Find all python files in the 'tropt' directory and prepend the future import
-          # https://github.com/sphinx-doc/sphinx/issues/11211#issuecomment-3447848093
+          # [See issue: https://github.com/sphinx-doc/sphinx/issues/11211#issuecomment-3447848093]
           find tropt -name "*.py" -exec sed -i '1s/^/from __future__ import annotations\n/' {} +
       - name: Build Sphinx Docs
         run: |
