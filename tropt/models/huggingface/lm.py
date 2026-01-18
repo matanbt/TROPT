@@ -12,7 +12,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import AttentionBasedLoss, BaseLoss, CombinedLoss, LogitBasedLoss
-from tropt.models.base import (
+from tropt.models import (
     GradientTokenAccessMixin,
     LMBaseModel,
     LogitsTokenAccessMixin,
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 # ======================= Input/Output Handlers logic =======================
-class LMHFInputsManager(HFTokenInputsManager):
+class LMHFTokenInputsManager(HFTokenInputsManager):
     targets: TargetsDictPlus | TargetsDict
     # includes `target_outputs_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
@@ -169,7 +169,7 @@ class LMHFModel(
         texts: List[str],
         targets: TargetsDict | TargetsDictPlus,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-    ) -> Tuple[LMHFInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
+    ) -> Tuple[LMHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """
         Prepares the inputs for the model, including tokenization and target processing.
         """
@@ -208,7 +208,7 @@ class LMHFModel(
             ]
 
         # Build the input manager, that will allow combining with different triggers
-        inputs = LMHFInputsManager(
+        inputs = LMHFTokenInputsManager(
             tok_ids=template_tok_ids,
             model=self.model,
             tokenizer=self.tokenizer,
@@ -236,7 +236,7 @@ class LMHFModel(
     def compute_logits_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: LMHFInputsManager,
+        inputs: LMHFTokenInputsManager,
         keep_message_dim: bool = False,
         return_trigger_logits_only: bool = False,
         return_after_trigger_logits_only: bool = False,
@@ -252,7 +252,7 @@ class LMHFModel(
         Args:
             candidate_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
                 the token ids of the candidate trigger sequences to evaluate
-            inputs: LMHFInputsManager
+            inputs: LMHFTokenInputsManager
                 the inputs object containing the input text and target text (if provided)
             return_slices: bool
                 whether to return the slices corresponding to each input in the batch (default: False)

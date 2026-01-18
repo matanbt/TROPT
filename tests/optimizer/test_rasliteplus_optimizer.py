@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
-from tropt.models.base import (
+from tropt.models import (
     BaseModel, 
     LossTextAccessMixin, 
     LogitsTokenAccessMixin, 
@@ -19,12 +19,6 @@ class MockInputsManager(TokenInputsManager):
         self.vocab_size = tokenizer.vocab_size
         self.n_messages = 1
     
-    def toks_to_strs(self, toks, **kwargs):
-        # Handle batched input
-        if toks.dim() == 2:
-            return self.tokenizer.batch_decode(toks)
-        return self.tokenizer.decode(toks)
-        
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 

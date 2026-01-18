@@ -261,11 +261,3 @@ class TokenInputsManager(InputsManager):
     vocab_size: int
     n_messages: int
 
-    @abstractmethod
-    def toks_to_strs(
-        self,
-        toks: Int[Tensor, "seq_len"],
-        **kwargs,
-    ) -> str:
-        """Converts a 1D token ids tensor to a string using the tokenizer."""
-        raise NotImplementedError

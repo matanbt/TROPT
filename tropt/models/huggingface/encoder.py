@@ -9,7 +9,7 @@ from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
-from tropt.models.base import (
+from tropt.models import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
