@@ -1,0 +1,25 @@
+/* Add subtle border and spacing between class definitions */
+dl.class {
+    margin: 20px 0;          /* Tighter spacing */
+    border: 0;
+    border-top: 0.5px dotted #9c9c9c; /* Dotted, lighter line */
+}
+
+/* Remove border from the last item so it doesn't look weird */
+/* dl.class:last-child {
+    border-bottom: none;
+} */
+
+/* Cross-Group Separator (Major Sections) */
+hr.hr-major {
+    margin: 40px 0;          /* Larger spacing */
+    border: 0;
+    border-top: 2px solid #e0e0e0;
+}
+
+/* Cross-Group Separator (Major Sections) */
+hr.hr-minor {
+    margin: 30px 0;          /* Larger spacing */
+    border: 0;
+    border-top: 1px solid #e0e0e0;
+}

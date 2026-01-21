@@ -47,8 +47,15 @@ class TokenConstraints:
 
             # Iterate through the vocabulary to find non-ASCII tokens.
             for i in range(vocab_size):
-                decoded_token = tokenizer.decode([i])
-                if decoded_token and not is_ascii(decoded_token):
+                if i in blacklist_ids:
+                    continue  # skip already blacklisted ids
+                try:
+                    decoded_token = tokenizer.decode([i])
+                    if decoded_token and not is_ascii(decoded_token):
+                        blacklist_ids.add(i)
+                except Exception as e:
+                    logger.warning(f"While perfoming listing token-blacklist: failed to decode token {i}: {e}")
+                    # If we can't decode the token, we can't use it, so we blacklist it
                     blacklist_ids.add(i)
 
         blacklist_ids = sorted(list(blacklist_ids))

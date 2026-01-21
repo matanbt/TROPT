@@ -74,7 +74,7 @@ def test_lm_compute_grad(lm_model):
     assert grads.shape == (n_candidates, trigger_ids.shape[1], lm_model.tokenizer.vocab_size)
     assert not torch.isnan(grads).any()
 
-# --- HFTokenInputsManager Tests ---
+# --- _HFTokenInputsManager Tests ---
 # We use the LM model to create the manager instance for testing
 
 def test_inputs_manager_initialization(lm_model):

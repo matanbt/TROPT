@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from tropt.loss.base import BaseLoss
-from tropt.models.base import BaseModel
+from tropt.models import BaseModel
 from tropt.models.inputs import TargetsDict
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 

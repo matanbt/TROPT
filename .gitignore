@@ -6,3 +6,7 @@ dist/
 .pypirc
 
 internal.md
+site/
+
+docs/_build/
+docs/build/

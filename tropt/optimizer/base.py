@@ -5,7 +5,7 @@ from typing import Any, List, Optional
 import torch
 
 from tropt.loss.base import BaseLoss
-from tropt.models.base import BaseModel, TargetsDict, TokenTrigger
+from tropt.models import BaseModel, TargetsDict, TokenTrigger
 from tropt.tracker.base import BaseTracker, DummyTracker
 
 
@@ -31,12 +31,20 @@ class BaseOptimizer(ABC):
         tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
     ):
+        # Model requirements validation
+        assert isinstance(self.model_requirements, tuple), "model_requirements must be a tuple"
+        assert all(
+            isinstance(m, type) for m in self.model_requirements
+        ), "model_requirements must contain only classes/mixins of models."
         assert all(
             isinstance(model, m) for m in self.model_requirements
         ), f"Model {type(model)} not supported by {type(self)}"
         self.model = model
 
+        # Loss function validation
+        assert isinstance(loss, BaseLoss), "loss must be an instance of BaseLoss"
         self.loss_func = loss
+        
         self.tracker = tracker if tracker is not None else DummyTracker()
         # TODO validate the loss is supported by the model (each model should have its supported losses listed)
 
@@ -56,7 +64,7 @@ class BaseOptimizer(ABC):
         """Optimize the trigger to minimize the loss on the given inputs.
 
         Args:
-            inputs: Can be a single string or a list of (n_messages) strings.
+            texts: Can be a single string or a list of (n_messages) strings.
             initial_trigger: Initial trigger to start optimization from.
 
         Returns:

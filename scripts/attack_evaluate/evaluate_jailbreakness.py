@@ -12,7 +12,7 @@ from strong_reject.evaluate import evaluate_dataset
 
 import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.models.base import LMBaseModel
+from tropt.models import LMBaseModel
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 

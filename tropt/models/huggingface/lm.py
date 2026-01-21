@@ -10,9 +10,9 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import AttentionBasedLoss, BaseLoss, CombinedLoss, LogitBasedLoss
-from tropt.models.base import (
+from tropt.models import (
     GradientTokenAccessMixin,
     LMBaseModel,
     LogitsTokenAccessMixin,
@@ -22,13 +22,13 @@ from tropt.models.base import (
     TargetsDict,
     TargetsDictPlus,
 )
-from tropt.models.huggingface.base import HFTokenInputsManager, HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
 
 logger = logging.getLogger(__name__)
 
 
 # ======================= Input/Output Handlers logic =======================
-class LMHFInputsManager(HFTokenInputsManager):
+class LMHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDictPlus | TargetsDict
     # includes `target_outputs_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
@@ -64,7 +64,7 @@ MODELS_TO_EAGER_ATTENTION = ["gemma"]
 class LMHFModel(
     LMBaseModel,
     # adds implementation of common HF model methods
-    HuggingFaceModelMixins,
+    _HuggingFaceModelMixins,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -102,10 +102,9 @@ class LMHFModel(
             dtype=dtype or "auto",
             **model_kwargs
         )
-        self.device = self.model.device
         self.dtype = self.model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.embedding_layer = self.model.get_input_embeddings()
         self.use_prefix_cache = use_prefix_cache
 
@@ -116,7 +115,7 @@ class LMHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self.tokenizer.add_special_tokens(
+        self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
@@ -129,25 +128,25 @@ class LMHFModel(
         if self.model.device == torch.device("cpu"):
             logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
-        if not self.tokenizer.chat_template:
+        if not self._tokenizer.chat_template:
             logger.warning(
                 "Tokenizer does not have a chat template. Assuming base model and setting chat template to empty."
             )
-            self.tokenizer.chat_template = (
+            self._tokenizer.chat_template = (
                 "{% for message in messages %}{{ message['content'] }}{% endfor %}"
             )
-        if self.tokenizer.padding_side != "left":
+        if self._tokenizer.padding_side != "left":
             logger.warning(
                 "Tokenizer padding side is not 'left'. Our code currenly assume left padding ."
             )
-            self.tokenizer.padding_side = "left"
+            self._tokenizer.padding_side = "left"
 
-        if not self.tokenizer.pad_token:
-            if self.tokenizer.eos_token:
+        if not self._tokenizer.pad_token:
+            if self._tokenizer.eos_token:
                 logger.warning(
                     "Tokenizer does not have a pad token. Setting pad token to eos token."
                 )
-                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self._tokenizer.pad_token = self._tokenizer.eos_token
             else:
                 raise ValueError(
                     "Tokenizer does not have a pad token or an eos token. Please set a pad token."
@@ -157,12 +156,20 @@ class LMHFModel(
     def n_layers(self) -> int:
         return self.model.config.num_hidden_layers
 
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+    
+    @property
+    def device(self):
+        return self.model.device
+
     def prepare_token_inputs(
         self,
         texts: List[str],
         targets: TargetsDict | TargetsDictPlus,
-        initial_trigger: Optional[str] = "! " * 20,
-    ) -> Tuple[LMHFInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
+    ) -> Tuple[LMHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """
         Prepares the inputs for the model, including tokenization and target processing.
         """
@@ -201,7 +208,7 @@ class LMHFModel(
             ]
 
         # Build the input manager, that will allow combining with different triggers
-        inputs = LMHFInputsManager(
+        inputs = LMHFTokenInputsManager(
             tok_ids=template_tok_ids,
             model=self.model,
             tokenizer=self.tokenizer,
@@ -229,7 +236,7 @@ class LMHFModel(
     def compute_logits_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: LMHFInputsManager,
+        inputs: LMHFTokenInputsManager,
         keep_message_dim: bool = False,
         return_trigger_logits_only: bool = False,
         return_after_trigger_logits_only: bool = False,
@@ -245,7 +252,7 @@ class LMHFModel(
         Args:
             candidate_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
                 the token ids of the candidate trigger sequences to evaluate
-            inputs: LMHFInputsManager
+            inputs: LMHFTokenInputsManager
                 the inputs object containing the input text and target text (if provided)
             return_slices: bool
                 whether to return the slices corresponding to each input in the batch (default: False)

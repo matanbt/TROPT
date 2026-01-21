@@ -2,12 +2,13 @@ import torch
 from jaxtyping import Float
 
 from tropt.loss.base import SimilarityLoss
-from tropt.models.base import TextAccessMixin, TokenAccessMixin
+from tropt.models import TextAccessMixin, TokenAccessMixin
 from tropt.models.huggingface.encoder import EncoderHFModel
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.common import DEFAULT_INIT_TRIGGER
 
 
 def run_rasliteplus(
@@ -16,8 +17,8 @@ def run_rasliteplus(
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
         1, 384
     ),  # random target vector for demo purposes
-    util_lm_name: str = "google/gemma-3-270m-it",
-    initial_trigger: str = ("! " * 100).strip(),
+    # util_lm_name: str = "google/gemma-3-270m-it",
+    initial_trigger: str = DEFAULT_INIT_TRIGGER,
     log_to_wandb: bool = False,
 ) -> OptimizerResult:
     """
@@ -34,9 +35,9 @@ def run_rasliteplus(
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if model_name.startswith("openai/"):
-        from tropt.models.openai.encoder import OpenAIEncoderModel
+        from tropt.models.openai.encoder import EncoderOpenAIModel
         model_name = model_name.replace("openai/", "")
-        model = OpenAIEncoderModel(
+        model = EncoderOpenAIModel(
             model_name=model_name,
         )
     else:
@@ -45,13 +46,14 @@ def run_rasliteplus(
         )  # or any black-box-access encoder model
         device = model.device
 
-    util_lm = LMHFModel(
-        model_name=util_lm_name,
-        device=device,
-        use_prefix_cache=False,
-    )  # TODO replace with tokenizer only model (for "random logits")
+    util_lm = None
+    # util_lm = LMHFModel(
+    #     model_name=util_lm_name,
+    #     device=device,
+    #     use_prefix_cache=False,
+    # )  # TODO replace with tokenizer only model (for "random logits")
 
-    assert isinstance(model, TextAccessMixin) and isinstance(util_lm, TokenAccessMixin)
+    # assert isinstance(model, TextAccessMixin) and (util_lm is None or isinstance(util_lm, TokenAccessMixin))
 
     target_vector = model(["paris is the capital of france. It is also known for the Eiffel Tower, its art, culture, and history."])
 
@@ -59,7 +61,7 @@ def run_rasliteplus(
 
     if log_to_wandb:
         from tropt.tracker.base import WandbTracker
-        tracker = WandbTracker("raslite+")
+        tracker = WandbTracker("raslite+", "tropt-runs")
 
     optimizer = RASLITEPlusOptimizer(
         model=model,
@@ -70,7 +72,7 @@ def run_rasliteplus(
         token_constraints=TokenConstraints(
             disallow_non_ascii=True, disallow_special_tokens=True
         ),
-        use_retokenize=True,
+        use_retokenize=False,  # OpenAI doesn't respond well to this subroutine; anyway we only evaluate the trigger with string
 
         # Original features:
         n_candidates=128,

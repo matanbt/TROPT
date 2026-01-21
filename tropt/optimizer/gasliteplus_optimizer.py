@@ -9,9 +9,9 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
@@ -172,7 +172,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         texts: List[str],
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: TargetsDict = None,
     ) -> OptimizerResult:
         # Initialization:
@@ -182,7 +182,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             targets=targets,
         )
         trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
-        vocab_size, tokenizer = inputs.vocab_size, inputs.tokenizer
+        vocab_size, tokenizer = inputs.vocab_size, self.model.tokenizer
         blacklist_ids = self.token_constraints.get_blacklist_ids(
             tokenizer, vocab_size
         )
@@ -231,7 +231,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # Get the best trigger from the buffer
             trigger_ids = buffer.get_best_trigger()
-            trigger_str = inputs.toks_to_strs(trigger_ids)
+            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # --- Gradient and candidate selection step ---
             if self.use_random_gradient:
@@ -342,7 +342,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             trigger_ids = current_trigger_ids
-            trigger_str = inputs.toks_to_strs(trigger_ids)
+            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # Logging:
             self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})

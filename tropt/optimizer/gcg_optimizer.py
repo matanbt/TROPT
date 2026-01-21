@@ -6,9 +6,9 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
@@ -129,7 +129,7 @@ class GCGOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         texts: List[str],
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
         targets: TargetsDict = None,  # depends on the objective
     ) -> OptimizerResult:
@@ -143,7 +143,7 @@ class GCGOptimizer(BaseOptimizer):
                 targets=targets,
             )
         )
-        tokenizer = inputs.tokenizer
+        tokenizer = self.model.tokenizer
         vocab_size = inputs.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(
             tokenizer, vocab_size
@@ -160,7 +160,7 @@ class GCGOptimizer(BaseOptimizer):
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0), inputs, loss_func=self.loss_func
         ).item()
-        self.tracker.log({"loss": current_loss})
+        self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
 
         pbar = tqdm(range(self.num_steps))
 
@@ -192,14 +192,14 @@ class GCGOptimizer(BaseOptimizer):
                 candidate_trigger_ids, inputs, loss_func=self.loss_func
             )  # shape: (n_messages, n_candidates)
             current_loss = losses.min().item()
-            self.tracker.log({"loss": current_loss})
+            self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
             trigger_ids = candidate_trigger_ids[losses.argmin()]
 
             # Update the buffer based on the loss
             loss_per_step.append(current_loss)
             trigger_ids_per_step.append(trigger_ids)
 
-            trigger_str = inputs.toks_to_strs(trigger_ids)
+            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
             trigger_strings.append(trigger_str)
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")

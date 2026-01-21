@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
-from tropt.models.base import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputsManager
+from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputsManager
 from tropt.loss.base import BaseLoss
 from tropt.models.inputs import TargetsDict
 
@@ -15,17 +15,19 @@ class MockInputsManager(TokenInputsManager):
         self.vocab_size = tokenizer.vocab_size
         self.n_messages = 1
     
-    def toks_to_strs(self, toks, **kwargs):
-        return self.tokenizer.decode(toks)
-        
+       
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 
 class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+    
     def __init__(self):
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
     
     def __call__(self, *args, **kwargs):
         pass

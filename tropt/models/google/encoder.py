@@ -5,10 +5,10 @@ from google import genai
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.models.base import EncoderBaseModel, LossTextAccessMixin
+from tropt.models import EncoderBaseModel, LossTextAccessMixin
 
 
-class GeminiEncoderModel(EncoderBaseModel, LossTextAccessMixin):
+class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
     """
     Google Gemini Encoder model wrapper, with text-query access.
     https://ai.google.dev/gemini-api/docs/embeddings

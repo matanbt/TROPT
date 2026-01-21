@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
-from tropt.models.base import (
+from tropt.models import (
     BaseModel, 
     LossTextAccessMixin, 
     LogitsTokenAccessMixin, 
@@ -19,12 +19,6 @@ class MockInputsManager(TokenInputsManager):
         self.vocab_size = tokenizer.vocab_size
         self.n_messages = 1
     
-    def toks_to_strs(self, toks, **kwargs):
-        # Handle batched input
-        if toks.dim() == 2:
-            return self.tokenizer.batch_decode(toks)
-        return self.tokenizer.decode(toks)
-        
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 
@@ -36,8 +30,12 @@ class MockTextInputsManager(TextInputsManager):
 
 
 class MockTargetModel(BaseModel, LossTextAccessMixin):
+    @property
+    def tokenizer(self):
+        return MagicMock()
+
     def __init__(self):
-        self.device = torch.device("cpu")
+        pass
         
     def __call__(self, *args, **kwargs):
         pass
@@ -56,12 +54,15 @@ class MockTargetModel(BaseModel, LossTextAccessMixin):
         return losses
 
 class MockUtilModel(LMBaseModel, LogitsTokenAccessMixin):
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+    
     def __init__(self):
-        self.tokenizer = AutoTokenizer.from_pretrained("gpt2")
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        self.device = torch.device("cpu")
-        self.vocab_size = self.tokenizer.vocab_size
+        self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+        self.vocab_size = self._tokenizer.vocab_size
     
     def __call__(self, *args, **kwargs):
         pass

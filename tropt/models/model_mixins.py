@@ -1,16 +1,17 @@
-"""
-Base definitions, classes, and mixins for targeted text models.
-"""
-
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
+from typing import List, Union, Literal, Optional
+import numpy as np
+from transformers import BatchEncoding, PreTrainedTokenizer
 
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.common import DEFAULT_INIT_TRIGGER
 
+from .model_base import BaseTokenizer
 from .inputs import (
     BatchedTargetsDict,
     MessageBatchedTargetsDict,
@@ -22,77 +23,8 @@ from .inputs import (
     TokenTriggerCandidates,
 )
 
-# ====================== Model Base Classes =======================
-
-
-class BaseModel(ABC):
-    def __init__(self, model_name: str):
-        raise NotImplementedError
-
-    @abstractmethod
-    def __call__(self, *args, **kwargs):
-        """Forward pass through the model, returns model default output (e.g., text response for LMs)."""
-        raise NotImplementedError
-
-    # ... prepare inputs methods will be added upon expansion ...
-
-    # ... compute loss/grad/... methods will be added upon expansion ...
-
-    # ... usage stats methods will be added upon expansion ...
-    def get_usage_stats(self) -> Dict[str, int]:
-        """Returns summary of model usage statistics."""
-        return dict(
-            total_tokens=getattr(self, "_token_used", 0),
-            forward_calls=getattr(self, "_forward_call_count", 0),
-            forward_samples=getattr(self, "_forward_sample_count", 0),
-            grad_calls=getattr(self, "_grad_call_count", 0),
-            grad_samples=getattr(self, "_grad_sample_count", 0),
-        )
-
-    def _update_usage_stats(
-        self,
-        tokens: int = 0,
-        forward_calls: int = 0,
-        forward_samples: int = 0,
-        grad_calls: int = 0,
-        grad_samples: int = 0,
-    ):
-        """Updates the usage statistics."""
-        if not hasattr(self, "_token_used"):
-            # Initialize stats if not present
-            self._token_used = 0
-            self._forward_call_count = 0
-            self._forward_sample_count = 0
-            self._grad_call_count = 0
-            self._grad_sample_count = 0
-
-        self._token_used += tokens
-        self._forward_call_count += forward_calls
-        self._forward_sample_count += forward_samples
-        self._grad_call_count += grad_calls
-        self._grad_sample_count += grad_samples
-
-
-class LMBaseModel(BaseModel):
-    """Language model base class."""
-
-    def __call__(self, texts: str | List[str], *args, **kwargs) -> List[str]:
-        """Generates text completions for the given input texts."""
-        raise NotImplementedError
-
-
-class EncoderBaseModel(BaseModel):
-    """Encoder model base class."""
-
-    def __call__(
-        self, texts: str | List[str], *args, **kwargs
-    ) -> Float[Tensor, "n_texts d_model"]:
-        """Generates encoder embeddings for the given input texts."""
-        raise NotImplementedError
-
 
 # ====================== Model Mixins =======================
-
 
 ## -------- Token-level access mixins ------- ##
 class TokenAccessMixin(ABC):
@@ -112,6 +44,15 @@ class TokenAccessMixin(ABC):
             **kwargs: Additional arguments for specific models.
         Returns:
             A tuple of (prepared inputs, initial trigger).
+        """
+        raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def tokenizer(self) -> PreTrainedTokenizer | BaseTokenizer:
+        """
+        Force the class using this mixin to implement a tokenizer.
+        This tokenizer must be either HuggingFace tokenizer or one with the same interface.
         """
         raise NotImplementedError
 
@@ -160,7 +101,7 @@ class TextAccessMixin(ABC):
         self,
         texts: List[str],  # n_messages texts
         targets: TargetsDict = None,
-        initial_trigger: str = "! " * 20,
+        initial_trigger: str = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[TextInputsManager, List[str]]:
         """
         Prepares the text-based inputs manager from raw text templates.
@@ -205,7 +146,7 @@ class LossTextAccessMixin(TextAccessMixin):
                 for _nested_loss_func in _loss_func.loss_funcs:
                     # Recursive call
                     child_losses.append(
-                        _calc_loss_from_outputs(_outputs, _nested_loss_func, _curr_targets)
+                        _calc_loss_from_outputs(_outputs, _curr_targets, _nested_loss_func)
                     )
 
                 # Stack child losses: (n_candidates, n_losses)

@@ -7,9 +7,9 @@ from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
-from tropt.models.base import (
+from tropt.models import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
@@ -18,13 +18,13 @@ from tropt.models.base import (
     TargetsDict,
     TargetsDictPlus,
 )
-from tropt.models.huggingface.base import HFTokenInputsManager, HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class EncoderHFTokenInputsManager(HFTokenInputsManager):
+class EncoderHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDict | TargetsDictPlus
     # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
     # to optimize towards an vector per message
@@ -36,7 +36,7 @@ class EncoderHFTokenInputsManager(HFTokenInputsManager):
 class EncoderHFModel(
     EncoderBaseModel,
     # adds implementation of common HF model methods:
-    HuggingFaceModelMixins,
+    _HuggingFaceModelMixins,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -70,7 +70,6 @@ class EncoderHFModel(
             **kwargs: Additional arguments for SentenceTransformer.
         """
         self.model_name = model_name
-        self.device = device
         self.forward_pass_batch_size = forward_pass_batch_size
         self.backward_pass_batch_size = backward_pass_batch_size
 
@@ -86,7 +85,7 @@ class EncoderHFModel(
                 **kwargs
             )
         self.d_model = self.model.get_sentence_embedding_dimension()
-        self.tokenizer = self.model.tokenizer
+        self._tokenizer = self.model.tokenizer
         self.embedding_layer = self._get_input_embeddings()
 
         # Set model to eval mode
@@ -96,7 +95,7 @@ class EncoderHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self.tokenizer.add_special_tokens(
+        self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
@@ -106,6 +105,14 @@ class EncoderHFModel(
                 f"Model is in {self.model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
             )
         logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
+
+    @property
+    def tokenizer(self):
+        return self._tokenizer
+    
+    @property
+    def device(self):
+        return self.model.device
 
     def _get_input_embeddings(self):
         # this is a bit hacky way to extract the embedding layer from sentence transformers,
@@ -144,7 +151,7 @@ class EncoderHFModel(
         self,
         texts: List[str],  # n_messages texts
         targets: TargetsDict | TargetsDictPlus,
-        initial_trigger: Optional[str] = "! " * 20,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
 
         assert isinstance(texts, list), "texts must be a string or a list of strings."
