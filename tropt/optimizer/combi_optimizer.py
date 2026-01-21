@@ -105,15 +105,11 @@ class CombiOptimizer(BaseOptimizer):
     ):
         curr_p = ""
         tokens = []
-        token_count = 0
-        api_calls = 0
 
         if self.hot_start_str is not None:
             curr_p = self.hot_start_str
             tokens = self.tokenizer.encode(self.hot_start_str, add_special_tokens=False)
 
-        token_count += self._get_token_count(curr_p)
-        api_calls += 1
         base_sim = -self.model.compute_loss_from_texts(
             candidate_trigger_strs=[curr_p],
             inputs=inputs,
@@ -129,8 +125,8 @@ class CombiOptimizer(BaseOptimizer):
             {
                 "step": 0,
                 "best_score": base_sim,
-                "num_tokens": token_count,
-                "num_api": api_calls,
+                "num_tokens": self.model.get_usage_stats()["total_tokens"],
+                "num_api": self.model.get_usage_stats()["forward_calls"],
             }
         ]
         if pbar is not None:
@@ -138,7 +134,7 @@ class CombiOptimizer(BaseOptimizer):
             pbar.set_postfix(
                 {
                     "similarity": f"{iter_best_score:.5f}",
-                    "num_tokens": f"{token_count}",
+                    "num_tokens": f"{self.model.get_usage_stats()["total_tokens"]}",
                 }
             )
 
@@ -147,8 +143,6 @@ class CombiOptimizer(BaseOptimizer):
             pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,))
 
             # compute current baseline similarity for this iteration
-            token_count += self._get_token_count(curr_p)
-            api_calls += 1
             iter_best_score = -self.model.compute_loss_from_texts(
                 candidate_trigger_strs=[curr_p],
                 inputs=inputs,
@@ -166,10 +160,6 @@ class CombiOptimizer(BaseOptimizer):
 
                 # build candidate prompts
                 check_ps = [curr_p + " " + t for t in batch_tokens]
-
-                # encode all candidates as a single batch
-                token_count += self._get_token_count(check_ps)
-                api_calls += 1
 
                 # vectorized cosine similarity against q_emb
                 losses = self.model.compute_loss_from_texts(
@@ -196,8 +186,8 @@ class CombiOptimizer(BaseOptimizer):
                 {
                     "step": n + 1,
                     "best_score": iter_best_score,
-                    "num_tokens": token_count,
-                    "num_api": api_calls,
+                    "num_tokens": self.model.get_usage_stats()["total_tokens"],
+                    "num_api": self.model.get_usage_stats()["forward_calls"],
                 }
             )
             if pbar is not None:
@@ -205,7 +195,7 @@ class CombiOptimizer(BaseOptimizer):
                 pbar.set_postfix(
                     {
                         "similarity": f"{iter_best_score:.5f}",
-                        "num_tokens": f"{token_count}",
+                        "num_tokens": f"{self.model.get_usage_stats()["total_tokens"]}",
                     }
                 )
 
@@ -231,8 +221,6 @@ class CombiOptimizer(BaseOptimizer):
         sampled vocabulary tokens. A proposal is accepted if it increases cosine similarity.
 
         """
-        token_count = 0
-        api_calls = 0
 
         valid_vocab_ids = self._get_valid_vocab_ids()
         if self.total_tokens <= 0:
@@ -258,8 +246,6 @@ class CombiOptimizer(BaseOptimizer):
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
-            token_count += self._get_token_count(current_prompt)
-            api_calls += 1
             best_sim = -self.model.compute_loss_from_texts(
                 candidate_trigger_strs=[current_prompt],
                 inputs=inputs,
@@ -270,8 +256,8 @@ class CombiOptimizer(BaseOptimizer):
             {
                 "step": 0,
                 "best_score": best_sim,
-                "num_tokens": token_count,
-                "num_api": api_calls,
+                "num_tokens": self.model.get_usage_stats()["total_tokens"],
+                "num_api": self.model.get_usage_stats()["forward_calls"],
             }
         ]
         best_tokens = list(appended_tokens)
@@ -306,8 +292,6 @@ class CombiOptimizer(BaseOptimizer):
             # Build all candidate prompts and evaluate in batches
             batch_prompts = [build_prompt(toks) for toks in proposals_tokens]
             with torch.no_grad():
-                token_count += sum(self._get_token_count(bp) for bp in batch_prompts)
-                api_calls += 1
                 losses = self.model.compute_loss_from_texts(
                     candidate_trigger_strs=batch_prompts,
                     inputs=inputs,
@@ -329,8 +313,8 @@ class CombiOptimizer(BaseOptimizer):
                 {
                     "step": it + 1,
                     "best_score": best_sim,
-                    "num_tokens": token_count,
-                    "num_api": api_calls,
+                    "num_tokens": self.model.get_usage_stats()["total_tokens"],
+                    "num_api": self.model.get_usage_stats()["forward_calls"],
                 }
             )
             if pbar is not None:
@@ -338,7 +322,7 @@ class CombiOptimizer(BaseOptimizer):
                 pbar.set_postfix(
                     {
                         "similarity": f"{best_sim:.5f}",
-                        "num_tokens": f"{token_count}",
+                        "num_tokens": f"{self.model.get_usage_stats()["total_tokens"]}",
                     }
                 )
 
@@ -486,8 +470,3 @@ class CombiOptimizer(BaseOptimizer):
         decoded: str = self.tokenizer.decode(tokens, skip_special_tokens=True)
         self.hot_start_str = decoded
         return text, tokens, decoded
-
-    def _get_token_count(self, text: str | list[str]) -> int:
-        if isinstance(text, str):
-            text = [text]
-        return sum(len(x) for x in self.tokenizer(text)["input_ids"])
