@@ -9,11 +9,11 @@ from openai.types.chat import ChatCompletionUserMessageParam
 from tqdm.auto import tqdm
 
 from tropt.loss.base import BaseLoss
-from tropt.models.base import (
+from tropt.models import (
     BaseModel,
-    GradientTokenAccessMixin,
-    LossTokenAccessMixin,
     TargetsDict,
+    LossTextAccessMixin,
+    TokenAccessMixin
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker.base import BaseTracker
@@ -27,7 +27,7 @@ class CombiOptimizer(BaseOptimizer):
 
     """
 
-    model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)  # TODO what do I need?
+    model_requirements = (LossTextAccessMixin, TokenAccessMixin)
 
     def __init__(
         self,
