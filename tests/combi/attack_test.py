@@ -218,9 +218,13 @@ def run_attacks(
 
     corpus, queries = load_data(embedder_model_name)
 
-    chosen_qids = np.random.choice(
-        queries["qid"].to_numpy(), size=(trials,), replace=False
-    )
+    # We have cached results only for dev, not the whole "train" split
+    results = load_results(embedder_model_name)
+    dev_qids = [int(qid) for qid in results.keys()]
+    chosen_qids = np.random.choice(dev_qids, size=(trials,), replace=False)
+    # chosen_qids = np.random.choice(
+    #     queries["qid"].to_numpy(), size=(trials,), replace=False
+    # )
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -268,7 +272,7 @@ def run_attacks(
             best_pid, best_sim = estimate_best_passage(q, calc_sim)
         else:
             results = load_results(embedder_model_name)
-            best_pid = list(results[qid].keys())[0]
+            best_pid = list(results[str(qid)].keys())[0]
             best_sim = calc_sim(corpus[best_pid]["text"])
 
         p = corpus[best_pid]["text"]
