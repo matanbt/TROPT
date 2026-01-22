@@ -16,6 +16,10 @@ from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from tqdm.auto import tqdm
 
+import sys
+
+sys.path.append("/home/sharifm/students/ishayyemini/TROPT")
+
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss import EmbeddingBasedLoss, SimilarityLoss
 from tropt.models import EncoderBaseModel, EncoderHFModel, EncoderOpenAIModel
@@ -108,7 +112,7 @@ def load_data(embedder_model_name: str):
 
 def load_results(embedder_model_name: str) -> dict:
     global global_results
-    if embedder_model_name in global_results:
+    if global_results:
         return global_results
 
     results_filename = f"{DATASET_NAME}-test_1.0_{embedder_model_name.split('/')[1]}_{similarities[embedder_model_name]}.json"
