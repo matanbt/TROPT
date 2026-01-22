@@ -144,7 +144,8 @@ class CombiOptimizer(BaseOptimizer):
             # evaluate candidates in parallel by batching
             for i in range(0, len(pool), self.batch_size):
                 batch_ids = [
-                    pool[i] for i in range(i, min(i + self.batch_size, len(pool)))
+                    [int(pool[i])]
+                    for i in range(i, min(i + self.batch_size, len(pool)))
                 ]
                 batch_tokens = self.model.tokenizer.batch_decode(batch_ids)
 
@@ -162,7 +163,7 @@ class CombiOptimizer(BaseOptimizer):
                 best_idx = int(min_idx.item())
                 if prop_best_sim > iter_best_score:
                     iter_best_score = prop_best_sim
-                    best_id = int(batch_ids[best_idx])
+                    best_id = int(batch_ids[best_idx][0])
                     best_token = batch_tokens[best_idx]
 
             if best_token is not None:

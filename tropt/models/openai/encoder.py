@@ -122,6 +122,18 @@ class OpenAITokenizer(BaseTokenizer):
         decoded_list = [s.replace(self.eot_token, "") for s in decoded_list]
         return decoded_list
 
+    def get_vocab(self) -> dict[str, int]:
+        def is_utf8(data: bytes) -> bool:
+            try:
+                data.decode('utf-8')
+            except UnicodeDecodeError:
+                return False
+            else:
+                return True
+
+        all_tokens_dict = self._encoding._mergeable_ranks
+        return {token.decode('utf-8'): id for token, id in all_tokens_dict.items() if is_utf8(token)}
+
 
 # --------------------------------------------------------------------------
 ## OpenAI Token Inputs Manager:
