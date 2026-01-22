@@ -103,7 +103,7 @@ def load_data(embedder_model_name: str):
             for qid, text in global_queries.items()
         }
 
-    return corpus, queries
+    return corpus, queries.to_pandas()
 
 
 def load_results(embedder_model_name: str) -> dict:
