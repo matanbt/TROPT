@@ -340,11 +340,11 @@ class CombiOptimizer(BaseOptimizer):
             self.square_attack(inputs=inputs)
 
         result = OptimizerResult(
-            best_loss=self.history[-1]["best_score"],
+            best_loss=-self.history[-1]["best_score"],
             best_trigger_str=self.history[-1]["trigger_str"],
             best_trigger=self.history[-1]["trigger"],
             trigger_strs=[x["trigger_str"] for x in self.history],
-            losses=[x["best_score"] for x in self.history],
+            losses=[-x["best_score"] for x in self.history],
             full_prompt=[
                 t.replace(
                     OPTIMIZED_TRIGGER_PLACEHOLDER, self.history[-1]["trigger_str"]
