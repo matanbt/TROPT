@@ -115,7 +115,7 @@ def load_results(embedder_model_name: str) -> dict:
     if global_results:
         return global_results
 
-    results_filename = f"{DATASET_NAME}-test_1.0_{embedder_model_name.split('/')[1]}_{similarities[embedder_model_name]}.json"
+    results_filename = f"msmarco-test_1.0_{embedder_model_name.split('/')[1]}_{similarities[embedder_model_name]}.json"
     try:
         local_results_path = hf_hub_download(
             repo_id="MatanBT/retrieval-datasets-similarities",
