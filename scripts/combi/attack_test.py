@@ -423,10 +423,12 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         "raslite_times": raslite_times,
         "raslite_adv": raslite_adv,
         "raslite_losses": raslite_losses,
+        "raslite_tokens": raslite_tokens,
         "combi_similarities": combi_similarities,
         "combi_times": combi_times,
         "combi_adv": combi_adv,
         "combi_losses": combi_losses,
+        "combi_tokens": combi_tokens,
         "success_rate": float(
             sum(np.array(combi_similarities) > np.array(best_similarities)) / trials
         ),
