@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class EncoderHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDict | TargetsDictPlus
-    # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
+    # includes `target_vectors` (n_messages, d_model) if target outputs are provided;
     # to optimize towards an vector per message
 
 
@@ -47,7 +47,7 @@ class EncoderHFModel(
         self,
         model_name: str = None,
         device: str = None,
-        dtype: str| torch.dtype = None,
+        dtype: str | torch.dtype = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
@@ -74,7 +74,9 @@ class EncoderHFModel(
         self.backward_pass_batch_size = backward_pass_batch_size
 
         if loaded_model is not None:
-            assert isinstance(loaded_model, SentenceTransformer), "loaded_model must be a SentenceTransformer instance."
+            assert isinstance(
+                loaded_model, SentenceTransformer
+            ), "loaded_model must be a SentenceTransformer instance."
             self.model = loaded_model
         else:
             self.model = SentenceTransformer(
@@ -82,7 +84,7 @@ class EncoderHFModel(
                 device=device,
                 model_kwargs=dict(dtype=dtype or "auto"),
                 trust_remote_code=trust_remote_code,
-                **kwargs
+                **kwargs,
             )
         self.d_model = self.model.get_sentence_embedding_dimension()
         self._tokenizer = self.model.tokenizer
@@ -104,12 +106,14 @@ class EncoderHFModel(
             logger.warning(
                 f"Model is in {self.model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
             )
-        logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
+        logger.warning(
+            "[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates."
+        )
 
     @property
     def tokenizer(self):
         return self._tokenizer
-    
+
     @property
     def device(self):
         return self.model.device
@@ -173,14 +177,13 @@ class EncoderHFModel(
         # Tokenizer trigger
         if not initial_trigger:
             # start with an empty trigger
-            trigger_tok_ids = torch.zeros((1, 0), dtype=torch.long, device=self.model.device)
-        else:
-            trigger_tok_ids = (
-                self.tokenizer(
-                    initial_trigger, add_special_tokens=False, return_tensors="pt"
-                )["input_ids"]
-                .to(self.model.device, torch.int64)
+            trigger_tok_ids = torch.zeros(
+                (1, 0), dtype=torch.long, device=self.model.device
             )
+        else:
+            trigger_tok_ids = self.tokenizer(
+                initial_trigger, add_special_tokens=False, return_tensors="pt"
+            )["input_ids"].to(self.model.device, torch.int64)
 
         return inputs, trigger_tok_ids
 
@@ -204,16 +207,17 @@ class EncoderHFModel(
             if isinstance(_loss_func, EmbeddingBasedLoss):
                 # Base case: Compute embedding loss
                 return _loss_func(
-                    _output_emb,
-                    _targets["target_vectors"]
-                    )  # shape: (bsz,)
+                    _output_emb, _targets["target_vectors"]
+                )  # shape: (bsz,)
 
             elif isinstance(_loss_func, CombinedLoss):
                 # Recursive case: Compute all child losses
                 losses = []
                 for _nested_loss_func in _loss_func.loss_funcs:
                     losses.append(
-                        _calc_loss_from_outputs(_output_emb, _targets, _nested_loss_func)
+                        _calc_loss_from_outputs(
+                            _output_emb, _targets, _nested_loss_func
+                        )
                     )
 
                 # Stack results: (n_losses, bsz)
@@ -228,6 +232,7 @@ class EncoderHFModel(
                 )
 
         return _calc_loss_from_outputs(output_emb, targets, loss_func)
+
     @torch.no_grad()
     def __call__(self, texts: List[str]) -> Float[Tensor, "n_texts d_model"]:
         """
@@ -237,5 +242,12 @@ class EncoderHFModel(
         assert isinstance(texts, list)
 
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
+
+        # Update token usage
+        self._update_usage_stats(
+            tokens=sum(len(x) for x in self.tokenizer(texts)["input_ids"]),
+            forward_calls=1,
+            forward_samples=len(texts),
+        )
 
         return emb
