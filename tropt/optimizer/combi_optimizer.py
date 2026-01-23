@@ -1,6 +1,6 @@
+import json
 import logging
 import re
-from dataclasses import dataclass
 from typing import List, Optional
 
 import numpy as np
@@ -89,8 +89,8 @@ class CombiOptimizer(BaseOptimizer):
         self.square_random_pool_per_pos = square_random_pool_per_pos
         self.square_early_stop_patience = square_early_stop_patience
 
-        self.openai_client = None
-        self.target_text = None
+        self.openai_client: Optional[OpenAI] = None
+        self.target_text: Optional[str] = None
 
         self.pbar = None
         self.history = []
@@ -397,23 +397,38 @@ class CombiOptimizer(BaseOptimizer):
         if self.hot_start_str is not None:
             return self.hot_start_str
 
-        if self.openai_client is None:
-            self.openai_client = OpenAI()
-
-        messages: list[ChatCompletionUserMessageParam] = [
-            {
-                "role": "user",
-                "content": f"Return a short sentence, up to 15 words, related to the following passage: {self.target_text}",
-            },
-        ]
-
-        response = self.openai_client.chat.completions.create(
-            model="gpt-5-nano",
-            messages=messages,
-            # max_completion_tokens=100,  # This seems to mess up the completion
+        # String model-specific additions
+        query = self.target_text.removeprefix("query: ").removeprefix(
+            "Represent this sentence for searching relevant passages: "
         )
 
-        text = response.choices[0].message.content.rstrip(".")
+        # Check for already-calculated response
+        text = None
+        try:
+            with open("cached_responses.json", "r") as f:
+                cached = json.load(f)
+            if query in cached:
+                text = cached[query]
+        except FileNotFoundError:
+            pass
+
+        if text is None:
+            if self.openai_client is None:
+                self.openai_client = OpenAI()
+
+            messages: list[ChatCompletionUserMessageParam] = [
+                {
+                    "role": "user",
+                    "content": f"Return a short sentence, up to 15 words, related to the following passage: {query}",
+                },
+            ]
+            response = self.openai_client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=messages,
+                # max_completion_tokens=100,  # This seems to mess up the completion
+            )
+            text = response.choices[0].message.content.rstrip(".")
+
         tokens = self.model.tokenizer.encode(text)
         decoded: str = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
         self.hot_start_str = decoded
