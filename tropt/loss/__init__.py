@@ -3,6 +3,7 @@ from .base import (
     AttentionEnhLoss,
     BaseLoss,
     CombinedLoss,
+    DotProductLoss,
     EmbeddingBasedLoss,
     LogitBasedLoss,
     PerplexityLoss,

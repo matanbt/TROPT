@@ -11,6 +11,7 @@ from tropt.loss.utils import masked_mean
 
 logger = logging.getLogger(__name__)
 
+
 ## ------- Loss ------- ##
 class BaseLoss(ABC):
     """Base class for all loss functions."""
@@ -106,7 +107,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
         # 3. Prepare inputs for LogSumExp
         # We want to ignore padded tokens in the sum, so set them to -inf (exp(-inf) = 0)
         val_for_lse = self.mellowmax_alpha * target_logits
-        val_for_lse = val_for_lse.masked_fill(~mask, float('-inf'))
+        val_for_lse = val_for_lse.masked_fill(~mask, float("-inf"))
 
         # 4. Calculate valid tokens per sequence
         n_valid = mask.sum(dim=-1).float().clamp(min=1.0)
@@ -115,10 +116,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
         loss = (
             1.0
             / self.mellowmax_alpha
-            * (
-                torch.logsumexp(val_for_lse, dim=-1)
-                - torch.log(n_valid)
-            )
+            * (torch.logsumexp(val_for_lse, dim=-1) - torch.log(n_valid))
         )
 
         return loss  # (bsz,)
@@ -145,7 +143,9 @@ class PrefillCWLoss(LogitBasedLoss):
 
         # Create mask and safe indices
         mask = target_ids != ignore_index
-        target_ids = target_ids.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
+        target_ids = target_ids.masked_fill(
+            ~mask, 0
+        )  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
         tgt_logits = logits.gather(vocab_dim, target_ids.unsqueeze(-1)).squeeze(-1)
@@ -195,11 +195,14 @@ class PerplexityLoss(LogitBasedLoss):
             ignore_index=ignore_index,
         )  # (bsz, seq_len)
 
-        mean_ce_loss = masked_mean(ce_loss, (target_ids != ignore_index).float())  # (bsz,)
+        mean_ce_loss = masked_mean(
+            ce_loss, (target_ids != ignore_index).float()
+        )  # (bsz,)
 
         perplexity = torch.exp(mean_ce_loss)
 
         return perplexity
+
 
 #############################
 @dataclass
@@ -234,7 +237,9 @@ class AttentionEnhLoss(AttentionBasedLoss):
         slices: List[dict[str, slice]] = {},  # of length bsz
     ) -> Float[Tensor, "bsz"]:
         if "chat_template_after" in (self.src_slc_name, self.dst_slc_name):
-            logger.debug("Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
+            logger.debug(
+                "Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong."
+            )
         slc_src = [
             message_slices.get(self.src_slc_name, slice(None))
             for message_slices in slices
@@ -289,7 +294,28 @@ class SimilarityLoss(EmbeddingBasedLoss):
         return loss.squeeze(-1)
 
 
+@dataclass
+class DotProductLoss(EmbeddingBasedLoss):
+    """
+    Encourages given representation(s) to align (dot-product) with the given target vectors.
+    """
+
+    def __call__(
+        self,
+        vectors: Float[Tensor, "bsz d_model"],
+        target_vectors: Float[Tensor, "bsz d_model"],
+    ) -> Float[Tensor, "bsz"]:
+        assert vectors.ndim == target_vectors.ndim == 2, "Shape mismatch"
+        target_vectors = target_vectors.to(vectors.device)
+
+        dot_product = (vectors * target_vectors).sum(dim=-1, keepdim=True)
+        loss = -1 * dot_product  # maximize dot-product <=> minimize (-1 * dot-product)
+
+        return loss.squeeze(-1)
+
+
 ############################
+
 
 @dataclass
 class TextBasedLoss(BaseLoss):
@@ -318,7 +344,9 @@ class SteeringEnhLoss(BaseLoss):
         raise NotImplementedError("TODO")
         # TODO implement
 
+
 ############################
+
 
 @dataclass
 class CombinedLoss(BaseLoss):
@@ -326,15 +354,23 @@ class CombinedLoss(BaseLoss):
 
     def __init__(self, loss_funcs: List[BaseLoss], weights: List[float] = None) -> None:
         assert weights is None or len(loss_funcs) == len(weights), "Length mismatch"
-        assert all(isinstance(loss, BaseLoss) for loss in loss_funcs), "All elements in losses must be instances of BaseLoss"
-        assert all(not isinstance(loss, CombinedLoss) for loss in loss_funcs), "CombinedLoss cannot contain another CombinedLoss"
+        assert all(
+            isinstance(loss, BaseLoss) for loss in loss_funcs
+        ), "All elements in losses must be instances of BaseLoss"
+        assert all(
+            not isinstance(loss, CombinedLoss) for loss in loss_funcs
+        ), "CombinedLoss cannot contain another CombinedLoss"
         self.loss_funcs: List[BaseLoss] = loss_funcs
 
         if weights is None:
             # if weights not provided, set equal weights
-            self.weights: Float[Tensor, "n_losses"] = torch.ones(len(loss_funcs)) / len(loss_funcs)
+            self.weights: Float[Tensor, "n_losses"] = torch.ones(len(loss_funcs)) / len(
+                loss_funcs
+            )
         else:
-            self.weights: Float[Tensor, "n_losses"] = torch.tensor(weights, dtype=torch.float32)
+            self.weights: Float[Tensor, "n_losses"] = torch.tensor(
+                weights, dtype=torch.float32
+            )
 
     def __call__(self, losses: Float[Tensor, "n_losses bsz"]) -> Float[Tensor, "bsz"]:
         """
@@ -353,5 +389,3 @@ class CombinedLoss(BaseLoss):
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""
         return any(isinstance(loss, loss_type) for loss in self.loss_funcs)
-
-

@@ -27,7 +27,7 @@ sys.path.append(
 
 from tropt.tracker import BaseTracker
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss import SimilarityLoss
+from tropt.loss import SimilarityLoss, DotProductLoss
 from tropt.models import EncoderHFModel, EncoderOpenAIModel
 from tropt.optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.combi_optimizer import CombiOptimizer
@@ -62,7 +62,6 @@ similarities = {
     "facebook/contriever": "dot",
     "facebook/contriever-msmarco": "dot",
     "sentence-transformers/msmarco-roberta-base-ance-firstp": "dot",
-    "sentence-transformers/multi-qa-mpnet-base-dot-v1": "dot",
 }
 
 toxic_prefixes: list[str] = []
@@ -162,8 +161,8 @@ def load_results(embedder_model_name: str) -> dict[str, dict[str, float]]:
     if global_results:
         return global_results
 
-    results_filename = f"msmarco-test_1.0_{embedder_model_name.split('/')[1]}_{similarities[embedder_model_name]}.json"
     try:
+        results_filename = f"msmarco-test_1.0_{embedder_model_name.split('/')[1]}_{similarities[embedder_model_name]}.json"
         local_results_path = hf_hub_download(
             repo_id="MatanBT/retrieval-datasets-similarities",
             filename=results_filename,
@@ -274,7 +273,13 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
     else:
         model = EncoderHFModel(model_name=embedder_model_name)
 
-    loss = SimilarityLoss()  # TODO handle dot product loss!
+    if (
+        embedder_model_name in similarities
+        and similarities[embedder_model_name] == "dot"
+    ):
+        loss = DotProductLoss()
+    else:
+        loss = SimilarityLoss()
 
     for i, qid in enumerate(tqdm(chosen_qids)):
         print(f"Trial number {i + 1}")
