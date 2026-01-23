@@ -108,7 +108,7 @@ class TokenTracker(BaseTracker):
         self.tokens = []
 
     def log(self, data: dict):
-        if "total_tokens" in data:
+        if "loss" in data and "total_tokens" in data:
             self.tokens.append(data["total_tokens"] - self.initial_tokens)
 
     def get_tokens(self):
