@@ -237,6 +237,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # Get the best trigger from the buffer
             util_trigger_ids = buffer.get_best_trigger()
+            trigger_seq_len = len(util_trigger_ids)
             trigger_str = util_tokenizer.decode(
                 util_trigger_ids, skip_special_tokens=True
             )
