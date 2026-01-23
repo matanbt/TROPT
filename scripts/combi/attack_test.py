@@ -9,20 +9,25 @@ import faiss
 import numpy as np
 import pandas as pd
 import torch
-from datasets import load_dataset, Dataset
+from datasets import load_dataset
 from datasets.search import FaissIndex
 from huggingface_hub import hf_hub_download
+from pandas import DataFrame
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 from tqdm.auto import tqdm
 
 import sys
+import os
 
-sys.path.append("/home/sharifm/students/ishayyemini/TROPT")
+# Add the root of the project to the python path
+sys.path.append(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+)
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss import EmbeddingBasedLoss, SimilarityLoss
-from tropt.models import EncoderBaseModel, EncoderHFModel, EncoderOpenAIModel
+from tropt.loss import SimilarityLoss
+from tropt.models import EncoderHFModel, EncoderOpenAIModel
 from tropt.optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.combi_optimizer import CombiOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -32,6 +37,7 @@ from tropt.optimizer.utils.token_constraints import TokenConstraints
 # LOAD RESULTS (OR ESTIMATIONS)
 
 DATASET_NAME = "sentence-transformers/msmarco-corpus"
+DEV_SPLIT_DATASET = "mteb/msmarco"
 SPLIT = "train"
 INDEX_PATH = "../../indices/msmarco_arctic_v2.index"
 INDEX_MODEL_NAME = "Snowflake/snowflake-arctic-embed-l-v2.0"
@@ -58,19 +64,43 @@ similarities = {
     "sentence-transformers/multi-qa-mpnet-base-dot-v1": "dot",
 }
 
-toxic_prefixes = []
-global_corpus = None
-global_queries = None
+toxic_prefixes: list[str] = []
+global_corpus: Optional[DataFrame] = None
+global_queries: Optional[DataFrame] = None
 
 global_results: Optional[dict] = None
-global_index = None
-global_index_model = None
+global_index: Optional[FaissIndex] = None
+global_index_model: Optional[SentenceTransformer] = None
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 print(device)
 
 
-def get_toxic_passage(embedder_model_name: str):
+class ModelDataset:
+    def __init__(self, df: DataFrame, kind: str, embedder_model_name: str):
+        self.df = df
+        self.kind = "queries" if kind == "queries" else "corpus"
+        self.embedder_model_name = embedder_model_name
+
+    def __getitem__(self, key: int) -> str:
+        prefix = ""
+        if self.embedder_model_name == "intfloat/e5-base-v2":
+            if self.kind == "corpus":
+                prefix = "passage: "
+            else:
+                prefix = "query: "
+        elif self.embedder_model_name == "Snowflake/snowflake-arctic-embed-m":
+            if self.kind == "queries":
+                prefix = "Represent this sentence for searching relevant passages:"
+        item_key = "qid" if self.kind == "queries" else "pid"
+        return prefix + self.df[self.df[item_key] == key]["text"].item()
+
+    def keys(self) -> list[int]:
+        item_key = "qid" if self.kind == "queries" else "pid"
+        return self.df[item_key].to_list()
+
+
+def get_toxic_passage(embedder_model_name: str) -> str:
     if len(toxic_prefixes) == 0:
         toxic_prefixes.extend(
             [
@@ -86,31 +116,30 @@ def get_toxic_passage(embedder_model_name: str):
     return passage
 
 
-def load_data(embedder_model_name: str):
+def load_data(embedder_model_name: str) -> tuple[ModelDataset, ModelDataset]:
     global global_corpus, global_queries
+
     if global_corpus is None:
-        global_corpus = load_dataset(DATASET_NAME, name="passage", split=SPLIT)
+        global_corpus = load_dataset(
+            DATASET_NAME, name="passage", split=SPLIT
+        ).to_pandas()
+
     if global_queries is None:
-        global_queries = load_dataset(DATASET_NAME, name="query", split=SPLIT)
+        # We have cached results only for dev, not the whole "train" split
+        global_queries = load_dataset(
+            DATASET_NAME, name="query", split=SPLIT
+        ).to_pandas()
+        dev_dataset = load_dataset(DEV_SPLIT_DATASET, name="default", split="dev")
+        dev_qids = [int(x["query-id"]) for x in dev_dataset]
+        global_queries = global_queries[global_queries["qid"].isin(dev_qids)]
 
-    corpus, queries = global_corpus, global_queries
-
-    if embedder_model_name == "intfloat/e5-base-v2":
-        corpus = {
-            pid: {"text": ("passage: " + content["text"])}
-            for pid, content in global_corpus.items()
-        }
-        queries = {qid: ("query: " + text) for qid, text in global_queries.items()}
-    elif embedder_model_name == "Snowflake/snowflake-arctic-embed-m":
-        queries = {
-            qid: ("Represent this sentence for searching relevant passages:" + text)
-            for qid, text in global_queries.items()
-        }
-
-    return corpus, queries.to_pandas()
+    return (
+        ModelDataset(global_corpus, "corpus", embedder_model_name),
+        ModelDataset(global_queries, "queries", embedder_model_name),
+    )
 
 
-def load_results(embedder_model_name: str) -> dict:
+def load_results(embedder_model_name: str) -> dict[str, dict[str, float]]:
     global global_results
     if global_results:
         return global_results
@@ -149,7 +178,7 @@ def estimate_best_passage(
     target_text: str, calc_sim: Callable[[list[str]], Tensor], top_k: int = 50
 ) -> tuple[int, float]:
     index, index_model = load_index()
-    corpus, queries = load_data(INDEX_MODEL_NAME)
+    corpus, _ = load_data(INDEX_MODEL_NAME)
 
     with torch.no_grad():
         query_index_emb = index_model.encode(
@@ -160,12 +189,10 @@ def estimate_best_passage(
             device=device,
         ).astype("float32")
 
-    D, I = index.search(
-        query_index_emb,
-    )
+    _, indices = index.search(query_index_emb, k=top_k)
 
-    best_pids = [idx + 1 for idx in I[0]]
-    best_texts = [corpus[pid]["text"] for pid in best_pids]
+    best_pids = [idx + 1 for idx in indices[0]]
+    best_texts = [corpus[pid] for pid in best_pids]
 
     scores = calc_sim(best_texts)
     max_loss, max_idx = torch.max(scores, dim=0)
@@ -194,9 +221,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def run_attacks(
-    embedder_model_name: str, trials: int, seed: int = 42
-) -> dict[str, Any]:
+def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
     best_similarities = []
     info_similarities = []
     stuffing_similarities = []
@@ -218,29 +243,20 @@ def run_attacks(
 
     corpus, queries = load_data(embedder_model_name)
 
-    # We have cached results only for dev, not the whole "train" split
-    results = load_results(embedder_model_name)
-    dev_qids = [int(qid) for qid in results.keys()]
-    chosen_qids = np.random.choice(dev_qids, size=(trials,), replace=False)
-    # chosen_qids = np.random.choice(
-    #     queries["qid"].to_numpy(), size=(trials,), replace=False
-    # )
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    chosen_qids = np.random.choice(queries.keys(), size=(trials,), replace=False)
 
     if embedder_model_name.startswith("openai/"):
         embedder_model_name = embedder_model_name.replace("openai/", "")
         model = EncoderOpenAIModel(model_name=embedder_model_name)
     else:
         model = EncoderHFModel(model_name=embedder_model_name)
-        device = model.device
 
     loss = SimilarityLoss()  # TODO handle dot product loss!
 
     for i, qid in enumerate(tqdm(chosen_qids)):
         print(f"Trial number {i + 1}")
 
-        q = queries[queries["qid"] == qid]["text"].item()
+        q = queries[qid]
         print(f"{qid}: {q}")
 
         info = get_toxic_passage(embedder_model_name)
@@ -272,10 +288,10 @@ def run_attacks(
             best_pid, best_sim = estimate_best_passage(q, calc_sim)
         else:
             results = load_results(embedder_model_name)
-            best_pid = list(results[str(qid)].keys())[0]
-            best_sim = calc_sim(corpus[best_pid]["text"])
+            best_pid = int(list(results[str(qid)].keys())[0])
+            best_sim = calc_sim(corpus[best_pid])
 
-        p = corpus[best_pid]["text"]
+        p = corpus[best_pid]
         print(f"best passage: {best_pid}: {p}")
 
         print(f"Similarity between query and original best passage: {best_sim}")
@@ -308,6 +324,8 @@ def run_attacks(
             flip_pos_method="ordered",
             buffer_size=10,
             n_bulk_flips=1,
+            # Early stopping:
+            early_stopping_loss=-best_sim,
         )
 
         start = time.time()
@@ -391,7 +409,7 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    rec = run_attacks(embedder_model_name=args.model, trials=args.trials, seed=seed)
+    rec = run_attacks(embedder_model_name=args.model, trials=args.trials)
     # Write (append or create)
     if out_path.exists():
         existing = pd.read_csv(out_path)
