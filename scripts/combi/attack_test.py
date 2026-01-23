@@ -20,13 +20,12 @@ from tqdm.auto import tqdm
 import sys
 import os
 
-from tropt.tracker import BaseTracker
-
 # Add the root of the project to the python path
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 )
 
+from tropt.tracker import BaseTracker
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss import SimilarityLoss
 from tropt.models import EncoderHFModel, EncoderOpenAIModel
