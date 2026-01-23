@@ -91,7 +91,7 @@ class ModelDataset:
                 prefix = "query: "
         elif self.embedder_model_name == "Snowflake/snowflake-arctic-embed-m":
             if self.kind == "queries":
-                prefix = "Represent this sentence for searching relevant passages:"
+                prefix = "Represent this sentence for searching relevant passages: "
         item_key = "qid" if self.kind == "queries" else "pid"
         return prefix + self.df[self.df[item_key] == key]["text"].item()
 
@@ -117,7 +117,7 @@ class TokenTracker(BaseTracker):
         pass
 
 
-def get_toxic_passage(embedder_model_name: str) -> str:
+def get_toxic_passages(embedder_model_name: str, k: int = 1) -> list[str]:
     if len(toxic_prefixes) == 0:
         toxic_prefixes.extend(
             [
@@ -126,11 +126,11 @@ def get_toxic_passage(embedder_model_name: str) -> str:
                 if row["toxicity_ai"] == 5 and 50 < len(row["text"]) < 100
             ]
         )
-    passage = np.random.choice(toxic_prefixes).strip()
-    if embedder_model_name == "intfloat/e5-base-v2":
-        passage = "passage: " + passage
+    choices = np.random.choice(toxic_prefixes, size=(k,))
+    prefix = "passage: " if embedder_model_name == "intfloat/e5-base-v2" else ""
+    passages = [prefix + p.strip() for p in choices]
 
-    return passage
+    return passages
 
 
 def load_data(embedder_model_name: str) -> tuple[ModelDataset, ModelDataset]:
@@ -269,6 +269,8 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         queries.keys(), size=(trials,), replace=False
     ).tolist()
 
+    info_strs = get_toxic_passages(embedder_model_name, trials)
+
     if embedder_model_name.startswith("openai/"):
         embedder_model_name = embedder_model_name.replace("openai/", "")
         model = EncoderOpenAIModel(model_name=embedder_model_name)
@@ -289,8 +291,7 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         q = queries[qid]
         print(f"{qid}: {q}")
 
-        info = get_toxic_passage(embedder_model_name)
-        info_strs.append(info)
+        info = info_strs[i]
         print(f"info: {info}")
 
         prefix_info = info + " " + OPTIMIZED_TRIGGER_PLACEHOLDER
