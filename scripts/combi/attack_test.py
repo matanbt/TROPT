@@ -222,6 +222,9 @@ def parse_args():
 
 
 def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
+    best_pids = []
+    info_strs = []
+
     best_similarities = []
     info_similarities = []
     stuffing_similarities = []
@@ -260,6 +263,7 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         print(f"{qid}: {q}")
 
         info = get_toxic_passage(embedder_model_name)
+        info_strs.append(info)
         print(f"info: {info}")
 
         prefix_info = info + " " + OPTIMIZED_TRIGGER_PLACEHOLDER
@@ -290,6 +294,8 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
             results = load_results(embedder_model_name)
             best_pid = int(list(results[str(qid)].keys())[0])
             best_sim = calc_sim(corpus[best_pid])
+
+        best_pids.append(best_pid)
 
         p = corpus[best_pid]
         print(f"best passage: {best_pid}: {p}")
@@ -381,6 +387,9 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
             else "cosine"
         ),
         "trials": trials,
+        "qids": chosen_qids,
+        "best_pids": best_pids,
+        "info_strs": info_strs,
         "best_similarities": best_similarities,
         "info_similarities": info_similarities,
         "stuffing_similarities": stuffing_similarities,
