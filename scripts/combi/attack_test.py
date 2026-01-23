@@ -20,6 +20,8 @@ from tqdm.auto import tqdm
 import sys
 import os
 
+from tropt.tracker import BaseTracker
+
 # Add the root of the project to the python path
 sys.path.append(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -98,6 +100,23 @@ class ModelDataset:
     def keys(self) -> list[int]:
         item_key = "qid" if self.kind == "queries" else "pid"
         return self.df[item_key].to_list()
+
+
+class TokenTracker(BaseTracker):
+    def __init__(self, initial_tokens: int):
+        super().__init__("nothing")
+        self.initial_tokens = initial_tokens
+        self.tokens = []
+
+    def log(self, data: dict):
+        if "total_tokens" in data:
+            self.tokens.append(data["total_tokens"] - self.initial_tokens)
+
+    def get_tokens(self):
+        return self.tokens
+
+    def finish(self):
+        pass
 
 
 def get_toxic_passage(embedder_model_name: str) -> str:
@@ -233,11 +252,13 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
     raslite_times = []
     raslite_adv = []
     raslite_losses = []
+    raslite_tokens = []
 
     combi_similarities = []
     combi_times = []
     combi_adv = []
     combi_losses = []
+    combi_tokens = []
 
     # square_start = []
     # num_tokens = []
@@ -311,6 +332,7 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         stuffing_similarities.append(stuffing_sim)
 
         ### RASLITE ###
+        raslite_tracker = TokenTracker(model.get_usage_stats()["total_tokens"])
 
         optimizer = RASLITEPlusOptimizer(
             model=model,
@@ -332,6 +354,7 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
             n_bulk_flips=1,
             # Early stopping:
             early_stopping_loss=-best_sim,
+            tracker=raslite_tracker,
         )
 
         start = time.time()
@@ -346,13 +369,16 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         raslite_times.append(end - start)
         raslite_adv.append(result.full_prompt[0])
         raslite_losses.append(result.losses)
+        raslite_tokens.append(raslite_tracker.get_tokens())
 
         ### COMBI ###
+        combi_tracker = TokenTracker(model.get_usage_stats()["total_tokens"])
 
         optimizer = CombiOptimizer(
             model=model,
             loss=loss,
             best_sim=best_sim,
+            tracker=combi_tracker,
         )
 
         start = time.time()
@@ -368,6 +394,7 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         combi_times.append(end - start)
         combi_adv.append(result.full_prompt[0])
         combi_losses.append(result.losses)
+        combi_tokens.append(combi_tracker.get_tokens())
 
         print(f"raslite: {raslite_adv[-1]}")
         print(f"combi: {combi_adv[-1]}")
