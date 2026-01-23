@@ -324,7 +324,6 @@ class CombiOptimizer(BaseOptimizer):
             initial_trigger=initial_trigger,
             targets=targets,
         )
-        # TODO use tracker
 
         # TODO better way to pass hot_start
         if target_text is not None and self.hot_start:
@@ -445,5 +444,13 @@ class CombiOptimizer(BaseOptimizer):
                 {
                     "similarity": f"{self.history[-1]["best_score"]:.5f}",
                     "num_tokens": f"{self.history[-1]["num_tokens"]}",
+                }
+            )
+
+        if self.tracker is not None:
+            self.tracker.log(
+                {
+                    "loss": -self.history[-1]["best_score"],
+                    **self.model.get_usage_stats(),
                 }
             )
