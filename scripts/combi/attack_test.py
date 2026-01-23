@@ -40,7 +40,7 @@ from tropt.optimizer.utils.token_constraints import TokenConstraints
 DATASET_NAME = "sentence-transformers/msmarco-corpus"
 DEV_SPLIT_DATASET = "mteb/msmarco"
 SPLIT = "train"
-INDEX_PATH = "../../indices/msmarco_arctic_v2.index"
+INDEX_PATH = "indices/msmarco_arctic_v2.index"
 INDEX_MODEL_NAME = "Snowflake/snowflake-arctic-embed-l-v2.0"
 
 models = [
@@ -272,8 +272,9 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
     info_strs = get_toxic_passages(embedder_model_name, trials)
 
     if embedder_model_name.startswith("openai/"):
-        embedder_model_name = embedder_model_name.replace("openai/", "")
-        model = EncoderOpenAIModel(model_name=embedder_model_name)
+        model = EncoderOpenAIModel(
+            model_name=embedder_model_name.removeprefix("openai/")
+        )
     else:
         model = EncoderHFModel(model_name=embedder_model_name)
 
@@ -316,12 +317,12 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
                 return -losses
 
         # GET BEST PASSAGE
-        if embedder_model_name.startswith("openai/"):
-            best_pid, best_sim = estimate_best_passage(q, calc_sim)
-        else:
+        try:
             results = load_results(embedder_model_name)
             best_pid = int(list(results[str(qid)].keys())[0])
             best_sim = calc_sim(corpus[best_pid])
+        except ValueError:
+            best_pid, best_sim = estimate_best_passage(q, calc_sim)
 
         best_pids.append(best_pid)
 
