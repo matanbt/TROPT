@@ -265,7 +265,9 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
 
     corpus, queries = load_data(embedder_model_name)
 
-    chosen_qids = np.random.choice(queries.keys(), size=(trials,), replace=False)
+    chosen_qids = np.random.choice(
+        queries.keys(), size=(trials,), replace=False
+    ).tolist()
 
     if embedder_model_name.startswith("openai/"):
         embedder_model_name = embedder_model_name.replace("openai/", "")
