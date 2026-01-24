@@ -52,6 +52,7 @@ models = [
     "facebook/contriever",
     "facebook/contriever-msmarco",
     "sentence-transformers/msmarco-roberta-base-ance-firstp",
+    "sentence-transformers/multi-qa-mpnet-base-dot-v1",
 ]
 similarities = {
     "sentence-transformers/all-MiniLM-L6-v2": "cos_sim",
@@ -62,6 +63,7 @@ similarities = {
     "facebook/contriever": "dot",
     "facebook/contriever-msmarco": "dot",
     "sentence-transformers/msmarco-roberta-base-ance-firstp": "dot",
+    "sentence-transformers/multi-qa-mpnet-base-dot-v1": "dot",
 }
 
 toxic_prefixes: list[str] = []
