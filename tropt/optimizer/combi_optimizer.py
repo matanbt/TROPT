@@ -99,6 +99,18 @@ class CombiOptimizer(BaseOptimizer):
         self,
         inputs,
     ):
+        """
+        Executes the initial random search phase of the attack.
+
+        This method iteratively constructs a trigger by appending tokens one by one (greedy approach).
+        At each step, it samples a pool of random candidates (`random_num_pool`) from the vocabulary,
+        evaluates them in batches, and selects the token that maximizes the similarity score
+        (minimizes loss). It stops early if no improvement is seen for `random_early_stop_patience`
+        steps or if `best_sim` is reached.
+
+        Args:
+            inputs: The prepared model inputs structure.
+        """
         curr_p = ""
         tokens = []
 
@@ -126,6 +138,8 @@ class CombiOptimizer(BaseOptimizer):
         if len(tokens):
             self.pbar.update(len(tokens))
 
+        # Iteratively append tokens one by one to reach total_tokens. This is a greedy approach:
+        # once a token is selected for position N, it is fixed, and we optimize position N+1.
         for n in range(self.total_tokens - len(tokens)):
             # print(f"iteration {n + 1}")
             pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,))
@@ -141,7 +155,8 @@ class CombiOptimizer(BaseOptimizer):
             best_id = None
             best_token = None
 
-            # evaluate candidates in parallel by batching
+            # Efficiently evaluate candidates in batches to maximize GPU utilization.
+            # We construct `batch_size` prompts, each with a different candidate token appended.
             for i in range(0, len(pool), self.batch_size):
                 batch_ids = [
                     [int(pool[i])]
@@ -200,6 +215,13 @@ class CombiOptimizer(BaseOptimizer):
         over the sequence of appended tokens and refresh the entire block with randomly
         sampled vocabulary tokens. A proposal is accepted if it increases cosine similarity.
 
+        The size of the block changes over iterations based on a schedule (`_p_selection`).
+
+        Args:
+            inputs: The prepared model inputs structure.
+
+        Raises:
+            ValueError: If `total_tokens` is not positive.
         """
         initial_tokens = self.history[-1]["trigger"] if len(self.history) else []
 
@@ -207,7 +229,9 @@ class CombiOptimizer(BaseOptimizer):
         if self.total_tokens <= 0:
             raise ValueError("total_tokens must be > 0")
 
-        # Initialize appended tokens randomly.
+        # Initialize appended tokens. If the trigger from the previous phase is shorter
+        # than total_tokens, fill the remaining slots. We try to repeat the existing pattern
+        # (cyclic repetition), otherwise fall back to random tokens.
         appended_tokens = []
         if initial_tokens:
             appended_tokens = list(initial_tokens)
@@ -245,8 +269,10 @@ class CombiOptimizer(BaseOptimizer):
         best_tokens = list(appended_tokens)
         no_improve = 0
 
+        # Main Square Attack loop: Refine the existing trigger by perturbing blocks of tokens.
         for it in range(1, self.square_num_iters + 1):
-            # Schedule analogous to square attack p-schedule.
+            # Calculate the size of the window to perturb.
+            # Early iterations perturb large blocks (exploration); later iterations fine-tune small blocks (exploitation).
             p = self._p_selection(self.square_p_init, it - 1, self.square_num_iters)
             block_size = max(1, int(round(p * self.total_tokens)))
             block_size = min(block_size, self.total_tokens)
@@ -254,7 +280,9 @@ class CombiOptimizer(BaseOptimizer):
             start = np.random.randint(0, self.total_tokens - block_size + 1)
             end = start + block_size
 
-            # Generate multiple proposals by refreshing the same contiguous block with random tokens.
+            # Generate a batch of candidate triggers (proposals).
+            # Each proposal takes the current best trigger and randomizes the tokens
+            # within the [start, end] window.
             proposals_tokens = []
             for _ in range(max(1, self.batch_size)):
                 proposal = list(best_tokens)
@@ -315,6 +343,22 @@ class CombiOptimizer(BaseOptimizer):
         targets: TargetsDict = None,
         target_text: Optional[str] = None,
     ) -> OptimizerResult:
+        """
+        Runs the full optimization process combining random search and Square Attack.
+
+        1. Prepares inputs and optionally initializes with a 'hot start' trigger generated via LLM.
+        2. Runs `random_attack` to greedily build an initial trigger token by token.
+        3. Runs `square_attack` to refine the trigger by perturbing blocks of tokens.
+
+        Args:
+           texts (List[str]): The input texts/prompts to attack.
+           initial_trigger (Optional[str]): A starting trigger string (used if hot_start is False or fails).
+           targets (TargetsDict): Target configuration for the loss calculation.
+           target_text (Optional[str]): The specific target text string to influence the hot start generation.
+
+        Returns:
+            OptimizerResult: An object containing the best loss, best trigger string, and history of optimization.
+        """
         if self.seed is not None:
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
@@ -354,7 +398,12 @@ class CombiOptimizer(BaseOptimizer):
         return result
 
     def _p_selection(self, p_init: float, it: int, n_iters: int) -> float:
-        """Piece-wise constant schedule for p (re-used from original Square Attack)."""
+        """
+        Piece-wise constant schedule for p (re-used from original Square Attack).
+
+        Calculates the fraction of the sequence to mutate based on the current iteration number.
+        The mutation size decreases as the attack progresses (fine-tuning phase).
+        """
         scaled = int(it / n_iters * 10000)
         # Mirrors original schedule thresholds.
         if 10 < scaled <= 50:
@@ -394,6 +443,16 @@ class CombiOptimizer(BaseOptimizer):
         return self._valid_vocab_ids
 
     def _get_hot_start(self):
+        """
+        Generates an initial trigger candidates using an external LLM (OpenAI).
+
+        It queries the LLM to generate a short sentence related to the `target_text`.
+        This serves as a better starting point than random tokens.
+        Results are cached from `cached_responses.json` to avoid redundant API calls.
+
+        Returns:
+            tuple: (text, tokens, decoded_str)
+        """
         if self.hot_start_str is not None:
             return self.hot_start_str
 
@@ -402,7 +461,7 @@ class CombiOptimizer(BaseOptimizer):
             "Represent this sentence for searching relevant passages: "
         )
 
-        # Check for already-calculated response
+        # Check for already-calculated response to save LLM API costs and time
         text = None
         try:
             with open("cached_responses.json", "r") as f:
@@ -441,6 +500,15 @@ class CombiOptimizer(BaseOptimizer):
         trigger: List[int],
         step: int = None,
     ):
+        """
+        Logs the current step's best results to the history list and updates the progress bar.
+
+        Args:
+            best_score (float): The current best similarity/loss score.
+            trigger_str (str): The current best trigger string.
+            trigger (List[int]): The token IDs of the trigger.
+            step (int, optional): Explicit step number. Defaults to incrementing previous step.
+        """
         last_step = self.history[-1]["step"] if len(self.history) else -1
         self.history.append(
             {
