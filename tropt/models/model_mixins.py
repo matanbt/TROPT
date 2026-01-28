@@ -175,7 +175,7 @@ class LossTextAccessMixin(TextAccessMixin):
             )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
 
             # Calculate loss
-            loss = _calc_loss_from_outputs(outputs, curr_targets, loss_func) # shape: (n_candidates,)
+            loss = _calc_loss_from_outputs(outputs, curr_targets, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)

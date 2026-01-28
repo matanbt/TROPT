@@ -55,7 +55,7 @@ def retokenize_filtering(
         # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
         raise RuntimeError(
             "No token sequences are the same after decoding and re-encoding. "
-            "Consider setting `filter_ids=False` or trying a different `optim_str_init`"
+            "Consider disabling retokenization filtering by setting `use_retokenize=False` or trying a different initial trigger string."
         )
     logger.debug(f"Retokenization filtering: {len(filtered_ids)}/{len(ids)} = {100 * len(filtered_ids) / len(ids):.2f}% candidates kept.")
 
@@ -144,7 +144,7 @@ def full_messages_retokenize_filtering(
     if not filtered_ids:
         raise RuntimeError(
             "[Full Message Retokenization] No token sequences are the same after retokenization "
-            "in full context. Consider setting `filter_ids=False` or trying a different `optim_str_init`"
+            "in full context. Consider disabling retokenization filtering by setting `use_retokenize=False` or trying a different initial trigger string."
         )
     logger.debug(f"Full-template Retokenization filtering: {len(filtered_ids)}/{len(candidate_trigger_ids)} = {100 * len(filtered_ids) / len(candidate_trigger_ids):.2f}% candidates kept.")
 
