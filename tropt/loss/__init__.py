@@ -5,7 +5,7 @@ from .base import (
     CombinedLoss,
     EmbeddingBasedLoss,
     LogitBasedLoss,
-    PerplexityLoss,
+    TriggerPerplexityLoss,
     PrefillCELoss,
     PrefillCWLoss,
     PrefillMellowMaxLoss,

@@ -171,10 +171,12 @@ class _HFTokenInputsManager(TokenInputsManager):
 
         Args:
             trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
-                the token ids of the trigger(s) to insert
+                the token ids of the trigger(s) to insert. If trigger_embeds is also provided,
+                this is used only for reference only.
             trigger_embeds: Tensor, shape = (n_candidates, trigger_seq_len, embd_dim)
                 an optional alternative to `trigger_ids`, where the trigger embeddings
-                are provided directly (useful for gradient computation)
+                are provided directly (useful for gradient computation).
+                If provided, it is used for input computation instead of `trigger_ids`.
             include_after: bool
                 whether to include the after sequence (useful for some attacks calculating the trigger logits)
             append_embeds: n_messages-long List of tensors, each of shape = (n_app_ids, embd_dim)
@@ -198,10 +200,10 @@ class _HFTokenInputsManager(TokenInputsManager):
         """
         # TODO to simplify the flow (and possible shapes), allow this function only to handle a specific message_idx at a time
         #     (i.e., `assert chosen_message_idx is not None`)
-        assert [trigger_ids, trigger_embeds].count(None) == 1, \
-            "Exactly one of `trigger_ids` or `trigger_embeds` must be provided."
+        assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
 
-        if trigger_ids is not None:
+        if trigger_embeds is None:
+            # embed the trigger-ids, if trigger embeddings are not provided
             trigger_embeds = self.embed_func(trigger_ids)
 
         # add message dim to triggers -> (curr_n_messages, n_candidates, trigger_seq_len, embd_dim)
@@ -255,6 +257,8 @@ class _HFTokenInputsManager(TokenInputsManager):
             inputs_embeds_lst_parts[i] = curr_embeds
             attention_mask_lst_parts[i] = curr_attns
 
+            # Since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
+            # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
             before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
             curr_slices = dict(
                 adv=slice(
@@ -366,6 +370,7 @@ class _HFTokenInputsManager(TokenInputsManager):
             )
 
         return dict(
+            trigger_ids=trigger_ids,  # detached triggers for reference
             inputs_embeds=inputs_embeds.to(self.device, self.float_dtype),
             attention_mask=attention_mask.to(self.device, torch.int64),
             targets=targets,
@@ -519,6 +524,9 @@ class _HuggingFaceModelMixins:
                         **inputs.get_triggered_inputs(
                             trigger_embeds=candidate_embeds,
                             chosen_message_idx=message_idx,
+
+                            # Also pass trigger ids as a reference
+                            trigger_ids=candidate_trigger_ids[cand_idx_start:cand_idx_end],
                         ),
                         loss_func=loss_func,
                     )

@@ -10,8 +10,15 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
-from tropt.loss.base import AttentionBasedLoss, BaseLoss, CombinedLoss, LogitBasedLoss
+from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.loss.base import (
+    AttentionBasedLoss,
+    BaseLoss,
+    CombinedLoss,
+    HiddenStateBased,
+    LogitBasedLoss,
+    TriggerLogitBasedLoss,
+)
 from tropt.models import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -343,6 +350,7 @@ class LMHFModel(
         targets: MessageBatchedTargetsDict,
         loss_func: BaseLoss,
         prefix_cache_kwargs: dict = {},
+        trigger_ids: Int[Tensor, "bsz trigger_seq_len"] = None,
         **kwargs,
     ) -> Float[Tensor, "bsz"]:
         """
@@ -352,11 +360,12 @@ class LMHFModel(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             output_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
+            output_hidden_states=loss_func.contains_loss_type(HiddenStateBased),
             **prefix_cache_kwargs,
         )
         # hidden_states = outputs.hidden_states [TODO]
 
-        def _calc_loss_from_outputs(_outputs, _targets, _loss_func):
+        def _calc_loss_from_outputs(_outputs, _targets, _trigger_ids, _loss_func):
             if isinstance(_loss_func, LogitBasedLoss):
                 logits = _outputs.logits
                 response_target_ids = _targets["target_outputs_toks"]  # (bsz, target_seq_len)
@@ -380,7 +389,7 @@ class LMHFModel(
                 end_idx = first_slc.stop - 1
                 response_logits = logits[:, start_idx:end_idx, :]
 
-                ## [DISABLED] Currently not supported: variable-length target sequences
+                ## [DISABLED] Currently not supported: variable-length target sequences (as we calculate loss per message)
                 ## Otherwise, we fallback to padding of the variable lengths
                 # if not are_slcs_aligned:
                 # response_logits = [
@@ -402,6 +411,33 @@ class LMHFModel(
                     response_target_ids,
                 )  # shape: (bsz,)
 
+            elif isinstance(_loss_func, TriggerLogitBasedLoss):
+                assert _trigger_ids is not None, "trigger_ids must be provided for TriggerLogitBasedLoss losses."
+                logits = _outputs.logits
+                trigger_slcs = [slices['adv'] for slices in _targets['slices']]  # bsz of `slice`
+
+                # Check if slices are aligned across the batch
+                first_slc = trigger_slcs[0]
+                are_slcs_aligned = all(
+                    s.start == first_slc.start and s.stop == first_slc.stop
+                    for s in trigger_slcs
+                )
+                assert are_slcs_aligned, "Trigger slices are not aligned across the batch. Variable-length trigger sequences are not supported yet."
+                assert first_slc.start >= 1, "Trigger slices should start at least one position (for feasible logits). It could be that prefix-caching is enabled and causing this; if so, disable prefix caching."
+
+                # If slices are aligned, we can simply stack them
+                start_idx = first_slc.start - 1
+                end_idx = first_slc.stop - 1
+                trigger_logits = logits[:, start_idx:end_idx, :]
+                assert _trigger_ids.shape[1] == trigger_logits.shape[1], "Trigger ids length must match the length of the trigger slices."
+
+                # Compute loss
+                loss = _loss_func(
+                    trigger_logits,
+                    _trigger_ids,
+                )  # shape: (bsz,)
+                # print("trigger", loss.mean().item())  # TODO make sure it's good
+
             elif isinstance(_loss_func, AttentionBasedLoss):
                 attentions = torch.stack(
                     _outputs.attentions, dim=1
@@ -413,10 +449,10 @@ class LMHFModel(
 
             elif isinstance(_loss_func, CombinedLoss):
                 losses = []
-                for _nested_loss_func in _loss_func.loss_funcs:
+                for _nested_loss_func in _loss_func:
                     # Recursive call to compute each loss
                     losses.append(
-                        _calc_loss_from_outputs(_outputs, _targets, _nested_loss_func)
+                        _calc_loss_from_outputs(_outputs, _targets, _trigger_ids, _nested_loss_func)
                     ) # shape: (bsz,)
 
                 # combine the losses (by calling the loss function on them)
@@ -429,7 +465,7 @@ class LMHFModel(
                 )
             return loss
 
-        return _calc_loss_from_outputs(outputs, targets, loss_func)
+        return _calc_loss_from_outputs(outputs, targets, trigger_ids, loss_func)
 
     @torch.no_grad()
     def __call__(

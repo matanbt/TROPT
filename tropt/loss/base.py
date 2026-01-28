@@ -88,7 +88,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
         logits: Float[Tensor, "bsz target_seq_len vocab_size"],
         target_ids: Int[Tensor, "bsz target_seq_len"],
         ignore_index: int = -100,
-    ) -> Float[Tensor, "bsz 1"]:
+    ) -> Float[Tensor, "bsz"]:
         logits = logits / self.temperature
         assert logits.shape[:-1] == target_ids.shape, "Shape mismatch"
 
@@ -139,7 +139,7 @@ class PrefillCWLoss(LogitBasedLoss):
         logits: Float[Tensor, "bsz target_seq_len vocab_size"],
         target_ids: Int[Tensor, "bsz target_seq_len"],
         ignore_index: int = -100,
-    ) -> Float[Tensor, "bsz 1"]:
+    ) -> Float[Tensor, "bsz"]:
         assert logits.shape[:2] == target_ids.shape, (logits.shape, target_ids.shape)
         vocab_dim: int = -1  # dimension of vocab size
 
@@ -167,6 +167,22 @@ class PrefillCWLoss(LogitBasedLoss):
         return masked_mean(loss, mask.float())
 
 
+############################
+@dataclass
+class TriggerLogitBasedLoss(BaseLoss):
+    """
+    Loss is computed based on model output logits *on the trigger tokens*.
+    Useful for optimizing properties of the triggers directly.
+    """
+
+    def __call__(
+        self,
+        trigger_logits: Float[Tensor, "bsz trigger_seq_len vocab_size"],
+        trigger_ids: Float[Tensor, "bsz trigger_seq_len"],
+    ) -> Float[Tensor, "bsz"]:
+        raise NotImplementedError()
+
+
 @dataclass
 class PerplexityLoss(LogitBasedLoss):
     """
@@ -178,28 +194,25 @@ class PerplexityLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        logits: Float[Tensor, "bsz seq_len vocab_size"],
-        target_ids: Int[Tensor, "bsz seq_len"],
+        trigger_logits: Float[Tensor, "bsz seq_len vocab_size"],
+        trigger_ids: Int[Tensor, "bsz seq_len"],
         ignore_index: int = -100,
-    ) -> Float[Tensor, "bsz 1"]:
-        logits = logits / self.temperature
-        # targets[targets == self.tokenizer.pad_token_id] = -100  # ignore padding  [TODO add support for target ids masking]
+    ) -> Float[Tensor, "bsz"]:
+        trigger_logits = trigger_logits / self.temperature
+
         assert (
-            logits.ndim == 3 and logits.shape[:2] == target_ids.shape[:2]
+            trigger_logits.ndim == 3 and trigger_logits.shape[:2] == trigger_ids.shape[:2]
         ), "Shape mismatch"
 
-        ce_loss = torch.nn.functional.cross_entropy(
-            logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
-            target_ids,
-            reduction="none",
-            ignore_index=ignore_index,
-        )  # (bsz, seq_len)
+        # Reuse the exact logic from PrefillCELoss
+        ce_loss_fn = PrefillCELoss(temperature=self.temperature)
+        ce_loss = ce_loss_fn(
+            trigger_logits,
+            trigger_ids,
+            ignore_index=ignore_index
+        )  # (bsz,)
 
-        mean_ce_loss = masked_mean(ce_loss, (target_ids != ignore_index).float())  # (bsz,)
-
-        perplexity = torch.exp(mean_ce_loss)
-
-        return perplexity
+        return torch.exp(ce_loss)
 
 #############################
 @dataclass
@@ -353,5 +366,9 @@ class CombinedLoss(BaseLoss):
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""
         return any(isinstance(loss, loss_type) for loss in self.loss_funcs)
+
+    def __iter__(self):
+        """Allows iterating over the nested loss functions."""
+        return iter(self.loss_funcs)
 
 

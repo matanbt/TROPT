@@ -169,7 +169,7 @@ class InputsManager(ABC):
     def get_triggered_inputs(self, *args, **kwargs):
         raise NotImplementedError
 
-
+## Text inputs manager ##
 class TextInputsManager(InputsManager):
     """
     Class for maintaining text-based trigger-combined inputs (fits black-box text-level query access).
@@ -246,7 +246,7 @@ class TextInputsManager(InputsManager):
             inputs_texts=inputs, targets=targets
         )
 
-
+## Token inputs manager ##
 class TokenInputsManager(InputsManager):
     """
     Base class for maintaining token-level trigger-combined inputs (fits models with token-level access).
