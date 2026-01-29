@@ -16,7 +16,7 @@ class BaseLoss(ABC):
     """Base class for all loss functions."""
 
     @abstractmethod
-    def __call__(self, *args, **kwargs) -> Float[Tensor, "bsz 1"]:
+    def __call__(self, *args, **kwargs) -> Float[Tensor, "bsz"]:
         pass
 
     def contains_loss_type(self, loss_type: type) -> bool:
@@ -184,7 +184,7 @@ class TriggerLogitBasedLoss(BaseLoss):
 
 
 @dataclass
-class PerplexityLoss(LogitBasedLoss):
+class TriggerPerplexityLoss(TriggerLogitBasedLoss):
     """
     Calculates perplexity, which is exp(cross_entropy).
     Useful for penalizing non-fluent triggers.
@@ -272,9 +272,12 @@ class AttentionEnhLoss(AttentionBasedLoss):
 ############################
 @dataclass
 class EmbeddingBasedLoss(BaseLoss):
-    """Loss is computed based on model embeddings, compared to given target vectors."""
+    """Loss is computed based on model embeddings, compared to given target vectors.
 
-    TARGET_KEY = "target_vectors"
+    Requires the target vectors (shape: (n_messages, d_model)) to be provided in the targets dict.
+    """
+
+    TARGET_KEY = "target_vectors"  # shape: (n_messages, d_model)
 
 
 @dataclass
@@ -304,7 +307,7 @@ class SimilarityLoss(EmbeddingBasedLoss):
 
 ############################
 
-@dataclass
+@dataclass  # TODO implement
 class TextBasedLoss(BaseLoss):
     """Mixin for models that can compute losses based on model outputs (embedding for encoder, text response for LMs); fits query access."""
 
@@ -317,19 +320,103 @@ class ResponseLMScoreLoss(TextBasedLoss):
 
     pass
 
+############################
+
+@dataclass  # TODO implement
+class TriggerTextBasedLoss(BaseLoss):
+    """Mixin for models that can compute losses based on the trigger text directly."""
+
+    pass
+
 
 ############################
 @dataclass
-class SteeringEnhLoss(BaseLoss):
+class HiddenStateBased(BaseLoss):
+    """Loss computed based on model hidden states."""
+
+    pass
+
+
+@dataclass
+class SteeringActivationLoss(HiddenStateBased):
+    """
+    Encourages hidden activations at specific layers/positions to align with a target direction.
+    - Each message has a target direction vector (optionally its own unique one).
+        - target_directions: (n_messages, d_model)
+        - Note that the direction will be applied to the whole target positions and layers.
+    - Default is steering *away* from a direction; useful for refusal suppression in LMs.
+        - Here, minizing the loss minimizes alignment (dot product) with the target direction.
+
+    Reference: https://aclanthology.org/2025.naacl-long.302/
+
+    Args:
+        targeted_layers: Which layers to apply steering on (default: all layers)
+        steer_towards: Whether to minimize alignment instead of maximizing (default: False)
+        slc_name: Which token positions to apply steering on (default: "last_input_token")
+        do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
+    """
+
+    TARGET_KEY = "target_directions"  # shape: (n_messages, d_model)
+
+    targeted_layers: slice = slice(None)
+    steer_towards: bool = False
+    slc_name: str = "last_input_token"
+    do_cosine_sim: bool = False
+
     def __call__(
         self,
         hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "bsz d_model"],
-        targeted_layers: slice = slice(None),
-        slc: slice = slice(None),  # TODO list as it may vary across elements?
+        slices: List[dict[str, slice]] = None,  # of length bsz
     ) -> Float[Tensor, "bsz"]:
-        raise NotImplementedError("TODO")
-        # TODO implement
+        """
+        Compute steering loss by measuring cosine similarity between hidden states and target directions.
+
+        Args:
+            hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
+            target_directions: Direction vectors to align with (bsz, d_model)
+            slices: Position slices for each batch element (e.g., {"adv": slice(10, 30)})
+
+        Returns:
+            Loss tensor of shape (bsz,).
+        """
+        target_directions = target_directions.to(hidden_states.device)
+
+        # Normalize target directions
+        target_directions = target_directions / target_directions.norm(dim=-1, keepdim=True)
+
+        # Extract slices for the tokens we want to steer
+        if slices is None:
+            slices = [{}] * hidden_states.shape[0]
+
+        slc_list = [
+            message_slices.get(self.slc_name, slice(None))
+            for message_slices in slices
+        ]
+
+        # Compute cosine similarity for each batch element
+        loss = torch.zeros(hidden_states.shape[0], device=hidden_states.device)
+        for i, curr_slc in enumerate(slc_list):
+            # Extract hidden states for targeted layers and positions
+            h = hidden_states[i, self.targeted_layers, curr_slc, :]  # (n_layers, slc_seq_len, d_model)
+
+            if self.do_cosine_sim:
+                # Normalize hidden states
+                h = h / h.norm(dim=-1, keepdim=True)
+
+            # Compute dot product with target direction
+            # (n_layers, slc_seq_len, d_model) * (1, 1, d_model)
+            #  mult -> (n_layers, slc_seq_len, d_model)
+            #  sum  -> (n_layers, slc_seq_len)
+            res = (h * target_directions[i].unsqueeze(0).unsqueeze(0)).sum(dim=-1)
+
+            # Average over layers and positions
+            loss[i] = res.mean()
+
+        if self.steer_towards:
+            loss = -loss  # maximize alignment
+
+        return loss
 
 ############################
 

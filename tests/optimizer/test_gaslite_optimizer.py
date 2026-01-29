@@ -23,24 +23,28 @@ class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
     def tokenizer(self):
         return self._tokenizer
 
+    @property
+    def device(self):
+        return torch.device("cpu")
+
     def __init__(self):
         self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-    
+
     def __call__(self, *args, **kwargs):
         pass
 
     def prepare_token_inputs(self, texts, initial_trigger, targets=None):
         inputs = MockInputsManager(self.tokenizer)
-        trigger_ids = torch.tensor([self.tokenizer.encode(initial_trigger, add_special_tokens=False)], dtype=torch.long)
+        trigger_ids = torch.tensor([self.tokenizer.encode(initial_trigger, add_special_tokens=False)], dtype=torch.long, device=self.device)
         return inputs, trigger_ids
 
     def compute_loss_from_tokens(self, candidate_trigger_ids, inputs, loss_func, keep_message_dim=False, **kwargs):
         # return random loss
         n_candidates = candidate_trigger_ids.shape[0]
         # shape: (n_messages, n_candidates)
-        losses = torch.rand(inputs.n_messages, n_candidates)
+        losses = torch.rand(inputs.n_messages, n_candidates, device=self.device)
         if not keep_message_dim:
             losses = losses.mean(dim=0)
         return losses
@@ -51,7 +55,7 @@ class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
         # Output shape: (n_cands, trigger_seq_len, vocab_size)
         n_cands, trigger_seq_len = candidate_trigger_ids.shape
         vocab_size = inputs.vocab_size
-        return torch.randn(n_cands, trigger_seq_len, vocab_size)
+        return torch.randn(n_cands, trigger_seq_len, vocab_size, device=self.device)
 
     def compute_logits_from_tokens(self, *args, **kwargs):
         pass

@@ -17,6 +17,7 @@ from tropt.loss.base import (
     CombinedLoss,
     HiddenStateBased,
     LogitBasedLoss,
+    SteeringActivationLoss,
     TriggerLogitBasedLoss,
 )
 from tropt.models import (
@@ -363,7 +364,6 @@ class LMHFModel(
             output_hidden_states=loss_func.contains_loss_type(HiddenStateBased),
             **prefix_cache_kwargs,
         )
-        # hidden_states = outputs.hidden_states [TODO]
 
         def _calc_loss_from_outputs(_outputs, _targets, _trigger_ids, _loss_func):
             if isinstance(_loss_func, LogitBasedLoss):
@@ -444,7 +444,20 @@ class LMHFModel(
                 )  # (bsz, n_layers, n_heads, seq_len[dst], seq_len[src])
                 loss = _loss_func(
                     attentions,
-                    slices=_targets['slices'],  # optionally contains slices
+                    slices=_targets["slices"],
+                )  # shape: (bsz,)
+
+            elif isinstance(_loss_func, SteeringActivationLoss):
+                hidden_states = torch.stack(
+                    _outputs.hidden_states, dim=1
+                )  # (bsz, n_layers, seq_len, embd_dim)
+
+                target_directions = _targets["target_directions"]  # (bsz, d_model)
+
+                loss = _loss_func(
+                    hidden_states,
+                    target_directions=target_directions,
+                    slices=_targets["slices"],
                 )  # shape: (bsz,)
 
             elif isinstance(_loss_func, CombinedLoss):

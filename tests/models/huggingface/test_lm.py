@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import PrefillCELoss
+from tropt.loss.base import PrefillCELoss, SteeringActivationLoss
 from tropt.models.huggingface.lm import LMHFModel
 
 
@@ -149,3 +149,55 @@ def test_inputs_manager_chosen_message(lm_model):
     tgt = res["targets"]["target_outputs_toks"]
     assert isinstance(tgt, torch.Tensor)
     assert tgt.shape[0] == n_candidates
+
+def test_lm_steering_loss(lm_model):
+    """Test SteeringEnhLoss integration with LM model."""
+    texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
+
+    # Create a random target direction
+    d_model = lm_model.model.config.hidden_size
+    target_direction = torch.randn(1, d_model)
+
+    targets = {"target_directions": target_direction}
+    inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
+
+    # Sample 2 candidate triggers
+    n_candidates = 2
+    candidate_ids = torch.randint(0, lm_model.tokenizer.vocab_size, (n_candidates, trigger_ids.shape[1]))
+
+    # Create steering loss targeting middle layers
+    loss_fn = SteeringActivationLoss(targeted_layers=slice(5, 10))
+
+    # Compute loss
+    losses = lm_model.compute_loss_from_tokens(candidate_ids, inputs, loss_fn)
+
+    assert isinstance(losses, torch.Tensor)
+    assert losses.shape == (n_candidates,)
+    assert not torch.isnan(losses).any()
+    assert not torch.isinf(losses).any()
+
+def test_lm_steering_loss_multi_message(lm_model):
+    """Test SteeringActivationLoss with multiple messages."""
+    texts = [
+        f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World",
+        f"Hi! {OPTIMIZED_TRIGGER_PLACEHOLDER}"
+    ]
+
+    # Create target directions for each message
+    d_model = lm_model.model.config.hidden_size
+    target_directions = torch.randn(2, d_model)
+
+    targets = {"target_directions": target_directions}
+    inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
+
+    # Sample candidates
+    n_candidates = 3
+    candidate_ids = torch.randint(0, lm_model.tokenizer.vocab_size, (n_candidates, trigger_ids.shape[1]))
+
+    loss_fn = SteeringActivationLoss()
+
+    losses = lm_model.compute_loss_from_tokens(candidate_ids, inputs, loss_fn)
+
+    assert isinstance(losses, torch.Tensor)
+    assert losses.shape == (n_candidates,)
+    assert not torch.isnan(losses).any()

@@ -270,6 +270,10 @@ class _HFTokenInputsManager(TokenInputsManager):
                     before_offset + curr_trigger.shape[-2],
                     before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],  # noqa
                 ),
+                last_input_token=slice(  # TODO rename to `input_last_token`?
+                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] - 1,
+                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
+                ),
                 appended=slice(
                     before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
                     before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] + curr_append.shape[-2],  # noqa

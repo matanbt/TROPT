@@ -9,6 +9,8 @@ from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 # TODO review & consider dropping the mocks
 
 class ConcreteOptimizer(BaseOptimizer):
+    model_requirements = ()  # Empty tuple for no requirements
+
     def optimize_trigger(
         self,
         texts,
