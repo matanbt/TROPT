@@ -246,7 +246,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             else:
                 if self.n_grad is not None and self.n_grad > 1:  # TODO unsure if useful
                     # Average logits over variations
-                    trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size)
+                    trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size, device=self.util_model.device)
                     logits = self.util_model.compute_logits_from_tokens(
                         trigger_vars,
                         util_inputs,

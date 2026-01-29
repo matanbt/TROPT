@@ -57,7 +57,11 @@ class MockUtilModel(LMBaseModel, LogitsTokenAccessMixin):
     @property
     def tokenizer(self):
         return self._tokenizer
-    
+
+    @property
+    def device(self):
+        return torch.device("cpu")
+
     def __init__(self):
         self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self._tokenizer.pad_token is None:
@@ -92,10 +96,10 @@ def test_rasliteplus_optimizer_run():
     
     optimizer = RASLITEPlusOptimizer(
         model=target_model,
-        util_lm=util_model,
+        util_model=util_model,
         loss=loss,
         num_steps=2,
-        n_grad=2, 
+        n_grad=2,
         n_flip=1,
         n_candidates=5,
         buffer_size=5,
@@ -119,5 +123,5 @@ def test_rasliteplus_requirements():
         def __call__(self): pass
 
     with pytest.raises(AssertionError):
-        # Fails because util_lm is not TokenAccess/LogitsAccess
-        RASLITEPlusOptimizer(model=MockTargetModel(), loss=MockLoss(), util_lm=BadModel("bad"))
+        # Fails because util_model is not TokenAccess/LogitsAccess
+        RASLITEPlusOptimizer(model=MockTargetModel(), loss=MockLoss(), util_model=BadModel("bad"))

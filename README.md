@@ -63,6 +63,24 @@ For advanced research, you can construct the optimization pipeline manually. Thi
 
 For maximal flexibility, you can also run optimization by composing the components manually in a Python script. An example demo script is provided in `demo.ipynb`, showcasing how to set up and execute an optimization run. [TODO make it]
 
+## Development
+
+For contributors and developers:
+
+- **Architecture & Design**: See `DESIGN.md` for comprehensive design philosophy and architectural details
+
+
+```bash
+# Install in development mode
+pip install -e ".[dev]"
+
+# Run tests
+pytest
+
+# Run linting
+ruff check .
+```
+
 ## Roadmap
 
 - [ ] ...

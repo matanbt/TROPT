@@ -121,7 +121,8 @@ def test_inputs_manager_get_triggered_inputs(encoder_model):
     tgt_slices_msg1_0 = res["targets"]["slices"][1][0]  # message 1, candidate 0
     assert isinstance(tgt_slices_msg1_0, dict)
     assert isinstance(tgt_slices_msg1_0['adv'], slice)
-    assert tgt_slices_msg1_0['adv'].stop - tgt_slices_msg1_0['adv'].start == 4  # "C ! ! ! D" length
+    # Trigger slice length should match the actual trigger length (default is 20 tokens)
+    assert tgt_slices_msg1_0['adv'].stop - tgt_slices_msg1_0['adv'].start == trigger_ids.shape[1]
 
 def test_inputs_manager_chosen_message(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]

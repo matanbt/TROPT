@@ -4,13 +4,16 @@ from .base import (
     BaseLoss,
     CombinedLoss,
     EmbeddingBasedLoss,
+    HiddenStateBased,
     LogitBasedLoss,
-    TriggerPerplexityLoss,
+    TextBasedLoss,
+
+    # Concrete losses:
     PrefillCELoss,
     PrefillCWLoss,
     PrefillMellowMaxLoss,
     ResponseLMScoreLoss,
     SimilarityLoss,
-    SteeringEnhLoss,
-    TextBasedLoss,
+    SteeringActivationLoss,
+    TriggerPerplexityLoss,
 )
