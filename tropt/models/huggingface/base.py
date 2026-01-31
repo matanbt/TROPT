@@ -86,10 +86,6 @@ class _HFTokenInputsManager(TokenInputsManager):
         self.targets = targets
 
         # Compute the KV Cache for tokens that appear before the optimized tokens
-        if self.n_messages > 1 and use_prefix_cache:
-            # Prefix cache is currently disabled for multiple messages until analyzing different edge cases [TODO]
-            logger.warning("Prefix cache is currently unsupported: prefix cahce is now manually set to disabled, since multiple messages are used.")
-            use_prefix_cache = False
         prefix_cache: List[ # per message
             Tuple[ # n_layers of these:
                 Tuple[
@@ -198,8 +194,11 @@ class _HFTokenInputsManager(TokenInputsManager):
                     the targets dict, expanded to match the n_candidates dimension;
                     inclusion of all the n_messages depends on `chosen_message_idx` option.
         """
-        # TODO to simplify the flow (and possible shapes), allow this function only to handle a specific message_idx at a time
-        #     (i.e., `assert chosen_message_idx is not None`)
+        # TODO-1 can optionally simplify the flow (and possible shapes), allow
+        #   this function only to handle a specific message_idx at a time
+        #   (i.e., `assert chosen_message_idx is not None`);
+        #   requires to clean multi-message callers.
+        #   this should simplify the flow here, and make it more readable.
         assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
 
         if trigger_embeds is None:
@@ -211,6 +210,9 @@ class _HFTokenInputsManager(TokenInputsManager):
         curr_n_messages = len(messages)
         trigger_embeds = trigger_embeds.unsqueeze(0).repeat(curr_n_messages, 1, 1, 1)
         n_candidates = trigger_embeds.shape[1]
+
+        if curr_n_messages > 1 and self.use_prefix_cache:
+            raise ValueError("Prefix cache with multiple messages is not supported. Either call `get_triggered_inputs()` with a single message, or disable prefix cache.")
 
         ## Construct the parts of the inputs:
         inputs_embeds_lst_parts: List[
@@ -260,12 +262,13 @@ class _HFTokenInputsManager(TokenInputsManager):
             # Since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
             # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
             before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
-            curr_slices = dict(
-                adv=slice(
+            # TODO-claude-code: better practice for naming these slices?
+            curr_slices = dict(  # TODO use some enum for these slices names?
+                adv=slice(  # TODO rename to `trigger`?
                     before_offset,
                     before_offset + curr_trigger.shape[-2],
                 ),
-                chat_template_after=slice(
+                chat_template_after=slice(  # TODO rename to `input_after`?
                     # TODO this is currently only correct for LMs and suffix attacks (otherwise there might be more token in the "curr_after" other than the chat ones)-- need to generalize!
                     before_offset + curr_trigger.shape[-2],
                     before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],  # noqa
@@ -341,7 +344,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         ## expand slices for candidates
         slices = [[msg_slices] * n_candidates for msg_slices in slices]
 
-        ## If a message is selected, discard the message dim
+        ## If a message is selected, squeeze the message dim
         if chosen_message_idx is not None:
             inputs_embeds = inputs_embeds.squeeze(0)
             attention_mask = attention_mask.squeeze(0)
@@ -357,13 +360,6 @@ class _HFTokenInputsManager(TokenInputsManager):
 
         # add the slices info for loss computation
         targets['slices'] = slices
-
-        # TODO move the batching and message_idx to another function, to avoid repeated calls of the _whole_ function
-        ## Apply batching options:
-        # if batch_slice != slice(None, None, None):
-        #     inputs_embeds = inputs_embeds[:, batch_slice]
-        #     attention_mask = attention_mask[:, batch_slice]
-        #     targets: BatchedTargetsDict = TargetsDictPlus.get_candidate_batch_from_batched_targets(targets, batch_slice)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
@@ -381,13 +377,11 @@ class _HFTokenInputsManager(TokenInputsManager):
             prefix_cache_kwargs=prefix_cache_kwargs,
         )
 
-    # TODO add get_triggered_texts()  ???
-
     def _get_prefix_cache_kwargs(
         self, batch_size: int = 1, message_idx: int = None
     ) -> List[Dict[str, transformers.DynamicCache | bool]] | Dict[str, transformers.DynamicCache | bool]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
-        # TODO optimization: keep a dict of these for different batch sizes, to avoid recomputing them every time
+        # TODO-3 optimization: keep a dict of these for different batch sizes & messages, to avoid recomputing them every time; make sure these are saved in the CPU, and we will move them to the model device on use.
 
         if not self.use_prefix_cache:
             return dict()

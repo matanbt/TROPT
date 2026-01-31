@@ -11,7 +11,7 @@ from tropt.tracker.base import BaseTracker, DummyTracker
 
 ## ------- Optimizer result ------- ##
 @dataclass
-class OptimizerResult:  # TODO rethink it
+class OptimizerResult:
     best_trigger: TokenTrigger
     best_trigger_str: str
     best_loss: float
@@ -44,9 +44,8 @@ class BaseOptimizer(ABC):
         # Loss function validation
         assert isinstance(loss, BaseLoss), "loss must be an instance of BaseLoss"
         self.loss_func = loss
-        
-        self.tracker = tracker if tracker is not None else DummyTracker()
-        # TODO validate the loss is supported by the model (each model should have its supported losses listed)
+
+        self.set_tracker(tracker if tracker is not None else DummyTracker())
 
         if seed is not None:
             from transformers import set_seed
@@ -71,3 +70,11 @@ class BaseOptimizer(ABC):
             Optimized trigger.
         """
         raise NotImplementedError
+
+    def set_tracker(self, tracker: BaseTracker):
+        """
+        Set the tracker for logging optimization progress.
+        Useful for resetting or changing the tracker after optimizer initialization.
+        """
+        assert isinstance(tracker, BaseTracker), "tracker must be an instance of BaseTracker"
+        self.tracker = tracker

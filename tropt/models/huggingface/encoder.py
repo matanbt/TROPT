@@ -51,7 +51,6 @@ class EncoderHFModel(
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
-        trust_remote_code: bool = False,
         set_model_to_eval: bool = True,
         **kwargs,
     ):
@@ -65,7 +64,6 @@ class EncoderHFModel(
             forward_pass_batch_size (int): Batch size for forward passes.
             backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
-            trust_remote_code (bool): Whether to trust remote code when loading the model.
             set_model_to_eval (bool): Whether to set the model to evaluation mode.
             **kwargs: Additional arguments for SentenceTransformer.
         """
@@ -81,7 +79,6 @@ class EncoderHFModel(
                 model_name,
                 device=device,
                 model_kwargs=dict(dtype=dtype or "auto"),
-                trust_remote_code=trust_remote_code,
                 **kwargs
             )
         self.d_model = self.model.get_sentence_embedding_dimension()
@@ -109,7 +106,7 @@ class EncoderHFModel(
     @property
     def tokenizer(self):
         return self._tokenizer
-    
+
     @property
     def device(self):
         return self.model.device
@@ -155,8 +152,6 @@ class EncoderHFModel(
     ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
 
         assert isinstance(texts, list), "texts must be a string or a list of strings."
-        n_messages = len(texts)
-        targets = TargetsDictPlus(targets, n_messages=n_messages)
 
         # Build the input manager, that will allow combining with different triggers
         tok_ids = self.tokenizer(texts, add_special_tokens=True)["input_ids"]

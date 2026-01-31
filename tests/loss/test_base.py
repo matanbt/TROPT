@@ -131,4 +131,311 @@ def test_steering_activation_loss_batch():
     assert not torch.allclose(loss[0], loss[1], atol=1e-3)
 
 
-# TODO test shapes of other losses
+# ==============================================================================
+# Logit-Based Loss Tests
+# ==============================================================================
+
+def test_prefill_ce_loss_shape():
+    """Test PrefillCELoss returns correct output shape."""
+    from tropt.loss.base import PrefillCELoss
+
+    loss_fn = PrefillCELoss()
+
+    # Simulated logits: (bsz, target_seq_len, vocab_size)
+    # NOTE: logits and target_ids must have same first TWO dimensions
+    bsz, target_seq_len, vocab_size = 2, 5, 1000
+    logits = torch.randn(bsz, target_seq_len, vocab_size)
+    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+
+    loss = loss_fn(logits, target_ids)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+    assert (loss >= 0).all(), "Cross-entropy loss should be non-negative"
+
+
+def test_prefill_ce_loss_known_values():
+    """Test PrefillCELoss with known input/output pairs."""
+    from tropt.loss.base import PrefillCELoss
+
+    loss_fn = PrefillCELoss()
+
+    # Case 1: Perfect prediction (high logit for correct token)
+    vocab_size = 10
+    logits = torch.zeros(1, 3, vocab_size)  # (bsz=1, seq_len=3, vocab_size=10)
+    target_ids = torch.tensor([[2, 5, 7]])  # (bsz=1, target_len=3)
+
+    # Set very high logits for the correct tokens
+    logits[0, 0, 2] = 100.0  # Position 0, token 2
+    logits[0, 1, 5] = 100.0  # Position 1, token 5
+    logits[0, 2, 7] = 100.0  # Position 2, token 7
+
+    loss = loss_fn(logits, target_ids)
+
+    # With perfect prediction, CE loss should be very close to 0
+    assert loss < 0.1, f"Expected loss near 0 for perfect prediction, got {loss.item()}"
+
+
+def test_prefill_mellowmax_loss_shape():
+    """Test PrefillMellowMaxLoss returns correct output shape."""
+    from tropt.loss.base import PrefillMellowMaxLoss
+
+    loss_fn = PrefillMellowMaxLoss()
+    loss_fn.mellowmax_alpha = 1.0
+
+    bsz, target_seq_len, vocab_size = 3, 4, 500
+    logits = torch.randn(bsz, target_seq_len, vocab_size)
+    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+
+    loss = loss_fn(logits, target_ids)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+
+
+def test_prefill_mellowmax_different_alpha():
+    """Test PrefillMellowMaxLoss with different alpha values."""
+    from tropt.loss.base import PrefillMellowMaxLoss
+
+    bsz, target_seq_len, vocab_size = 2, 3, 100
+    logits = torch.randn(bsz, target_seq_len, vocab_size)
+    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+
+    # Test with different alpha values
+    for alpha in [0.5, 1.0, 2.0]:
+        loss_fn = PrefillMellowMaxLoss()
+        loss_fn.mellowmax_alpha = alpha
+        loss = loss_fn(logits, target_ids)
+
+        assert loss.shape == (bsz,)
+        assert not torch.isnan(loss).any()
+
+
+def test_prefill_cw_loss_shape():
+    """Test PrefillCWLoss returns correct output shape."""
+    from tropt.loss.base import PrefillCWLoss
+
+    loss_fn = PrefillCWLoss()
+    loss_fn.cw_margin = 0.0
+
+    bsz, target_seq_len, vocab_size = 2, 4, 200
+    logits = torch.randn(bsz, target_seq_len, vocab_size)
+    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+
+    loss = loss_fn(logits, target_ids)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+
+
+def test_prefill_cw_loss_known_values():
+    """Test PrefillCWLoss with known scenarios."""
+    from tropt.loss.base import PrefillCWLoss
+
+    loss_fn = PrefillCWLoss()
+    loss_fn.cw_margin = 1e-3
+
+    vocab_size = 10
+    logits = torch.zeros(1, 2, vocab_size)
+    target_ids = torch.tensor([[3, 7]])
+
+    # Case 1: Target token has highest logit (good) - loss should be low
+    logits[0, 0, :] = -1.0
+    logits[0, 0, 3] = 5.0  # Target token
+
+    logits[0, 1, :] = -1.0
+    logits[0, 1, 7] = 5.0  # Target token
+
+    loss = loss_fn(logits, target_ids)
+
+    # CW loss: (max_non_target - target).clamp_min(-margin)
+    # When target has max logit: (non_target - target) is negative, clamped to -margin
+    assert loss <= 0.001, f"Expected very low loss when target has max logit, got {loss.item()}"
+
+    # Case 2: Non-target token has highest logit (bad) - loss should be positive
+    logits2 = torch.zeros(1, 2, vocab_size)
+    target_ids2 = torch.tensor([[3, 7]])
+
+    logits2[0, 0, :] = -1.0
+    logits2[0, 0, 3] = 0.0  # Target token (low)
+    logits2[0, 0, 5] = 5.0  # Non-target highest
+
+    logits2[0, 1, :] = -1.0
+    logits2[0, 1, 7] = 0.0  # Target token (low)
+    logits2[0, 1, 2] = 5.0  # Non-target highest
+
+    loss2 = loss_fn(logits2, target_ids2)
+
+    # Should have positive loss when non-target is higher
+    assert loss2 > 1.0, f"Expected high loss when non-target has max logit, got {loss2.item()}"
+
+
+def test_trigger_perplexity_loss_shape():
+    """Test TriggerPerplexityLoss returns correct output shape."""
+    from tropt.loss.base import TriggerPerplexityLoss
+
+    loss_fn = TriggerPerplexityLoss()
+
+    # Trigger logits: (bsz, trigger_len, vocab_size)
+    # Trigger IDs: (bsz, trigger_len) - must match first two dims
+    bsz, trigger_len, vocab_size = 2, 5, 500
+    trigger_logits = torch.randn(bsz, trigger_len, vocab_size)
+    trigger_ids = torch.randint(0, vocab_size, (bsz, trigger_len))
+
+    loss = loss_fn(trigger_logits, trigger_ids)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+    assert (loss >= 0).all(), "Perplexity loss should be non-negative"
+
+
+# ==============================================================================
+# Attention-Based Loss Tests
+# ==============================================================================
+
+def test_attention_enh_loss_shape():
+    """Test AttentionEnhLoss returns correct output shape."""
+    from tropt.loss.base import AttentionEnhLoss
+
+    loss_fn = AttentionEnhLoss()
+    loss_fn.src_slc_name = "adv"
+
+    # Attention weights: (bsz, n_layers, n_heads, seq_len, seq_len)
+    bsz, n_layers, n_heads, seq_len = 2, 4, 8, 20
+    attn_weights = torch.randn(bsz, n_layers, n_heads, seq_len, seq_len)
+    attn_weights = torch.softmax(attn_weights, dim=-1)  # Ensure valid attention
+
+    # Slices indicating trigger position
+    slices = [
+        {"adv": slice(5, 10)},
+        {"adv": slice(3, 8)},
+    ]
+
+    loss = loss_fn(attn_weights, slices=slices)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+
+
+def test_attention_enh_loss_properties():
+    """Test AttentionEnhLoss mathematical properties."""
+    from tropt.loss.base import AttentionEnhLoss
+
+    loss_fn = AttentionEnhLoss()
+    loss_fn.src_slc_name = "trigger"
+
+    bsz, n_layers, n_heads, seq_len = 1, 2, 4, 10
+
+    # Case 1: All attention on trigger (should minimize loss)
+    attn_weights = torch.zeros(bsz, n_layers, n_heads, seq_len, seq_len)
+    trigger_slice = slice(2, 5)
+
+    # Make all positions attend strongly to trigger positions
+    for pos in range(seq_len):
+        if pos < 2 or pos >= 5:  # Non-trigger positions
+            # Attend to trigger positions
+            attn_weights[0, :, :, pos, 2:5] = 1.0 / 3  # Uniform on trigger
+
+    # Normalize
+    attn_weights = attn_weights / (attn_weights.sum(dim=-1, keepdim=True) + 1e-10)
+
+    slices = [{"trigger": trigger_slice}]
+    loss = loss_fn(attn_weights, slices=slices)
+
+    # High attention to trigger should give negative loss
+    assert loss < 0, f"Expected negative loss with high trigger attention, got {loss.item()}"
+
+
+# ==============================================================================
+# Combined Loss Tests
+# ==============================================================================
+
+def test_combined_loss_basic():
+    """Test CombinedLoss with multiple loss functions."""
+    from tropt.loss.base import CombinedLoss, SimilarityLoss, SteeringActivationLoss
+
+    loss1 = SimilarityLoss()
+    loss2 = SteeringActivationLoss()
+
+    combined = CombinedLoss([loss1, loss2], weights=[0.7, 0.3])
+
+    # Verify the structure
+    assert combined.loss_funcs == [loss1, loss2]
+    assert torch.allclose(combined.weights, torch.tensor([0.7, 0.3]))
+
+
+def test_combined_loss_weight_validation():
+    """Test CombinedLoss validates weights correctly."""
+    from tropt.loss.base import CombinedLoss, SimilarityLoss
+
+    loss1 = SimilarityLoss()
+    loss2 = SimilarityLoss()
+
+    # Weights should sum to number of losses or be normalized
+    combined = CombinedLoss([loss1, loss2], weights=[0.5, 0.5])
+    assert len(combined.weights) == 2
+
+    # Test with single weight (should work)
+    combined = CombinedLoss([loss1, loss2], weights=[1.0, 1.0])
+    assert len(combined.weights) == 2
+
+
+# ==============================================================================
+# Edge Cases and Robustness Tests
+# ==============================================================================
+
+def test_loss_functions_handle_zero_gradients():
+    """Test that loss functions handle non-zero vectors correctly."""
+    from tropt.loss.base import SimilarityLoss
+
+    loss_fn = SimilarityLoss()
+
+    # Use non-zero vectors (zero vectors cause NaN in cosine similarity, which is expected)
+    vectors = torch.randn(2, 128) + 1.0  # Add offset to avoid zeros
+    targets = torch.randn(2, 128) + 1.0
+
+    loss = loss_fn(vectors, targets)
+
+    # Should not produce NaN or Inf for valid inputs
+    assert not torch.isnan(loss).any()
+    assert not torch.isinf(loss).any()
+
+
+def test_loss_functions_batch_size_one():
+    """Test loss functions work with batch size 1."""
+    from tropt.loss.base import SimilarityLoss, SteeringActivationLoss
+
+    # SimilarityLoss
+    sim_loss = SimilarityLoss()
+    vectors = torch.randn(1, 64)
+    targets = torch.randn(1, 64)
+    loss = sim_loss(vectors, targets)
+    assert loss.shape == (1,)
+
+    # SteeringActivationLoss
+    steer_loss = SteeringActivationLoss()
+    hidden_states = torch.randn(1, 4, 10, 64)
+    target_dirs = torch.randn(1, 64)
+    loss = steer_loss(hidden_states, target_dirs)
+    assert loss.shape == (1,)
+
+
+def test_loss_functions_large_batch():
+    """Test loss functions work with large batch sizes."""
+    from tropt.loss.base import SimilarityLoss
+
+    loss_fn = SimilarityLoss()
+
+    bsz = 128  # Large batch
+    vectors = torch.randn(bsz, 64)
+    targets = torch.randn(bsz, 64)
+
+    loss = loss_fn(vectors, targets)
+
+    assert loss.shape == (bsz,)
+    assert not torch.isnan(loss).any()

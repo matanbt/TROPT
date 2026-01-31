@@ -7,9 +7,6 @@ from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
-from tropt.optimizer.utils.beast_utils import sample_top_p
-from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -19,6 +16,9 @@ from tropt.models import (
     TargetsDict,
 )
 from tropt.models.huggingface.lm import LMHFModel
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.beast_utils import sample_top_p
+from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker.base import BaseTracker
 
 logger = logging.getLogger(__name__)

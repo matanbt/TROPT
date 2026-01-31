@@ -82,6 +82,12 @@ Subsequently, the classes of proprietary models, e.g. of `GeminiEncoderModel`, a
 
 Note that, for consistency, we use the following convention to name these access mixins: (a) they start with the value we can access (e.g., the `Loss` in `LossTokenAccessMixin`); this will be the value we will compute (e.g., the loss: `compute_loss_from_tokens()`). (b) They end with the the type of input access (e.g., `TokenAccess` in ``LossTokenAccessMixin`), which will be the input type used in the two methods, and the input type that we will prepare in the first method (e.g., the token inputs in `prepare_token_inputs()`).
 
+<!-- TODO-claude-code be more specific on the naming conventions; e.g.:
+1. Create mixin following naming convention: `{Value}{InputType}AccessMixin`
+2. Implement two methods: `prepare_{input_type}_inputs()` and `compute_{value}_from_{input_type}()`
+3. Update model classes to include the mixin where appropriate
+ -->
+
 Also note that some models may have token input access, despite having limited loss access (e.g., a black-box proprietary model that accepts input tokens).
 
 The aforementioned two generic methods (*prepare input*, *compute loss*), interact with the two following pillars: **input managers** and **loss classes** accordingly.

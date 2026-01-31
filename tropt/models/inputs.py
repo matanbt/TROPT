@@ -30,7 +30,7 @@ BatchedTargetsDict = Dict[str,
 ]  # each entry has n_messages, each a batch of identical targets
 
 ## A dict for each target; where _a single pre-selected message_ is mapped
-# to a batch of its target tensor/string/etc
+#  to a batch of its target tensor/string/etc
 MessageBatchedTargetsDict = Dict[str,
     List[str]   # of length bsz
       | Float[Tensor, "bsz target_seq_len"]
@@ -48,7 +48,7 @@ class TargetsDictPlus(dict):
     targets container.
     """
 
-    def __init__(self, targets: TargetsDict, n_messages: int = None):
+    def __init__(self, targets: TargetsDict = None, n_messages: int = None):
         """
         Initializes the TargetsManager with the given targets dictionary.
         Optionally provide `n_messages` to validate the targets.
@@ -85,7 +85,6 @@ class TargetsDictPlus(dict):
 
     #----------------------------------------------------------------------------#
     ## Utils for obtaining and manipulating different views of the TargetsDict: ##
-    # TODO consider having another class BatchedTargetsDictPlus inheriting from `dict`
     @staticmethod
     def get_expanded_with_candidates(targets: TargetsDict | "TargetsDictPlus", n_candidates: int) -> BatchedTargetsDict:
         """
@@ -109,29 +108,6 @@ class TargetsDictPlus(dict):
 
         return targets
 
-    # @staticmethod
-    # def get_candidate_batch_from_batched_targets(
-    #     targets: BatchedTargetsDict,
-    #     cand_batch_slice: slice,
-    # ) -> BatchedTargetsDict:
-    #     """
-    #     Selects a batch slice from each target entry in the BatchedTargetsDict.
-    #     Returns result in a new dict (BatchedTargetsDict).
-    #     """
-    #     targets = targets.copy()
-
-    #     for k in targets.keys():
-    #         if isinstance(targets[k], torch.Tensor):
-    #             targets[k] = targets[k][:, cand_batch_slice]
-    #         elif isinstance(targets[k], list) and isinstance(targets[k][0], torch.Tensor):
-    #             targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
-    #         elif isinstance(targets[k], list):
-    #             targets[k] = [elem[cand_batch_slice] for elem in targets[k]]
-    #         else:
-    #             raise ValueError(f"Unsupported target type for key {k}: {type(targets[k])}")
-
-    #     return targets
-
     @staticmethod
     def get_message_from_batched_targets(
         targets: BatchedTargetsDict,
@@ -146,6 +122,7 @@ class TargetsDictPlus(dict):
 
     #----------------------------------------------------------------------------
 
+# TODO-CLAUDE-CODE: add enum for target entry keys (e.g., "target_outputs", "target_output_tokens", etc); so we don't hardcode strings everywhere! we should also explain what each naming means and what is the expected format, typing and shape
 
 # ======================= Triggered Input Managers =======================
 
