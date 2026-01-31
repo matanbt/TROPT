@@ -4,15 +4,25 @@
   <img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="100%">
 </div>
 
-[TODO] github stickers
+<div align="center">
 
-***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various NLP models (LLMs, encoders, etc). Such triggers are useful, and can serve many purposes, such as:
-- **_Red-teaming_**: The triggers can be (and are commonly) optimized towards a malicious/undesired behaviour of the model (e.g., Zou et al. '23).
-- **_Prompt Tuning_**: Triggers can also be used to enhance a desired bahviour, by optimizing a repsective behaviour (e.g., success in a classification task).   [TODO e.g., AutoPrompt]
-- **_Model Inspection_**: Triggers can also be used for research, inspecting certain inputs and the possible responses (e.g., crafting couterfactuals).
-> [TODO combine the following ones] (i) this repo can serve you a red teaming tool for evaluating NLP models' robustness. (ii) similarly, this repo can serve as a robustness benchmark and evaluation of potential defenses.  (iii) can serve you to develop new attack with minimal friction (by implementing new optimizers, or playing around with the configuration of existing ones).
-> [TODO]Readme should clearly define the types of attack we're interested in  - all attacks/optimizers that involve a trigger that is optimized toward a quantifiable end, for when it is combined with the user template(s).
-> a factory for endless jailbreaks / otehr attacks, by easily designing optimizers that can be used to optimize text triggers for various NLP models.
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/) -->
+
+</div>
+
+***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various types of NLP models (LLMs, embeddings, etc). 
+It supports any optimization approach that minimizes a quantifiable objective by iteratively updating a trigger combined with user-provided templates; this is a common method used in LLM jailbreak.
+
+
+
+**Use Cases:**
+- **Red-teaming & Defense Evaluation**: Generate adversarial triggers (jailbreaks, text attacks) to evaluate model and defense robustness at scale;
+- **Attack Benchmarking**: Fair, reproducible comparison of optimization methods using shared infrastructure and standardized evaluation;
+- **Research & Development**: Rapidly prototype new attacks by composing existing components or writing custom optimizers with reusable infrastructure;
+- **Prompt Tuning**: Optimize discrete prompts to enhance desired model behaviors;
+- **Model Inspection**: Craft adversarial examples and counterfactuals for ML interpretability research.
 
 
 ## Installation
@@ -25,14 +35,14 @@ pip install tropt
 
 ## Usage
 
-You can easily run attacks using pre-configured recipes from the Attack Zoo, or by manually composing the optimization components (Model, Loss, Optimizer) for granular control.
+TROPT offers multiple usage levels: (1) pre-configured attacks from the Attack Zoo, (2) manual composition of attack components for granular control, and (3) custom components (write your own optimizer, and, optionally, also loss, or model wrapper).
 
-### 🦁 Via the Attack Zoo
+### 🦁 [Quick Start] Via the Attack Zoo
 
 The simplest way to start is using a predefined attack. These includes, though not limited to, common optimizers for LLM jailbreak. Here is an example using the **GCG (Greedy Coordinate Gradient)** attack to optimize a trigger for a specific target behavior.
 
 ```python
-from ttop.attack_zoo.GCG import run_gcg
+from tropt.attack_zoo.GCG import run_gcg
 
 # Define the instruction and the desired target output.
 # The `{{OPTIMIZED_TRIGGER}}` placeholder marks where the optimized tokens will be inserted.
@@ -53,15 +63,24 @@ print("Jailbreak prompt:", instruction.replace("{{OPTIMIZED_TRIGGER}}", result.b
 print("Lowest loss achieved:", result.best_loss)
 ```
 
-### 🔧 Via `yaml` Configuration
+<!-- ### 🔧 Via `yaml` Configuration
 
 For advanced research, you can construct the optimization pipeline manually. This allows you to mix and match different models, loss functions, and optimization strategies.
 
-*[Documentation and examples coming soon]*
+*[Documentation and examples coming soon]* -->
 
-### 🫴 Via Manual Script
+### 🫴 Via Manual Composition
 
-For maximal flexibility, you can also run optimization by composing the components manually in a Python script. An example demo script is provided in `demo.ipynb`, showcasing how to set up and execute an optimization run. [TODO make it]
+For maximal flexibility, manually compose components (Model, Loss, Optimizer) in Python. You can use existing components or write your own—the backend handles the complex infrastructure (gradients, tokenization, library integration) so custom optimizers focus on pure search logic. See `guide.ipynb` for comprehensive examples covering all features (multi-instruction, encoders, combined losses, activation steering, and custom components).
+
+### 🔬 Research: Custom Optimizers
+
+TROPT is designed as a **factory for new optimizers**. Write custom search algorithms while reusing battle-tested infrastructure--the package's backend handles model integration (e.g., HuggingFace, OpenAI, LiteLLM, ...), losses, gradient calculation, tokenization, and retokenization. The optimizer you would implement can thus focus purely on the search algorithm.
+
+**Getting started:** It is recommended to build on existing optimizer code (see `tropt/optimizer/`) rather than from scratch, to follow the package's best practices.
+Once implemented following the package's guidelines, the optimizer automatically works across all compatible models and losses through the generic model/loss abstractions.
+
+**Contributing:** Researchers who develop new optimizers and want to make their work reproducible and comparable are strongly encouraged to contribute. Submit a PR to add the optimizer to the repo and make it available to the community.
 
 ## Development
 
@@ -83,4 +102,4 @@ ruff check .
 
 ## Roadmap
 
-- [ ] ...
+- [ ] 

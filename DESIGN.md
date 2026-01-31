@@ -2,6 +2,12 @@
 # Design Principles
 This repository is aimed at easing the implementation, run, and research of discrete text optimizers. The core logic of this repo is provided in its three pillars. These would require heavy engineering from anyone who would venture writing such implementations; moreover, prior research has pointed at small implementation details as critical (such as retokenization [GCG,GASLITE], or slightly modifying candidate sampling [GCG,GASLITE]), and the recurring attempt to implement such from scratch is prone to include certain fail points.
 
+**Backend vs Frontend:** TROPT separates complex infrastructure (backend) from creative optimization logic (frontend). 
+
+- The *backend*--comprising the first three pillars--handles token-level gradients, trigger-template combination, multi-library integration (e.g., of model providers), etc. This is a complex boilerplate that is required from any implementer of optimization scheme, and we maintain it as part of the repository.
+
+- The *frontend*--optimizers and attack execution--is designed to be simple and hackable, focusing on pure search algorithms. This means researchers can write new optimizers or attacks with minimal friction, while reusing TROPT infrastructure.
+
 In the next segment we describe each of the three pillars contributing to the fourth central one -- the text optimizer. Starting from the API level, and describing the common implementation and design principles. The logic separation of these pillars is aimed at allowing the addition or modification within each. Crucially, one may abstract the internal design of these pillars, and merely compose attacks by combining different instances of them.
 
 In the final segment, I describe the two existing interfaces to run end-to-end optimization in the repo.
@@ -9,7 +15,7 @@ In the final segment, I describe the two existing interfaces to run end-to-end o
 [TODO flow chart image here]
 
 ## Pillar 1: Target Model
-> Classes wrapping the target models, implementing the different (loss) computations. Located at `ttop/models`.
+> Classes wrapping the target models, implementing the different (loss) computations. Located at `tropt/models`.
 
 Each text optimization process is done w.r.t. a target model; such models may vary in the level of access we may have, and the API they expose. For instance, open-source models can be used with the rich HuggingFace API (e.g., Gemma LLMs), and proprietary models can be used with the mostly limited API provided by their maker (e.g., OpenAI's ChatGPT models).
 
@@ -82,7 +88,7 @@ The aforementioned two generic methods (*prepare input*, *compute loss*), intera
 
 ## Pillar 2: Input and target manager
 
-> Classes wrapping the target models. Located at `ttop/models/inputs.py`.
+> Classes wrapping the target models. Located at `tropt/models/inputs.py`.
 
 For describing the input manager, it would be useful to first describe them from the perspective of the user input (i.e., at the repo's API level), and then describe their implementation.
 First, we start by describing the arguments provided to the text optimizer, and how these are managed during the optimization.
@@ -145,7 +151,7 @@ The implementations of the input managers, especially the token-level ones, are 
 
 ## Pillar 3: Losses
 
-> Classes implementing the calculation of the losses (e.g., `CrossEntropy`, `CosineSimilarity`). Located at `ttop/loss/`.
+> Classes implementing the calculation of the losses (e.g., `CrossEntropy`, `CosineSimilarity`). Located at `tropt/loss/`.
 
 All optimizers iteratively advance the text trigger towards a specific goal. As one may expect, the choice of the loss plays a non-negligible role in the performance of the textual trigger optimization process [PAL]. Additionally, many loss variations have been found insightful [AttnGCG,Hijacking]. We thus provide an extensive collection of losses from existing literature.
 
@@ -164,7 +170,7 @@ This use of abstractions results in optimizers much easier to write and read, an
 **Additional implementation details.** The initialization of the optimizer is commonly defined as:
 
 ```python
-    # from: ttop/optimizer/gcg_optimizer.py
+    # from: tropt/optimizer/gcg_optimizer.py
     class GCGOptimizer(BaseOptimizer):
         model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
 
@@ -210,7 +216,7 @@ This allows the optimizer to call the methods corresponding to these mixins (e.g
 If we combine *Model + User text-templates + Loss + Optimizer* we can run an attack. If we replace the optimizer, loss, or modify their parameters, we could create a new attack. To maximize the utility and flexibility of this repository we introduce the two following ways to run attacks.
 
 
-* **Model Zoo [`ttop/attack_zoo`].** Python modules that glue together the different pillars to reproduce existing attacks. E.g., the `GCG.py` module in `ttop/attack_zoo` glues together the `LMHFModel`, CrossEntropyLoss, and `GCGOptimizer` to reproduce the GCG attack [GCG].
+* **Model Zoo [`tropt/attack_zoo`].** Python modules that glue together the different pillars to reproduce existing attacks. E.g., the `GCG.py` module in `tropt/attack_zoo` glues together the `LMHFModel`, CrossEntropyLoss, and `GCGOptimizer` to reproduce the GCG attack [GCG].
 * These modules are useful for researchers who want to quickly run existing attacks, use them for benchmarks, or modify them slightly.
 
 
@@ -219,7 +225,7 @@ If we combine *Model + User text-templates + Loss + Optimizer* we can run an att
 * This is useful for researchers who want to experiment with different combinations of models, losses, and optimizers without writing new code.
 
 
-* **Full evaluations [WIP].**
+* **Full evaluations [WIP].** [TODO]
 
 ## Summary
 
