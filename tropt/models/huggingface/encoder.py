@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional, Tuple
+from typing import Annotated, List, Optional, Tuple
 
 import sentence_transformers
 import torch
@@ -7,7 +7,7 @@ from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
+from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
 from tropt.models import (
     EncoderBaseModel,
@@ -224,7 +224,11 @@ class EncoderHFModel(
 
         return _calc_loss_from_outputs(output_emb, targets, loss_func)
     @torch.no_grad()
-    def __call__(self, texts: List[str]) -> Float[Tensor, "n_texts d_model"]:
+    def __call__(
+        self,
+        texts: Annotated[List[str], "n_texts"],
+        return_full_output: bool = False,
+    ) -> Float[Tensor, "n_texts d_model"]:
         """
         Get the embeddings for the given texts (n_texts elements).
         Note: we mostly assume any prompting/instruction will be applied before the call to this function.
@@ -232,5 +236,10 @@ class EncoderHFModel(
         assert isinstance(texts, list)
 
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
+
+        if return_full_output:
+            return dict(
+                output_embeddings=emb,
+            )
 
         return emb

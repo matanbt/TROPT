@@ -33,13 +33,14 @@ class BinaryLMJudgeLoss(TextBasedLoss):
     positive_words: Set[str] = field(default_factory=lambda: {"Yes", "yes", " Yes", " yes"})
     negative_words: Set[str] = field(default_factory=lambda: {"No", "no", " No", " no"})
     judge_lm_batch_size: int = 512
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # the loaded model and tokenizer
     _model: Any = field(default=None, init=False, repr=False)
     _tokenizer: Any = field(default=None, init=False, repr=False)
     _positive_token_ids: Set[int] = field(default=None, init=False, repr=False)
     _negative_token_ids: Set[int] = field(default=None, init=False, repr=False)
-    # TODO are the field required?
+    # TODO are the `field` required?
 
     def __post_init__(self):
         logger.info(f"Loading LM judge model for loss: {self.model_name_or_path}")

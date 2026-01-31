@@ -125,7 +125,7 @@ class BEASTOptimizer(BaseOptimizer):
         )
         util_tokenizer = self.util_lm.tokenizer
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
-            util_tokenizer, self.util_lm.vocab_size
+            util_tokenizer, util_tokenizer.vocab_size
         )
 
         # Initialize by sampling k1 diverse starting tokens
@@ -190,16 +190,6 @@ class BEASTOptimizer(BaseOptimizer):
             candidate_triggers = torch.cat(
                 [repeated_triggers, candidate_next_tokens], dim=-1
             )  # append candidate tokens -> (beam * branching_factor, len+1)
-
-            # 4. Cast to the targeted model tokenizer (for cross-model attacks)
-            # candidate_triggers, model_candidate_triggers = (
-            #     LMHFModel.cast_to_model_tokenizer(  # TODO move to tokInputs? utils? anyway should be integrated better, as we might want to use it on other models too (that have tokenizer)
-            #         candidate_triggers,
-            #         model_from=self.util_lm,
-            #         model_to=self.model,
-            #     )
-            # )
-
             # 4. Cast to text to use on the targeted model
             model_candidate_triggers = [
                 util_tokenizer.decode(
@@ -207,7 +197,6 @@ class BEASTOptimizer(BaseOptimizer):
                 )
                 for ids in candidate_triggers
             ]
-
             # 5. Compute losses for all beam x branching_factor candidate triggers
             losses = self.model.compute_loss_from_texts(
                 model_candidate_triggers, inputs, loss_func=self.loss_func

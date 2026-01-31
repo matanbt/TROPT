@@ -560,7 +560,6 @@ class _HuggingFaceModelMixins:
 
         losses = _compute_candidates_loss__batched()
         # clear_device_cache()  # clear unused GPU memory
-        # logger.debug(f"\tloss: {losses.mean().item()}")
 
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # reduce message dim -> (n_candidates,)

@@ -31,7 +31,7 @@ from tropt.models import (
     TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
-from tropt.models.inputs import SliceKey
+from tropt.models.inputs import SliceKey, TextInputsManager
 
 logger = logging.getLogger(__name__)
 
@@ -468,7 +468,7 @@ class LMHFModel(
         texts: List[str],
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
-        return_full_template: bool = False,
+        return_full_output: bool = False,
     ) -> List[str]:
         """
         Generate text completions for the given input texts.
@@ -497,31 +497,60 @@ class LMHFModel(
         prompt_lengths = [len(toks) for toks in inputs.input_ids]
 
         # Generate responses
-        generation_toks = self.model.generate(
+        generation_output = self.model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=not greedy_decode,
             pad_token_id=self.tokenizer.pad_token_id,
+            output_scores=return_full_output,
+            return_dict_in_generate=return_full_output,
         )
-        if not return_full_template:
-            # Extract only the generated part
-            generation_toks = [
-                toks[prompt_lengths[i]:] for i, toks in enumerate(generation_toks)
-            ]
+
+        if return_full_output:
+            full_toks = generation_output.sequences
+            generation_logits = torch.stack(generation_output.scores, dim=1)
+        else:
+            full_toks = generation_output
+
+        # Extract only the generated part
+        generated_toks = [
+            full_toks[i][prompt_lengths[i]:] for i in range(len(full_toks))
+        ]
 
         # Decode to strings
         generation_strs = self.tokenizer.batch_decode(
-            generation_toks,
-            skip_special_tokens=not return_full_template
+            generated_toks,
+            skip_special_tokens=True
         )
 
         # Track usage
         prompt_tokens = inputs.input_ids.numel()
-        gen_tokens = sum(len(t) for t in generation_toks)
+        gen_tokens = sum(len(t) for t in generated_toks)
         self._update_usage_stats(
             tokens=prompt_tokens + gen_tokens,
             forward_calls=1,
             forward_samples=len(texts)
         )
+
+        if return_full_output:
+            # Trim logits per-sample to match actual generated length
+            # (scores are already prompt-excluded, but samples may differ due to EOS)
+            generation_logits = [
+                generation_logits[i, :len(generated_toks[i])]
+                for i in range(len(generated_toks))
+            ]
+
+            full_strs = self.tokenizer.batch_decode(
+                full_toks,
+                skip_special_tokens=False
+            )
+
+            return dict(  # TODO make a dataclass
+                generated_response_strs=generation_strs,
+                generated_response_ids=generated_toks,
+                generated_response_logits=generation_logits,
+                full_template_strs=full_strs,
+                full_template_ids=full_toks,
+            )
 
         return generation_strs

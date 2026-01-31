@@ -59,6 +59,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         texts: List[str],
         max_new_tokens: int = 128,
         temperature: float = 0.0,
+        return_full_output: bool = False,
         **kwargs,
     ) -> List[str]:
         """
@@ -99,7 +100,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         # Track usage
         total_tokens = sum(
-            (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0) 
+            (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0)
             for output in outputs
         )
         self._update_usage_stats(
@@ -107,6 +108,11 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             forward_calls=1, # One batch call
             forward_samples=len(texts)
         )
+
+        if return_full_output:
+            return dict(
+                generated_response_strs=responses,
+            )
 
         return responses
 
