@@ -38,7 +38,7 @@ class OpenAITokenizer(BaseTokenizer):
         except KeyError:
             # Fallback for newer models or fine-tunes not in tiktoken yet
             self._encoding = tiktoken.get_encoding("cl100k_base")
-        
+
         # Set interface to match HuggingFace
         self.bos_token_id = self._encoding.eot_token
         self.eos_token_id = self._encoding.eot_token
@@ -49,11 +49,11 @@ class OpenAITokenizer(BaseTokenizer):
     @property
     def vocab_size(self) -> int:
         return self._encoding.max_token_value + 1
-    
+
     @property
     def name_or_path(self) -> str:
         return f"openai-{self._encoding.name}" 
-    
+
     @property
     def all_special_ids(self) -> List[int]:
         return [
@@ -134,7 +134,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
     Instead of managing embeddings/tensors, this manages text reconstruction 
     from token-level triggers to feed into the API.
     """
-    
+
     def __init__(
         self,
         tokenizer: Any, # The OpenAITokenizer wrapper
@@ -212,7 +212,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
             targets = TargetsDictPlus.get_message_from_batched_targets(targets, chosen_message_idx)
 
         return dict(
-            inputs_texts=inputs_texts, 
+            inputs_texts=inputs_texts,
             targets=targets
         )
 
@@ -222,7 +222,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
 # --------------------------------------------------------------------------
 
 class EncoderOpenAIModel(
-    EncoderBaseModel, 
+    EncoderBaseModel,
     LossTextAccessMixin,
     TokenAccessMixin,  # tokenizer access, but not loss access on it
 ):

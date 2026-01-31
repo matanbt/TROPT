@@ -180,7 +180,6 @@ class LossTextAccessMixin(TextAccessMixin):
                 curr_inputs_dict["inputs_texts"],
                 curr_inputs_dict["targets"],
             )
-            curr_inputs_dict["trigger_texts"]
 
             # Forward pass once per message bulk
             outputs = self(
