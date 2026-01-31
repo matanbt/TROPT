@@ -344,14 +344,19 @@ class SteeringActivationLoss(HiddenStateBased):
     - Each message has a target direction vector (optionally its own unique one).
         - target_directions: (n_messages, d_model)
         - Note that the direction will be applied to the whole target positions and layers.
-    - Default is steering *away* from a direction; useful for refusal suppression in LMs.
-        - Here, minizing the loss minimizes alignment (dot product) with the target direction.
+    - Default is steering *towards* a direction (maximizing alignment).
+        - Here, minimizing the loss maximizes alignment (dot product) with the target direction.
+        - Set steer_away=True to steer *away* (e.g., for refusal suppression).
 
-    Reference: https://aclanthology.org/2025.naacl-long.302/
+    References:
+    - Was proposed as 'refusal direction suppression' combined with GCG:
+        https://aclanthology.org/2025.naacl-long.302/
+    - Was proposed for adapting attacks (e.g., GCG) for evading probe-based classifiers.
+        https://arxiv.org/abs/2412.09565
 
     Args:
         targeted_layers: Which layers to apply steering on (default: all layers)
-        steer_towards: Whether to minimize alignment instead of maximizing (default: False)
+        steer_away: Whether to minimize alignment instead of maximizing (default: False = steer towards)
         slc_name: Which token positions to apply steering on (default: "last_input_token")
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
     """
@@ -359,7 +364,7 @@ class SteeringActivationLoss(HiddenStateBased):
     TARGET_KEY = "target_directions"  # shape: (n_messages, d_model)
 
     targeted_layers: slice = slice(None)
-    steer_towards: bool = False
+    steer_away: bool = False
     slc_name: str = "last_input_token"
     do_cosine_sim: bool = False
 
@@ -413,8 +418,13 @@ class SteeringActivationLoss(HiddenStateBased):
             # Average over layers and positions
             loss[i] = res.mean()
 
-        if self.steer_towards:
-            loss = -loss  # maximize alignment
+        # Apply sign based on steering direction
+        if not self.steer_away:
+            # Default: steer towards (maximize alignment)
+            # Negate so minimizing loss maximizes dot product
+            loss = -loss
+        # else: steer away (minimize alignment)
+        # Keep positive so minimizing loss minimizes dot product
 
         return loss
 
