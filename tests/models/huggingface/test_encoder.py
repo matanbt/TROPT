@@ -102,27 +102,31 @@ def test_inputs_manager_get_triggered_inputs(encoder_model):
     n_candidates = 2
     candidate_trigger_ids = torch.randint(0, 100, (n_candidates, trigger_ids.shape[1]))
 
-    res = inputs.get_triggered_inputs(trigger_ids=candidate_trigger_ids)
+    # Loop over messages and test each one individually
+    for message_idx in range(n_messages):
+        res = inputs.get_triggered_inputs(trigger_ids=candidate_trigger_ids, chosen_message_idx=message_idx)
 
-    assert {"inputs_embeds", "attention_mask", "targets"}.issubset(res.keys())
+        assert {"inputs_embeds", "attention_mask", "targets"}.issubset(res.keys())
 
-    # inputs_embeds: (n_messages, n_candidates, seq_len, embd_dim)
-    assert res["inputs_embeds"].shape[0] == n_messages
-    assert res["inputs_embeds"].shape[1] == n_candidates
+        # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed
+        assert res["inputs_embeds"].dim() == 3
+        assert res["inputs_embeds"].shape[0] == n_candidates
 
-    # attention mask: (n_messages, n_candidates, seq_len)
-    assert res["attention_mask"].shape[0] == n_messages
-    assert res["attention_mask"].shape[1] == n_candidates
+        # attention mask: (n_candidates, seq_len)
+        assert res["attention_mask"].dim() == 2
+        assert res["attention_mask"].shape[0] == n_candidates
 
-    # Check targets expansion
-    assert "targets" in res
-    assert "target_vectors" in res["targets"]
-    
-    tgt_slices_msg1_0 = res["targets"]["slices"][1][0]  # message 1, candidate 0
-    assert isinstance(tgt_slices_msg1_0, dict)
-    assert isinstance(tgt_slices_msg1_0['adv'], slice)
-    # Trigger slice length should match the actual trigger length (default is 20 tokens)
-    assert tgt_slices_msg1_0['adv'].stop - tgt_slices_msg1_0['adv'].start == trigger_ids.shape[1]
+        # Check targets expansion
+        assert "targets" in res
+        assert "target_vectors" in res["targets"]
+
+        from tropt.models.inputs import SliceKey
+
+        tgt_slices_0 = res["targets"]["slices"][0]  # candidate 0
+        assert isinstance(tgt_slices_0, dict)
+        assert isinstance(tgt_slices_0[SliceKey.TRIGGER], slice)
+        # Trigger slice length should match the actual trigger length (default is 20 tokens)
+        assert tgt_slices_0[SliceKey.TRIGGER].stop - tgt_slices_0[SliceKey.TRIGGER].start == trigger_ids.shape[1]
 
 def test_inputs_manager_chosen_message(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]

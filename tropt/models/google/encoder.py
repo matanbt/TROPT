@@ -58,7 +58,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
 
         import google.genai as genai  # optional dependency
 
-        result = self.client.models.embed_content(
+        response = self.client.models.embed_content(
             contents=texts,
             model=self.model_name,
             config=genai.types.EmbedContentConfig(
@@ -68,13 +68,18 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         )
 
         result = torch.stack(
-            [torch.tensor(emb.values) for emb in result.embeddings], dim=0
+            [torch.tensor(emb.values) for emb in response.embeddings], dim=0
         )  # shape: (n_texts, d_model)
 
+        # Extract token count from usage metadata if available
+        total_tokens = 0
+        if hasattr(response, 'usage_metadata') and response.usage_metadata:
+            total_tokens = getattr(response.usage_metadata, 'total_token_count', 0)
+
         self._update_usage_stats(
+            tokens=total_tokens,
             forward_calls=1,
             forward_samples=len(texts)
-            # TODO get total tokens [TODO-CLAUDE-CODE]
         )
 
         return result

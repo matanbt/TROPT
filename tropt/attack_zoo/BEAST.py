@@ -29,11 +29,12 @@ def run_beast(
         model=model,
         loss=loss,
         # Set parameters from the paper:
-        num_steps=40,  # also sets the trigger length
-        beam_size=15,
-        branching_factor=15,
-        top_p=0.9,
-        temperature=1.0,
+        # L = 40 (suffix length), k1 = k2 = 15, temperature = 1.0
+        num_steps=40,  # L in paper: number of tokens in adversarial suffix
+        beam_size=15,  # k1 in paper: number of beams to maintain
+        branching_factor=15,  # k2 in paper: number of candidates per beam
+        top_k=None,  # Paper uses full distribution multinomial sampling
+        temperature=1.0,  # As specified in paper
     )
 
     result = optimizer.optimize_trigger(

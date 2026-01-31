@@ -27,12 +27,13 @@ To customize the attack (e.g., change the model, prompt, or target), simply open
 
 ## Available Attacks
 
-| Attack Name | Description | Targeted Model | Required Access | Paper | Corresponding Files |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **GCG**, **GCG-Mult** | Greedy Coordinate Gradient. Optimizes a discrete suffix to elicit harmful behavior. | LM/Encoder | Gradient | [Universal and Transferable Adversarial Attacks on Aligned Language Models (Zou et al., 2023)](https://arxiv.org/abs/2307.15043) | `GCG.py`<br>`GCGMult.py`<br>`../blocks/optimizer/gcg_optimizer.py` |
-| **GCG-Emb** | Our variant of GCG, operating on embeddings. | LM/Encoder | Gradient | - | `GCGEmb.py` |
-| **BEAST** | Beam Search-based Adversarial Attack. Uses a beam search to optimize triggers. | LM/Encoder | Logits (& Util Logits) | [BEAST: Black-box Evasion Attack against Transformers via Substring-based Trigger (Kumar et al., 2024)](https://arxiv.org/abs/2402.15570) | `BEAST.py`<br>`../blocks/optimizer/beast_optimizer.py` |
-| **GASLITE** | Uses gradient and multi-coordinate acsent to optimize trigger. | Encoder/LM | Gradient | [GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search (2024)](https://arxiv.org/abs/2412.20953) | `GASLITE.py`<br>`../blocks/optimizer/gaslite_optimizer.py` |
-| **RASLITE** | Our variant of GASLITE using logits instead of gradients. Based on the same paper. | Encoder/LM | Query (& Util Logits) | - | `../blocks/optimizer/raslite_optimizer.py` |
+| Attack Name | Description | Targeted Model | Required Access | Paper | Corresponding Files | Tested For Reprod. |
+| :--- | :--- | :--- | :--- | :--- | :--- | :---: |
+| **GCG**, **GCG-Mult** | Greedy Coordinate Gradient. Optimizes a discrete suffix to elicit harmful behavior. | LM | Gradient | [Universal and Transferable Adversarial Attacks on Aligned Language Models (Zou et al., 2023)](https://arxiv.org/abs/2307.15043) | `GCG.py`<br>`GCGMult.py`<br>`../blocks/optimizer/gcg_optimizer.py` | ✅ |
+| **GCG-Emb** | Our variant of GCG, operating on embeddings. | Encoder | Gradient | - | `GCGEmb.py` | |
+| **BEAST** | "Beam Search-based Adversarial Attack". Uses a beam search leveraging the LM logits to optimize triggers. | LM | Logits (& Util Logits) | [BEAST: Black-box Evasion Attack against Transformers via Substring-based Trigger (Kumar et al., 2024)](https://arxiv.org/abs/2402.15570) | `BEAST.py`<br>`../blocks/optimizer/beast_optimizer.py` | |
+| **GASLITE** | Uses gradient and multi-coordinate acsent to optimize trigger for corpus poisoning. | Encoder | Gradient | [GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search (2024)](https://arxiv.org/abs/2412.20953) | `GASLITE.py`<br>`../blocks/optimizer/gaslite_optimizer.py` | ✅ |
+| **RASLITE** | Our variant of GASLITE using logits instead of gradients. Based on the same paper. | Encoder/LM | Query | - | `../blocks/optimizer/raslite_optimizer.py` |
+| **AdvDecoding** | "Adversarial Decoding". Uses beam Search with util-LM logits to optimize triggers on multiple objectives, including embedding-based retrivers corpus poisoning. | Encoder | Query | ? | `AdvDecoding.py`<br>`../blocks/optimizer/beast_optimizer.py` | ✅ |
 
 > *Note: This table is based on the existing file structure and available information. Please update it with correct information if necessary, especially for entries marked with "TODO".*

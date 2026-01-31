@@ -169,7 +169,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         inputs, _ = self.model.prepare_text_inputs(
             texts=texts,
-            initial_trigger=initial_trigger,
             targets=targets,
         )
         util_inputs, util_trigger_ids = self.util_model.prepare_token_inputs(

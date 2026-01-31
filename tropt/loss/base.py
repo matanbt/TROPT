@@ -1,7 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
+from typing import Annotated, List
 
 import torch
 from jaxtyping import Float, Int
@@ -325,11 +325,17 @@ class ResponseLMScoreLoss(TextBasedLoss):
 
 ############################
 
-@dataclass  # TODO implement
-class TriggerTextBasedLoss(BaseLoss):
-    """Mixin for models that can compute losses based on the trigger text directly."""
+@dataclass
+class TextBasedLoss(BaseLoss):
+    """Mixin for models that can compute losses based on the given texts directly."""
 
-    pass
+    def __call__(
+        self,
+        texts: Annotated[List[str], "bsz"],
+    ) -> Float[Tensor, "bsz"]:
+        raise NotImplementedError()
+
+
 
 
 ############################
