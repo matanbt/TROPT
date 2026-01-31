@@ -15,6 +15,7 @@ from tropt.models import (
     LossTokenAccessMixin,
     TargetsDict,
 )
+from tropt.models.huggingface.lm import LMHFModel
 from tropt.models.model_mixins import LossTextAccessMixin
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -33,7 +34,7 @@ class BEASTOptimizer(BaseOptimizer):
     https://arxiv.org/abs/2410.02163
     """
 
-    model_requirements = (LossTextAccessMixin,)
+    model_requirements = (LossTokenAccessMixin,)
 
     def __init__(
         self,
@@ -43,6 +44,7 @@ class BEASTOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         util_lm: LMBaseModel = None,  # if None, use the same as `model`
+        util_loss: Optional[BaseLoss] = None,
         num_steps: int = 40,
         beam_size: int = 15,
         branching_factor: int = 15,
@@ -78,7 +80,7 @@ class BEASTOptimizer(BaseOptimizer):
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
             self.util_lm, LogitsTokenAccessMixin
         ), "BEAST requires util_lm to be LM with token logits access"
-
+        self.util_loss_func = util_loss
         self.num_steps = num_steps
         self.beam_size = beam_size
         self.branching_factor = branching_factor
@@ -113,7 +115,8 @@ class BEASTOptimizer(BaseOptimizer):
             logger.warning("BEAST optimizer does not support non-empty initial triggers; ignoring it.")
         initial_trigger = ""
 
-        inputs, _ = self.model.prepare_text_inputs(
+        # Prepare inputs for both target model and util LM
+        inputs, _ = self.model.prepare_token_inputs(
             texts=texts,
             targets=targets,
         )
@@ -190,17 +193,31 @@ class BEASTOptimizer(BaseOptimizer):
             candidate_triggers = torch.cat(
                 [repeated_triggers, candidate_next_tokens], dim=-1
             )  # append candidate tokens -> (beam * branching_factor, len+1)
-            # 4. Cast to text to use on the targeted model
-            model_candidate_triggers = [
-                util_tokenizer.decode(
-                    ids.squeeze(), skip_special_tokens=True
-                )
-                for ids in candidate_triggers
-            ]
+
             # 5. Compute losses for all beam x branching_factor candidate triggers
-            losses = self.model.compute_loss_from_texts(
+            # Convert to from util tokens to model tokens if needed
+            if self.util_lm.tokenizer != self.model.tokenizer:
+                # Cast to the targeted model tokenizer (for cross-model attacks)
+                # TODO if we were to support loss computation of varying-length triggers, we could have skipped this hacky function and simply re-tokenized each candidate trigger string with the target model tokenizer
+                candidate_triggers, model_candidate_triggers = (
+                    LMHFModel.cast_to_model_tokenizer(  # TODO move to tokInputs? utils? anyway should be integrated better, as we might want to use it on other models too (that have tokenizer)
+                        candidate_triggers,
+                        model_from=self.util_lm,
+                        model_to=self.model,
+                    )
+                )
+            # Token-level access: use trigger IDs directly
+            losses = self.model.compute_loss_from_tokens(
                 model_candidate_triggers, inputs, loss_func=self.loss_func
             )
+
+            if self.util_loss_func is not None:
+                # Also compute util loss and combine
+                util_losses = self.util_lm.compute_loss_from_tokens(
+                    candidate_triggers, util_inputs, loss_func=self.util_loss_func
+                )
+                # Combine losses (simple sum)  # TODO make this more flexible?
+                losses = losses + util_losses
 
             # 6. Select top beam_size candidates with lowest loss, keep their trigger ids
             top_losses, top_indices = torch.topk(losses, self.beam_size, largest=False)

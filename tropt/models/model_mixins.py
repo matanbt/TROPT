@@ -142,15 +142,9 @@ class LossTextAccessMixin(TextAccessMixin):
                     _curr_targets[_loss_func.TARGET_KEY]
                 )  # shape: (n_candidates,)
 
-            if isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
+            elif isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
                 return _loss_func(
                     _inputs,
-                )  # shape: (n_candidates,)
-
-            if isinstance(_loss_func, LogitBasedLoss):
-                return _loss_func(
-                    _outputs["generated_response_logits"],
-                    _curr_targets[_loss_func.TARGET_KEY]
                 )  # shape: (n_candidates,)
 
             elif isinstance(_loss_func, CombinedLoss):

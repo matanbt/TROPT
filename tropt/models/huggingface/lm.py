@@ -142,7 +142,7 @@ class LMHFModel(
             )
         if self._tokenizer.padding_side != "left":
             logger.warning(
-                "Tokenizer padding side is not 'left'. Our code currenly assume left padding ."
+                "Tokenizer padding side is not 'left'. Our code currently assumes left padding."
             )
             self._tokenizer.padding_side = "left"
 
@@ -545,7 +545,7 @@ class LMHFModel(
                 skip_special_tokens=False
             )
 
-            return dict(  # TODO make a dataclass
+            return dict(
                 generated_response_strs=generation_strs,
                 generated_response_ids=generated_toks,
                 generated_response_logits=generation_logits,
