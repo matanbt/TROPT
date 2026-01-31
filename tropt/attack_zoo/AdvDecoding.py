@@ -56,7 +56,7 @@ def run_advdecoding_encoder(
     beam_width: int = 30  # m in the paper; mostly use 30 [k1 in BEAST]
     max_length: int = 30  # Paper uses 30
     top_k: int = 10  # Paper uses top_k=10 logits filtering [None in BEAST, sampling from full distr.]
-    temperature: float = 0.0  # as there is no sampling anyway
+    temperature: float = 1.0  # as there is no sampling anyway
     prefix_prompt = "Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}"  # a prompt for util LM to compute logits of the trigger; prompt is taken from the paper
 
     loss = CombinedLoss(
@@ -82,7 +82,7 @@ def run_advdecoding_encoder(
     # Run optimization
     result = optimizer.optimize_trigger(
         texts=[prefix_info],
-        targets=dict(target_vectors=[target_vector.to(model.device)]),
+        targets=dict(target_vectors=target_vector.to(model.device)),
         util_lm_texts=[prefix_prompt],
     )
 

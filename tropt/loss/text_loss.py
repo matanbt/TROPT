@@ -46,7 +46,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
         logger.info(f"Loading LM judge model for loss: {self.model_name_or_path}")
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
-            torch_dtype=torch.bfloat16
+            dtype=torch.bfloat16
         ).eval().to(self.device)
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
         if self._tokenizer.pad_token is None:
