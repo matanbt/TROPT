@@ -13,21 +13,22 @@ authors = [
   {name = "Matan Ben-Tov"}
 ]
 
+# Core dependencies - minimal for basic HuggingFace model optimization
 dependencies = [
+  # Core ML/numeric libraries
   "torch>=2.4.0",
-  "tqdm",
-  "jaxtyping",
   "numpy>=2.0.0",
+  "jaxtyping",
+
+  # HuggingFace models (core use case)
   "transformers>=4.45.0",
   "accelerate>=1.0.0",
+  "sentence-transformers>=5.1.0",
+
+  # Configuration & utilities
   "hydra-core>=1.3.0",
   "omegaconf",
-  "sentence-transformers>=5.1.0",
-  "wandb",
-  "livelossplot",
-  "openai",
-  "litellm",
-  "ipython",
+  "tqdm",
   "tenacity",
 ]
 
@@ -36,24 +37,63 @@ Repository = "https://github.com/matanbt/tropt"
 Issues = "https://github.com/matanbt/tropt/issues"
 
 [project.optional-dependencies]
+# API model integrations (install separately as needed)
+openai = [
+  "openai>=1.0.0",
+  "tiktoken>=0.5.0",
+]
+
+google = [
+  "google-generativeai>=0.3.0",
+]
+
+litellm = [
+  "litellm>=1.0.0",
+]
+
+# Experiment tracking and visualization
+tracking = [
+  "wandb>=0.15.0",
+  "livelossplot>=0.5.0",
+]
+
+# Jupyter notebook support
+notebooks = [
+  "ipython>=8.0.0",
+  "jupyter>=1.0.0",
+]
+
+# All optional features (convenience installer)
+all = [
+  "tropt[openai]",
+  "tropt[google]",
+  "tropt[litellm]",
+  "tropt[tracking]",
+  "tropt[notebooks]",
+]
+
+# Development tools
 dev = [
-  # Testing:
-  "pytest",
-  "pytest-cov",
+  # Testing
+  "pytest>=7.0.0",
+  "pytest-cov>=4.0.0",
+
+  # Linting & formatting
+  "ruff>=0.1.0",
+  "pre-commit>=3.0.0",
+
+  # All optional features for comprehensive testing
+  "tropt[all]",
   "litellm[proxy]",
 
-  # Linting:
-  "ruff",
-  "pre-commit",
-
-  # Docs:
-  "sphinx",
-  "sphinx_rtd_theme",
-  "pydata_sphinx_theme",
-  "sphinx-autodoc-typehints",
+  # Documentation
+  "sphinx>=5.0.0",
+  "sphinx_rtd_theme>=1.0.0",
+  "pydata_sphinx_theme>=0.13.0",
+  "sphinx-autodoc-typehints>=1.20.0",
 ]
-# TODO the default pip should not install `evaluate` or `dev`
 
+# Evaluation tools
 evaluate = [
   "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]
