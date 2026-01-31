@@ -37,7 +37,10 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         }
 
     def __call__(
-        self, texts: List[str], text_type: str = None
+        self,
+        texts: List[str],
+        text_type: str = None,
+        return_full_output: bool = False,
     ) -> Float[Tensor, "n_texts d_model"]:
         """
         Generates embeddings for the given texts using the Gemini API.
@@ -81,5 +84,10 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             forward_calls=1,
             forward_samples=len(texts)
         )
+
+        if return_full_output:
+            return dict(
+                output_embeddings=result,
+            )
 
         return result

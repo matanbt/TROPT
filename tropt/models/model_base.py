@@ -89,7 +89,11 @@ class BaseModel(ABC):
 class LMBaseModel(BaseModel):
     """Language model base class."""
 
-    def __call__(self, texts: str | List[str], *args, **kwargs) -> List[str]:
+    def __call__(
+            self,
+            texts: List[str],
+            return_full_output: bool = False,
+            *args, **kwargs) -> List[str] | Dict[str, Any]:
         """Generates text completions for the given input texts."""
         raise NotImplementedError
 
@@ -98,8 +102,10 @@ class EncoderBaseModel(BaseModel):
     """Encoder model base class."""
 
     def __call__(
-        self, texts: str | List[str], *args, **kwargs
-    ) -> Float[Tensor, "n_texts d_model"]:
+        self, texts: List[str],
+        return_full_output: bool = False,
+        *args, **kwargs
+    ) -> Float[Tensor, "n_texts d_model"] | Dict[str, Any]:
         """Generates encoder embeddings for the given input texts."""
         raise NotImplementedError
 

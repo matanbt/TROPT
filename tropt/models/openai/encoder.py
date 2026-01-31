@@ -1,20 +1,21 @@
-from typing import List, Optional, Literal, Any, Tuple
+from typing import Annotated, Any, List, Literal, Optional, Tuple
 
+import numpy as np
 import torch
 from jaxtyping import Float, Int
-from torch import Tensor
 from tenacity import retry, stop_after_attempt, wait_exponential
-import numpy as np
+from torch import Tensor
 from transformers import BatchEncoding
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
+
+from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.models import (
+    BaseTokenizer,
     EncoderBaseModel,
     LossTextAccessMixin,
-    TokenAccessMixin,
-    TokenInputsManager,
     TargetsDict,
     TargetsDictPlus,
-    BaseTokenizer,
+    TokenAccessMixin,
+    TokenInputsManager,
 )
 
 
@@ -282,7 +283,10 @@ class EncoderOpenAIModel(
         stop=stop_after_attempt(5)
     )
     def __call__(
-        self, texts: List[str], **kwargs
+        self,
+        texts: Annotated[List[str], "n_texts"],
+        return_full_output: bool = False,
+        **kwargs
     ) -> Float[Tensor, "n_texts d_model"]:
         """
         Generates embeddings for the given texts using the OpenAI API.
@@ -310,8 +314,13 @@ class EncoderOpenAIModel(
             forward_samples=len(texts)
         )
 
+        if return_full_output:
+            return dict(
+                output_embeddings=result,
+            )
+
         return result
-    
+
     def prepare_token_inputs(
         self,
         texts: List[str],  # n_messages texts

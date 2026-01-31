@@ -8,7 +8,7 @@ from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import DEFAULT_INIT_TRIGGER
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss, LogitBasedLoss
 from tropt.loss.text_loss import InputReadabilityLoss
 
 from .inputs import (
@@ -45,7 +45,7 @@ class TokenAccessMixin(ABC):
             A tuple of (prepared inputs, initial trigger).
         """
         raise NotImplementedError
-    
+
     @property
     @abstractmethod
     def tokenizer(self) -> PreTrainedTokenizer | BaseTokenizer:
@@ -122,7 +122,10 @@ class LossTextAccessMixin(TextAccessMixin):
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"]:
-        """Computes the loss on all candidate string texts."""
+        """
+        Computes the loss on all candidate string texts.
+        This computation is based on the __call__() method of the model, and the information it provides.
+        """
 
         assert isinstance(
             inputs, TextInputsManager
@@ -135,12 +138,19 @@ class LossTextAccessMixin(TextAccessMixin):
         def _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _loss_func):
             if isinstance(_loss_func, EmbeddingBasedLoss):
                 return _loss_func(
-                    _outputs, _curr_targets[_loss_func.TARGET_KEY]
+                    _outputs["output_embeddings"], # TODO support in hf/encoder.py
+                    _curr_targets[_loss_func.TARGET_KEY]
                 )  # shape: (n_candidates,)
-            
+
             if isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
                 return _loss_func(
                     _inputs,
+                )  # shape: (n_candidates,)
+
+            if isinstance(_loss_func, LogitBasedLoss):
+                return _loss_func(
+                    _outputs["generated_response_logits"],
+                    _curr_targets[_loss_func.TARGET_KEY]
                 )  # shape: (n_candidates,)
 
             elif isinstance(_loss_func, CombinedLoss):
@@ -170,10 +180,12 @@ class LossTextAccessMixin(TextAccessMixin):
                 curr_inputs_dict["inputs_texts"],
                 curr_inputs_dict["targets"],
             )
+            curr_inputs_dict["trigger_texts"]
 
             # Forward pass once per message bulk
             outputs = self(
-                curr_texts
+                curr_texts,
+                return_full_output=True,
             )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
 
             # Calculate loss
