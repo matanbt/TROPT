@@ -17,3 +17,10 @@ from .base import (
     SteeringActivationLoss,
     TriggerPerplexityLoss,
 )
+
+from .text_loss import (
+    BinaryLMJudgeLoss,
+
+    # Concrete text losses
+    InputReadabilityLoss,
+)

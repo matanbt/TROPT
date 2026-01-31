@@ -4,7 +4,7 @@ Base definitions, classes, and mixins for targeted text models.
 
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
-from typing import List, Union, Literal, Optional
+from typing import Union, Literal
 import numpy as np
 from transformers import BatchEncoding, PreTrainedTokenizer
 

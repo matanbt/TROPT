@@ -31,6 +31,7 @@ from tropt.models import (
     TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.inputs import SliceKey
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +164,7 @@ class LMHFModel(
     @property
     def tokenizer(self):
         return self._tokenizer
-    
+
     @property
     def device(self):
         return self.model.device
@@ -266,67 +267,61 @@ class LMHFModel(
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
 
-        ## TODO-2 the following logic should call `get_triggered_inputs()` with chosen_message_idx, as multi-message input is not supported here yet! For iplementating this, inspect the shapes returned by `get_triggered_inputs()` in the case of single message input, and adapt the following code accordingly (ie aggregate the required tensors correctly).
-        ## START OF PREPARATION ##
-        # Get the inputs with the candidate triggers inserted
-        inputs_embeds_dict = inputs.get_triggered_inputs(
-            trigger_ids=candidate_trigger_ids
-            # chosen_message_idx=chosen_message_idx,  # TODO see note above
-        )
-        inputs_embeds, attention_mask, slices = (
-            inputs_embeds_dict["inputs_embeds"],
-            inputs_embeds_dict["attention_mask"],
-            inputs_embeds_dict["targets"]["slices"], # n_messages lists of length n_candidates
-        )
-        n_messages, n_candidates = inputs_embeds.shape[:2]
-
-        # Flatten first two dims: (M, C, ...) -> (M*C, ...)
-        inputs_embeds = inputs_embeds.reshape(-1, *inputs_embeds.shape[2:])
-        attention_mask = attention_mask.reshape(-1, *attention_mask.shape[2:])
-
-        ## END OF PREPARATION ##
+        n_messages = inputs.n_messages
+        n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         # Compute the logits (in batches)
         @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
         def _compute_logits_batched(batch_size):
-            n_samples = inputs_embeds.shape[0]
-            logit_chunks = []
+            all_logits = [[] for _ in range(n_messages)]
+            all_slices = [[] for _ in range(n_messages)]
 
-            # Process in chunks
-            for i in range(0, n_samples, batch_size):
-                end_i = min(i + batch_size, n_samples)
-                # Get input batch
-                inp_slice = inputs_embeds[i:end_i]
-                attn_slice = attention_mask[i:end_i] if attention_mask is not None else None
+            for message_idx, cand_idx in itertools.product(
+                range(n_messages),
+                range(0, n_candidates, batch_size),
+            ):
+                cand_idx_end = min(cand_idx + batch_size, n_candidates)
+                batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
+
+                # Get inputs for this specific message
+                inputs_dict = inputs.get_triggered_inputs(
+                    trigger_ids=batch_candidate_trigger_ids,
+                    chosen_message_idx=message_idx,
+                )
+
                 # Forward pass
-                logits_slice = self.model(
-                    inputs_embeds=inp_slice,
-                    attention_mask=attn_slice,
-                ).logits
-                # Collect logits
-                logit_chunks.append(logits_slice)
+                logits_batch = self.model(
+                    **inputs_dict
+                ).logits  # (n_cand_batch, seq_len, vocab_size)
 
-            # 3. Reassemble
-            return torch.cat(logit_chunks, dim=0)
-        logits = _compute_logits_batched()
-        # (n_messages * n_candidates, seq_len, vocab_size)
+                all_logits[message_idx].append(logits_batch)
+                all_slices[message_idx].extend(
+                    inputs_dict["targets"]["slices"]  # list of n_cand_batch dicts
+                )
 
-        # un-flatten (n_messages * n_candidates, ..) -> (n_messages, n_candidates, ..)
-        logits = logits.reshape(n_messages, n_candidates, *logits.shape[1:])
+            # Stack all logits per message
+            logits_per_message = [torch.cat(msg_logits, dim=0) for msg_logits in all_logits]
+            logits = torch.stack(logits_per_message, dim=0)  # (n_messages, n_candidates, seq_len, vocab_size)
+            slices = all_slices
+
+            return logits, slices
+
+        logits, slices = _compute_logits_batched()
+        # (n_messages, n_candidates, seq_len, vocab_size)
 
         if return_trigger_logits_only or return_after_trigger_logits_only:
             # return only the logits for the trigger part
             trigger_logits = torch.zeros(
-                (n_messages, n_candidates, candidate_trigger_ids.shape[1] if return_trigger_logits_only else 1, logits.shape[-1]),
+                (n_messages, n_candidates, (trigger_seq_len if return_trigger_logits_only else 1), logits.shape[-1]),
                 device=logits.device,
             )  # (n_messages, n_candidates, trigger_seq_len, vocab_size)
             for i_message, i_cand in itertools.product(
                 range(n_messages), range(n_candidates)
             ):
-                slc_trigger = slices[i_message][i_cand]["adv"]  # trigger slice for this candidate
+                slc_trigger = slices[i_message][i_cand][SliceKey.TRIGGER]  # trigger slice for this candidate
                 if return_trigger_logits_only:
                     slc = slice(slc_trigger.start - 1, slc_trigger.stop)
-                    assert slc.stop - slc.start == candidate_trigger_ids.shape[1], "Trigger slice length does not match candidate trigger length."
+                    assert slc.stop - slc.start == trigger_seq_len, "Trigger slice length does not match candidate trigger length."
                 else:  # return_after_trigger_logits_only
                     slc = slice(slc_trigger.stop, slc_trigger.stop + 1)
                 trigger_logits[i_message, i_cand] = logits[i_message, i_cand, slc, :]
@@ -373,7 +368,7 @@ class LMHFModel(
             if isinstance(_loss_func, LogitBasedLoss):
                 logits = _outputs.logits
                 response_target_ids = _targets["target_outputs_toks"]  # (bsz, target_seq_len)
-                response_slcs = [slices['appended'] for slices in _targets["slices"]]  # bsz of `slice`
+                response_slcs = [slices[SliceKey.APPENDED] for slices in _targets["slices"]]  # bsz of `slice`
 
                 # Check if slices are aligned across the batch
                 first_slc = response_slcs[0]
@@ -402,7 +397,7 @@ class LMHFModel(
             elif isinstance(_loss_func, TriggerLogitBasedLoss):
                 assert _trigger_ids is not None, "trigger_ids must be provided for TriggerLogitBasedLoss losses."
                 logits = _outputs.logits
-                trigger_slcs = [slices['adv'] for slices in _targets['slices']]  # bsz of `slice`
+                trigger_slcs = [slices[SliceKey.TRIGGER] for slices in _targets['slices']]  # bsz of `slice`
 
                 # Check if slices are aligned across the batch
                 first_slc = trigger_slcs[0]
@@ -475,11 +470,13 @@ class LMHFModel(
         max_new_tokens: int = 128,
         return_full_template: bool = False,
     ) -> List[str]:
-        """Get the embeddings for the given texts."""
-        # TODO this doubles the BOS - resolve!  -> TODO-claude-code -- make sure it's fixed and the logic of the tokenization here works across MULTIPLE modles (eg gemma, qwen, llama, etc)
+        """
+        Generate text completions for the given input texts.
+        """
         assert isinstance(texts, list), "texts must be a string or a list of strings."
 
         # Add chat template and tokenize
+        # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template
         template_tok_ids: List[List[int]] = [
             self.tokenizer.apply_chat_template(
                 [{"role": "user", "content": text}],
@@ -489,7 +486,7 @@ class LMHFModel(
             for text in texts
         ]
 
-        # Use tokenizer's pad method for cleaner handling (avoids double BOS)
+        # Use tokenizer's pad method for consistent padding behavior
         inputs = self.tokenizer.pad(
             {"input_ids": template_tok_ids},
             padding=True,

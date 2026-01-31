@@ -1,17 +1,16 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
-from typing import List, Union, Literal, Optional
-import numpy as np
-from transformers import BatchEncoding, PreTrainedTokenizer
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
+from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
 from tropt.common import DEFAULT_INIT_TRIGGER
+from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.loss.text_loss import InputReadabilityLoss
 
-from .model_base import BaseTokenizer
 from .inputs import (
     BatchedTargetsDict,
     MessageBatchedTargetsDict,
@@ -22,7 +21,7 @@ from .inputs import (
     TokenTrigger,
     TokenTriggerCandidates,
 )
-
+from .model_base import BaseTokenizer
 
 # ====================== Model Mixins =======================
 
@@ -130,15 +129,18 @@ class LossTextAccessMixin(TextAccessMixin):
         ), f"inputs must be of type TextInputsManager, but got {type(inputs)}"
 
         n_messages = inputs.n_messages
-        # n_candidates = len(candidate_trigger_strs)
-        # candidate_triggered_strs: List[List[str]] = inputs.get_triggered_inputs(candidate_trigger_strs)
-
+        n_candidates = len(candidate_trigger_strs)
 
         # Helper function to calculate loss from outputs
-        def _calc_loss_from_outputs(_outputs, _curr_targets, _loss_func):
+        def _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _loss_func):
             if isinstance(_loss_func, EmbeddingBasedLoss):
                 return _loss_func(
                     _outputs, _curr_targets[_loss_func.TARGET_KEY]
+                )  # shape: (n_candidates,)
+            
+            if isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
+                return _loss_func(
+                    _inputs,
                 )  # shape: (n_candidates,)
 
             elif isinstance(_loss_func, CombinedLoss):
@@ -146,7 +148,7 @@ class LossTextAccessMixin(TextAccessMixin):
                 for _nested_loss_func in _loss_func.loss_funcs:
                     # Recursive call
                     child_losses.append(
-                        _calc_loss_from_outputs(_outputs, _curr_targets, _nested_loss_func)
+                        _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _nested_loss_func)
                     )
 
                 # Stack child losses: (n_candidates, n_losses)
@@ -175,7 +177,7 @@ class LossTextAccessMixin(TextAccessMixin):
             )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
 
             # Calculate loss
-            loss = _calc_loss_from_outputs(outputs, curr_targets, loss_func)  # shape: (n_candidates,)
+            loss = _calc_loss_from_outputs(curr_texts, outputs, curr_targets, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)

@@ -82,11 +82,16 @@ Subsequently, the classes of proprietary models, e.g. of `GeminiEncoderModel`, a
 
 Note that, for consistency, we use the following convention to name these access mixins: (a) they start with the value we can access (e.g., the `Loss` in `LossTokenAccessMixin`); this will be the value we will compute (e.g., the loss: `compute_loss_from_tokens()`). (b) They end with the the type of input access (e.g., `TokenAccess` in ``LossTokenAccessMixin`), which will be the input type used in the two methods, and the input type that we will prepare in the first method (e.g., the token inputs in `prepare_token_inputs()`).
 
-<!-- TODO-claude-code be more specific on the naming conventions; e.g.:
-1. Create mixin following naming convention: `{Value}{InputType}AccessMixin`
-2. Implement two methods: `prepare_{input_type}_inputs()` and `compute_{value}_from_{input_type}()`
-3. Update model classes to include the mixin where appropriate
- -->
+**Specific naming conventions for creating new access mixins:**
+1. **Mixin class name**: Follow the pattern `{Value}{InputType}AccessMixin`
+   - `{Value}`: The output value that can be computed (Loss, Gradient, Logits, etc.)
+   - `{InputType}`: The input type accepted (Token, Text, etc.)
+   - Example: `LossTokenAccessMixin` computes loss from token inputs
+2. **Required methods** (all access mixins must implement exactly two methods):
+   - `prepare_{input_type}_inputs()`: Prepares and validates input data in the specified format
+   - `compute_{value}_from_{input_type}()`: Computes the value using the prepared inputs
+   - Example: `prepare_token_inputs()` and `compute_loss_from_tokens()`
+3. **Model integration**: Update model classes to inherit the mixin where the model's capabilities match the access level
 
 Also note that some models may have token input access, despite having limited loss access (e.g., a black-box proprietary model that accepts input tokens).
 

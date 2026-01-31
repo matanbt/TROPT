@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 import torch
@@ -6,6 +7,63 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+
+# ======================= Slice Keys Enum =======================
+
+class SliceKey(str, Enum):
+    """
+    Enum for standardized slice keys used in input embeddings.
+
+    These slices mark different regions in the tokenized input sequence:
+    - INPUT_BEFORE: Tokens before the trigger (formerly 'chat_template_before')
+    - TRIGGER: The optimized trigger tokens (formerly 'adv')
+    - INPUT_AFTER: Tokens after the trigger in the template (formerly 'chat_template_after')
+    - INPUT_LAST_TOKEN: The last token of the input sequence (formerly 'last_input_token')
+    - APPENDED: Optional tokens appended at the end (e.g., target outputs for LMs)
+    """
+    TRIGGER = "trigger"  # The optimized trigger tokens
+    INPUT_BEFORE = "input_before"  # Tokens before the trigger
+    INPUT_AFTER = "input_after"  # Tokens after the trigger
+    INPUT_LAST_TOKEN = "input_last_token"  # Last input token
+    APPENDED = "appended"  # Appended tokens (if any); a.k.a. prefilled tokens
+
+
+class TargetKey(str, Enum):
+    """
+    Enum for standardized target entry keys used in TargetsDict.
+
+    These keys identify different types of target data used by loss functions:
+
+    - TARGET_OUTPUTS: Raw text target outputs (List[str])
+      Format: List of strings, one per message
+      Shape: n_messages strings
+      Used by: Language models for target matching
+
+    - TARGET_OUTPUTS_TOKS: Tokenized target outputs (List[Tensor] or Tensor)
+      Format: List of token ID tensors or batched tensor
+      Shape: List of (target_seq_len,) or (n_messages, target_seq_len)
+      Used by: Language models for computing cross-entropy loss
+
+    - TARGET_VECTORS: Target embedding vectors (Tensor)
+      Format: Dense embedding vectors
+      Shape: (n_messages, d_model)
+      Used by: Encoder models for similarity-based losses
+
+    - TARGET_DIRECTIONS: Target directions in activation space (Tensor)
+      Format: Direction vectors for activation steering
+      Shape: (n_messages, d_model) or (n_messages, n_layers, d_model)
+      Used by: Steering losses (e.g., representation engineering)
+
+    - SLICES: Slice information for input regions (List[List[Dict]])
+      Format: Nested list of slice dictionaries
+      Shape: n_messages lists dicts
+      Used by: Internal bookkeeping for token position tracking
+    """
+    TARGET_OUTPUTS = "target_outputs"
+    TARGET_OUTPUTS_TOKS = "target_outputs_toks"
+    TARGET_VECTORS = "target_vectors"
+    TARGET_DIRECTIONS = "target_directions"
+    SLICES = "slices"
 
 # ======================= Common input types =======================
 TokenTrigger = Float[Tensor, "1 trigger_seq_len"]

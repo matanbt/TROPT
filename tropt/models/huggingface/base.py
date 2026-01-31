@@ -20,6 +20,7 @@ from tropt.models import (
     TargetsDictPlus,
     TokenInputsManager,
 )
+from tropt.models.inputs import SliceKey
 
 logger = logging.getLogger(__name__)
 
@@ -112,6 +113,8 @@ class _HFTokenInputsManager(TokenInputsManager):
                 prefix_cache.append(curr_prefix)
 
         self.prefix_cache = prefix_cache if use_prefix_cache else None
+        # Memory for formatted prefix cache kwargs, keyed by (batch_size, message_idx)
+        self._prefix_cache_kwargs_mem: dict = {}
 
     @property
     def vocab_size(self):
@@ -154,209 +157,121 @@ class _HFTokenInputsManager(TokenInputsManager):
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
         append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_messages
         chosen_message_idx: Optional[int] = None,
-    ) -> dict[str, Tensor | BatchedTargetsDict | MessageBatchedTargetsDict]:
+    ) -> dict[str, Tensor | MessageBatchedTargetsDict]:
         """
-        Returns the input embeddings with the given trigger merged in. That is, a dict,
-        including `inputs_embeds` of shape (n_messages, n_candidates, seq_len, embd_dim).
+        Returns the input embeddings with the given trigger merged in for a specific message.
 
-        Notes:
-        (I) Note that for specific use cases, the following method can be optimized; however,
+        Notes: 
+        - We do not support varying trigger lengths in the same candidate batch
+        (they must share `trigger_seq_len`).
+        - for specific use cases, the following method can be optimized; however,
             currently generality and support for different input types/shapes are prioritized.
-        (II) We do not support varying trigger lengths in the same candidate batch (they must
-             share `trigger_seq_len`).
 
         Args:
             trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
-                the token ids of the trigger(s) to insert. If trigger_embeds is also provided,
-                this is used only for reference only.
+                the token ids of the trigger(s) to insert.
+                If trigger_embeds is also provided, this is used for reference only.
             trigger_embeds: Tensor, shape = (n_candidates, trigger_seq_len, embd_dim)
                 an optional alternative to `trigger_ids`, where the trigger embeddings
                 are provided directly (useful for gradient computation).
                 If provided, it is used for input computation instead of `trigger_ids`.
-            include_after: bool
-                whether to include the after sequence (useful for some attacks calculating the trigger logits)
             append_embeds: n_messages-long List of tensors, each of shape = (n_app_ids, embd_dim)
                 optional embeddings to append at the end of each message (e.g., for planting response in LMs)
-            batch_slice: slice
-                slice to apply on the n_candidates dimension for batching
-            chosen_message_idx: Optional[int]
-                if provided, selects only the given message (useful for batching); if None, all messages are returned.
+            chosen_message_idx: int (required)
+                the index of the message to process. Must be provided; multi-message is not supported by this method.
 
         Returns:
             dict with keys:
-                - inputs_embeds: Tensor, shape = (n_messages, n_candidates, seq_len, embd_dim)
-                    the input embeddings with the trigger merged in; padded to the same length, if needed;
-                    shape depends on `batch_slice`/`chosen_message_idx` options.
-                - attention_mask: Tensor, shape = (n_messages, n_candidates, seq_len)
-                    the attention mask matching the input embeddings;
-                    shape depends on `batch_slice`/`chosen_message_idx` options.
-                - targets: BatchedTargetsDict | MessageBatchedTargetsDict
-                    the targets dict, expanded to match the n_candidates dimension;
-                    inclusion of all the n_messages depends on `chosen_message_idx` option.
+                - inputs_embeds: Tensor, shape = (n_candidates, seq_len, embd_dim)
+                    the input embeddings with the trigger merged in
+                - attention_mask: Tensor, shape = (n_candidates, seq_len)
+                    the attention mask matching the input embeddings
+                - targets: MessageBatchedTargetsDict
+                    the targets dict for the chosen message, expanded to match n_candidates dimension
         """
-        # TODO-1 can optionally simplify the flow (and possible shapes), allow
-        #   this function only to handle a specific message_idx at a time
-        #   (i.e., `assert chosen_message_idx is not None`);
-        #   requires to clean multi-message callers.
-        #   this should simplify the flow here, and make it more readable.
         assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
+        assert chosen_message_idx is not None, "`chosen_message_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
+        # TODO re-read and test this critical code
 
         if trigger_embeds is None:
             # embed the trigger-ids, if trigger embeddings are not provided
             trigger_embeds = self.embed_func(trigger_ids)
 
-        # add message dim to triggers -> (curr_n_messages, n_candidates, trigger_seq_len, embd_dim)
-        messages = [chosen_message_idx] if chosen_message_idx is not None else range(self.n_messages)
-        curr_n_messages = len(messages)
-        trigger_embeds = trigger_embeds.unsqueeze(0).repeat(curr_n_messages, 1, 1, 1)
-        n_candidates = trigger_embeds.shape[1]
+        n_candidates = trigger_embeds.shape[0]
+        message_idx = chosen_message_idx
 
-        if curr_n_messages > 1 and self.use_prefix_cache:
-            raise ValueError("Prefix cache with multiple messages is not supported. Either call `get_triggered_inputs()` with a single message, or disable prefix cache.")
-
-        ## Construct the parts of the inputs:
-        inputs_embeds_lst_parts: List[
-            List[Float[Tensor, "n_candidates part_len embd_dim"]]
-        ] = [ [] for _ in messages ]
-        attention_mask_lst_parts: List[
-            List[Float[Tensor, "n_candidates part_len"]]
-        ] = [ [] for _ in messages ]
-        # keep track of the slices of each part, per message
-        slices: List[dict[str, slice]] = []
-
-        # we iterate over messages here, as we may have different lengths for each message
-        for i, message_idx in enumerate(messages):
-            curr_before, curr_trigger, curr_after, curr_append = (
-                 # seq, emb -> n_candidates, seq, embd
-                self.before_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1),
-                trigger_embeds[i],
-                self.after_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1),
-                (
-                    append_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
-                    if append_embeds is not None
-                    else None
-                ),
-            )
-
-            # concatenate all parts:
-            curr_embeds, curr_attns = [], []
-
-            if not self.use_prefix_cache:
-                # only add 'before' part if not using prefix cache
-                curr_embeds.append(curr_before)
-            # as required, we add 'before' part attention even with prefix cache
-            curr_attns.append(torch.ones((n_candidates, curr_before.shape[-2])))
-
-            curr_embeds.extend([curr_trigger, curr_after])
-            curr_attns.extend([
-                torch.ones((n_candidates, curr_trigger.shape[-2])),
-                torch.ones((n_candidates, curr_after.shape[-2])),
-            ])
-            if append_embeds is not None:
-                curr_embeds.append(curr_append)
-                curr_attns.append(torch.ones((n_candidates, curr_append.shape[-2])))
-
-            inputs_embeds_lst_parts[i] = curr_embeds
-            attention_mask_lst_parts[i] = curr_attns
-
-            # Since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
-            # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
-            before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
-            # TODO-claude-code: better practice for naming these slices?
-            curr_slices = dict(  # TODO use some enum for these slices names?
-                adv=slice(  # TODO rename to `trigger`?
-                    before_offset,
-                    before_offset + curr_trigger.shape[-2],
-                ),
-                chat_template_after=slice(  # TODO rename to `input_after`?
-                    # TODO this is currently only correct for LMs and suffix attacks (otherwise there might be more token in the "curr_after" other than the chat ones)-- need to generalize!
-                    before_offset + curr_trigger.shape[-2],
-                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],  # noqa
-                ),
-                last_input_token=slice(  # TODO rename to `input_last_token`?
-                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] - 1,
-                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
-                ),
-                appended=slice(
-                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
-                    before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] + curr_append.shape[-2],  # noqa
-                ) if curr_append is not None else None,
-            )
-            slices.append(curr_slices)
-
-        ## Add padding if needed, while matching the attention mask
-        inputs_embeds_lst: List[Float[Tensor, "n_candidates seq_len embd_dim"]] = []
-        attention_mask_lst: List[Float[Tensor, "n_candidates seq_len"]] = []
-        max_seq_len = max(
-            sum(part.shape[-2] for part in parts) for parts in inputs_embeds_lst_parts
+        ## Construct the parts of the input for this message:
+        curr_before = self.before_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_trigger = trigger_embeds
+        curr_after = self.after_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_append = (
+            append_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+            if append_embeds is not None
+            else None
         )
-        for i, message_idx in enumerate(messages):
-            curr_embeds = inputs_embeds_lst_parts[i]
-            curr_embeds_len = sum(part.shape[-2] for part in curr_embeds)
-            curr_attention_mask = torch.cat(attention_mask_lst_parts[i], dim=-1)
-            curr_attention_mask = curr_attention_mask.to(self.device, torch.int64)
 
-            # pad to max_seq_len, according to padding_side
-            if curr_embeds_len < max_seq_len:
-                pad_len = max_seq_len - curr_embeds_len
-                pad_embeds = self.pad_token_embeds.unsqueeze(0).repeat(
-                    n_candidates, pad_len, 1
-                )  # (1, embd_dim) -> (n_candidates, pad_len, embd_dim)
-                if self.padding_side == "right":
-                    curr_embeds.append(pad_embeds)
-                    curr_attention_mask = torch.cat(
-                        [
-                            curr_attention_mask,
-                            torch.zeros((n_candidates, pad_len), device=self.device, dtype=torch.int64),  # noqa
-                        ],
-                        dim=-1,
-                    )
-                else:  # left padding
-                    if self.use_prefix_cache:
-                        raise ValueError("Active left padding with prefix cache is not supported. Either use input that does " \
-                        "not require padding, or disable prefix cache.")
-                    curr_embeds = [pad_embeds] + curr_embeds
-                    curr_attention_mask = torch.cat(
-                        [
-                            torch.zeros((n_candidates, pad_len), device=self.device, dtype=torch.int64),  # noqa
-                            curr_attention_mask,
-                        ],
-                        dim=-1,
-                    )
-                    # also need to shift the slices
-                    slices[i] = {
-                        k: slice(v.start + pad_len, v.stop + pad_len)
-                        for k, v in slices[i].items()
-                    }
+        # Build embeddings and attention mask
+        embeds_parts = []
+        attn_parts = []
 
-            inputs_embeds_lst.append(
-                torch.cat(curr_embeds, dim=-2)
-            )  # cat on seq length dim
-            attention_mask_lst.append(curr_attention_mask)
+        if not self.use_prefix_cache:
+            # only add 'before' part if not using prefix cache
+            embeds_parts.append(curr_before)
+        # always add 'before' part attention (even with prefix cache)
+        attn_parts.append(torch.ones((n_candidates, curr_before.shape[-2])))
 
-        inputs_embeds = torch.stack(
-            inputs_embeds_lst, dim=0
-        )  # (curr_n_messages, n_candidates, seq_len, embd_dim)
-        attention_mask = torch.stack(
-            attention_mask_lst, dim=0
-        )  # (curr_n_messages, n_candidates, seq_len)
+        embeds_parts.extend([curr_trigger, curr_after])
+        attn_parts.extend([
+            torch.ones((n_candidates, curr_trigger.shape[-2])),
+            torch.ones((n_candidates, curr_after.shape[-2])),
+        ])
 
-        ## expand slices for candidates
-        slices = [[msg_slices] * n_candidates for msg_slices in slices]
+        if curr_append is not None:
+            embeds_parts.append(curr_append)
+            attn_parts.append(torch.ones((n_candidates, curr_append.shape[-2])))
 
-        ## If a message is selected, squeeze the message dim
-        if chosen_message_idx is not None:
-            inputs_embeds = inputs_embeds.squeeze(0)
-            attention_mask = attention_mask.squeeze(0)
-            slices = slices[0]
+        # Concatenate parts
+        inputs_embeds = torch.cat(embeds_parts, dim=-2)  # (n_candidates, seq_len, embd_dim)
+        attention_mask = torch.cat(attn_parts, dim=-1)  # (n_candidates, seq_len)
+        attention_mask = attention_mask.to(self.device, torch.int64)
 
-        ## Also prepare the targets repeated for each candidate, if any
+        # Calculate slices for different regions
+        # Since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
+        # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
+        before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
+
+        msg_slices = {
+            SliceKey.INPUT_BEFORE: slice(
+                0,
+                before_offset,
+            ),
+            SliceKey.TRIGGER: slice(
+                before_offset,
+                before_offset + curr_trigger.shape[-2],
+            ),
+            SliceKey.INPUT_AFTER: slice(
+                before_offset + curr_trigger.shape[-2],
+                before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
+            ),
+            SliceKey.INPUT_LAST_TOKEN: slice(
+                before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] - 1,
+                before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
+            ),
+            SliceKey.APPENDED: slice(
+                before_offset + curr_trigger.shape[-2] + curr_after.shape[-2],
+                before_offset + curr_trigger.shape[-2] + curr_after.shape[-2] + curr_append.shape[-2],
+            ) if curr_append is not None else None,
+        }
+
+        # Expand slices for all candidates (same slices for each candidate)
+        slices = [msg_slices] * n_candidates
+
+        ## Prepare the targets repeated for each candidate
         targets: TargetsDictPlus = self.targets.copy()
         targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-        if chosen_message_idx is not None:
-            targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
-                targets, chosen_message_idx
-            )
+        targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
+            targets, chosen_message_idx
+        )
 
         # add the slices info for loss computation
         targets['slices'] = slices
@@ -381,41 +296,53 @@ class _HFTokenInputsManager(TokenInputsManager):
         self, batch_size: int = 1, message_idx: int = None
     ) -> List[Dict[str, transformers.DynamicCache | bool]] | Dict[str, transformers.DynamicCache | bool]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
-        # TODO-3 optimization: keep a dict of these for different batch sizes & messages, to avoid recomputing them every time; make sure these are saved in the CPU, and we will move them to the model device on use.
-
         if not self.use_prefix_cache:
             return dict()
 
-        curr_prefix_caches = []
-        messages = [message_idx] if message_idx is not None else range(self.n_messages)
         if message_idx is None:
-            # TODO to support multi-message with prefix cache, we need to make sure it's well-defined as the model input
-            raise ValueError("Prefix cache without specific message_idx is not supported yet.")
+            raise ValueError("Prefix cache without specific message_idx is not supported.")
 
-        for message_idx in messages:
-            # Retrieve the cache for this specific message
-            past_key_values = self.prefix_cache[message_idx]
-            # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
-
-            if batch_size != 1:
-                batch_prefix_cache = []
-                for k, v in past_key_values:
-                    # Expand batch dimension
-                    k = k.expand(batch_size, -1, -1, -1)
-                    v = v.expand(batch_size, -1, -1, -1)
-                    batch_prefix_cache.append((k, v))
-                past_key_values = tuple(batch_prefix_cache)
-
-            past_key_values = transformers.DynamicCache.from_legacy_cache(past_key_values)
-
-            curr_prefix_caches.append(dict(
+        # Check memory first
+        mem_key = (batch_size, message_idx)
+        if mem_key in self._prefix_cache_kwargs_mem:
+            # Retrieve from memory (stored as legacy tuple on CPU) and convert/move to device
+            saved_kv = self._prefix_cache_kwargs_mem[mem_key]
+            # Move tensors to device
+            saved_kv = tuple(
+                (k.to(self.device), v.to(self.device)) for k, v in saved_kv
+            )
+            past_key_values = transformers.DynamicCache.from_legacy_cache(saved_kv)
+            return dict(
                 past_key_values=past_key_values,
                 use_cache=True,
-            ))
+            )
 
-        if message_idx is not None:
-            return curr_prefix_caches[0]
-        return curr_prefix_caches
+        # Compute if not in memory
+        past_key_values = self.prefix_cache[message_idx]
+        # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
+
+        if batch_size != 1:
+            batch_prefix_cache = []
+            for k, v in past_key_values:
+                # Expand batch dimension
+                k = k.expand(batch_size, -1, -1, -1)
+                v = v.expand(batch_size, -1, -1, -1)
+                batch_prefix_cache.append((k, v))
+            past_key_values = tuple(batch_prefix_cache)
+
+        # Store in memory on CPU as legacy format (tuple of tensors)
+        # This avoids issues with DynamicCache not having a .to() method
+        cache_cpu = tuple(
+            (k.cpu(), v.cpu()) for k, v in past_key_values
+        )
+        self._prefix_cache_kwargs_mem[mem_key] = cache_cpu
+
+        # Convert to DynamicCache and return with values on device
+        past_key_values = transformers.DynamicCache.from_legacy_cache(past_key_values)
+        return dict(
+            past_key_values=past_key_values,
+            use_cache=True,
+        )
 
 
 # ======================= Model logic =======================
@@ -656,37 +583,37 @@ class _HuggingFaceModelMixins:
         """
         raise NotImplementedError("_loss_hook must be implemented in subclasses.")
 
-    @staticmethod
-    def cast_to_model_tokenizer(
-        old_ids: Float[Tensor, "bsz seq_len"],
-        model_from: "_HuggingFaceModelMixins",
-        model_to: "_HuggingFaceModelMixins",
-    ):
-        """
-        Given `ids` in the `model_from` tokenizer, heurisically casts them to the
-        `model_to` tokenizer, while filtering out mismatches.
-        """
-        # a. decode w/ util-model tokenizer
-        strs = model_from.tokenizer.batch_decode(old_ids)
+    # @staticmethod
+    # def cast_to_model_tokenizer(
+    #     old_ids: Float[Tensor, "bsz seq_len"],
+    #     model_from: "_HuggingFaceModelMixins",
+    #     model_to: "_HuggingFaceModelMixins",
+    # ):
+    #     """
+    #     Given `ids` in the `model_from` tokenizer, heurisically casts them to the
+    #     `model_to` tokenizer, while filtering out mismatches.
+    #     """
+    #     # a. decode w/ util-model tokenizer
+    #     strs = model_from.tokenizer.batch_decode(old_ids)
 
-        # b. encode w/ model tokenizer
-        new_ids = [
-            model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
-            .to(model_to.device)
-            .squeeze(0)
-            for s in strs
-        ]
+    #     # b. encode w/ model tokenizer
+    #     new_ids = [
+    #         model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
+    #         .to(model_to.device)
+    #         .squeeze(0)
+    #         for s in strs
+    #     ]
 
-        # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
-        lengths = [ids.shape[-1] for ids in new_ids]
-        counts = np.bincount(lengths)
-        _min_len = np.argmax(counts)  # so most ids will be kept as fully
-        # smaller than min -> drop
-        to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
-        old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
-        new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
-        # longer than min -> trim
-        new_ids = [ids[..., :_min_len] for ids in new_ids]
-        new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
+    #     # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
+    #     lengths = [ids.shape[-1] for ids in new_ids]
+    #     counts = np.bincount(lengths)
+    #     _min_len = np.argmax(counts)  # so most ids will be kept as fully
+    #     # smaller than min -> drop
+    #     to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
+    #     old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
+    #     new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
+    #     # longer than min -> trim
+    #     new_ids = [ids[..., :_min_len] for ids in new_ids]
+    #     new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
 
-        return old_ids, new_ids.to(model_to.device, torch.int64)
+    #     return old_ids, new_ids.to(model_to.device, torch.int64)
