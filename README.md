@@ -80,7 +80,8 @@ TROPT is designed as a **factory for new optimizers**. Write custom search algor
 **Getting started:** It is recommended to build on existing optimizer code (see `tropt/optimizer/`) rather than from scratch, to follow the package's best practices.
 Once implemented following the package's guidelines, the optimizer automatically works across all compatible models and losses through the generic model/loss abstractions.
 
-**Contributing:** Researchers who develop new optimizers and want to make their work reproducible and comparable are strongly encouraged to contribute. Submit a PR to add the optimizer to the repo and make it available to the community.
+**Contributing:** Researchers who develop new optimizers and want to make their work reproducible and comparable are strongly encouraged to contribute. Submit a PR to add the optimizer to the repo and make it available to the community, enabling future research to build upon and benchmark against the work.
+
 
 ## Development
 
