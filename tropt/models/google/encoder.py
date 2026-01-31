@@ -1,7 +1,6 @@
 from typing import List
 
 import torch
-from google import genai
 from jaxtyping import Float
 from torch import Tensor
 
@@ -24,6 +23,9 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             model_name: The name of the Gemini embedding model to use.
             d_model: The dimensionality of the embeddings (e.g., 768, 3072).
         """
+        # Import google.genai only when instantiating (optional dependency)
+        from google import genai
+
         # os.environ["GOOGLE_API_KEY"] = ...  # required to be set externally
 
         self.client = genai.Client()
@@ -53,6 +55,8 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             "query",
         ), f"Unsupported text_type {text_type}"
         task_type = self.text_to_task_type.get(text_type, None)
+
+        import google.genai as genai  # optional dependency
 
         result = self.client.models.embed_content(
             contents=texts,
