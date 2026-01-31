@@ -27,35 +27,25 @@ It supports any optimization approach that minimizes a quantifiable objective by
 
 ## Installation
 
-### Basic Installation
-
 Install the core package (includes HuggingFace model support):
 
 ```bash
+# Install the core package dependencies:
 pip install tropt
+```
 
-# Or install all dependencies:
+It is possible to manually choose the desired optional dependencies (e.g., model integrations, tracking), for example for only adding OpenAI support:
+
+```bash
+pip install tropt[openai]
+```
+
+Alternatively, it is possible to install all optional dependencies at once:
+
+```bash
 pip install tropt[all]
 ```
 
-### Optional Features
-
-You may install additional dependencies for specific features, such as model support (e.g., OpenAI), and integration with common trackers (e.g., Wandb). These are already included if you install with the `[all]` extra.
-
-```bash
-# OpenAI models (GPT, embeddings)
-pip install tropt[openai]
-
-# Google models (Gemini)
-pip install tropt[google]
-
-# LiteLLM proxy support
-pip install tropt[litellm]
-
-# Experiment tracking (Weights & Biases)
-pip install tropt[tracking]
-
-```
 
 ### Development Installation
 

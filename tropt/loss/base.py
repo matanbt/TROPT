@@ -30,7 +30,10 @@ class BaseLoss(ABC):
 ############################
 @dataclass
 class LogitBasedLoss(BaseLoss):
-    """Loss is computed based on model output logits."""
+    """
+    Loss is computed based on model output logits.
+    These losses required target tokens (i.e. `target_outputs_toks`); commonly automatically derived from `target_outputs` strings.
+    """
 
     TARGET_KEY: str = "target_outputs_toks"
 

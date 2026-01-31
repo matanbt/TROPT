@@ -74,7 +74,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         self._update_usage_stats(
             forward_calls=1,
             forward_samples=len(texts)
-            # TODO get total tokens
+            # TODO get total tokens [TODO-CLAUDE-CODE]
         )
 
         return result

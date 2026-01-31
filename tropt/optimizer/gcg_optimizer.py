@@ -6,7 +6,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
+from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -33,7 +33,7 @@ class GCGOptimizer(BaseOptimizer):
         self,
         model: BaseModel,
         loss: BaseLoss,
-        tracker: Optional[BaseTracker] = None,  # TODO tracker should be required initialized per RUN not per optimizer!
+        tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 500,

@@ -65,10 +65,6 @@ class LMHFTokenInputsManager(_HFTokenInputsManager):
 
 # ======================= Model logic =======================
 
-# Some models (e.g., gemma) require eager attention to enable some losses  # TODO should decouple such exceptions / let user control/override them
-MODELS_TO_EAGER_ATTENTION = ["gemma"]
-
-
 class LMHFModel(
     LMBaseModel,
     # adds implementation of common HF model methods
@@ -88,16 +84,16 @@ class LMHFModel(
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 32,
         # more args:
-        use_prefix_cache: bool = True,  # TODO make sure this works as intended
+        use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
+        use_eager_attention: bool = False,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
         self.model_name = model_name
         self.forward_pass_batch_size = forward_pass_batch_size
         self.backward_pass_batch_size = backward_pass_batch_size
 
-        if any(m in model_name.lower() for m in MODELS_TO_EAGER_ATTENTION):
-            # TODO this sub-optimal option should be triggered only if an attention-based loss is used
+        if use_eager_attention:
             # required for to support attention-based losses
             model_kwargs["attn_implementation"] = "eager"
             logger.info(
@@ -186,10 +182,7 @@ class LMHFModel(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
-        assert isinstance(texts, list), "texts must be a string or a list of strings."
-        n_messages = len(texts)
-        targets = TargetsDictPlus(targets, n_messages=n_messages)
-
+        assert isinstance(texts, list) and all(isinstance(t, str) for t in texts), "texts must be a string or a list of strings."
         assert all(
             [t.count(OPTIMIZED_TRIGGER_PLACEHOLDER) == 1 for t in texts]
         ), f"`texts` must contain the `{OPTIMIZED_TRIGGER_PLACEHOLDER}` placeholder."
@@ -273,10 +266,12 @@ class LMHFModel(
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
 
+        ## TODO-2 the following logic should call `get_triggered_inputs()` with chosen_message_idx, as multi-message input is not supported here yet! For iplementating this, inspect the shapes returned by `get_triggered_inputs()` in the case of single message input, and adapt the following code accordingly (ie aggregate the required tensors correctly).
+        ## START OF PREPARATION ##
         # Get the inputs with the candidate triggers inserted
         inputs_embeds_dict = inputs.get_triggered_inputs(
             trigger_ids=candidate_trigger_ids
-            # TODO: choose get input per message
+            # chosen_message_idx=chosen_message_idx,  # TODO see note above
         )
         inputs_embeds, attention_mask, slices = (
             inputs_embeds_dict["inputs_embeds"],
@@ -288,6 +283,8 @@ class LMHFModel(
         # Flatten first two dims: (M, C, ...) -> (M*C, ...)
         inputs_embeds = inputs_embeds.reshape(-1, *inputs_embeds.shape[2:])
         attention_mask = attention_mask.reshape(-1, *attention_mask.shape[2:])
+
+        ## END OF PREPARATION ##
 
         # Compute the logits (in batches)
         @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
@@ -328,10 +325,12 @@ class LMHFModel(
             ):
                 slc_trigger = slices[i_message][i_cand]["adv"]  # trigger slice for this candidate
                 if return_trigger_logits_only:
-                    slc = slc_trigger
+                    slc = slice(slc_trigger.start - 1, slc_trigger.stop)
+                    assert slc.stop - slc.start == candidate_trigger_ids.shape[1], "Trigger slice length does not match candidate trigger length."
                 else:  # return_after_trigger_logits_only
                     slc = slice(slc_trigger.stop, slc_trigger.stop + 1)
                 trigger_logits[i_message, i_cand] = logits[i_message, i_cand, slc, :]
+                assert trigger_logits.shape[2] == slc.stop - slc.start, "Extracted trigger logits length does not match expected length."
             logits = trigger_logits
 
         if not keep_message_dim:
@@ -357,6 +356,11 @@ class LMHFModel(
         """
         Hook for computing the loss on the given inputs, which are for *specific message* (for the inputs to be aligned).
         """
+        if loss_func.contains_loss_type(AttentionBasedLoss) and self.model.config._attn_implementation != "eager":
+            logger.warning(
+                "AttentionBasedLoss is used but the model is not using eager attention. "
+                "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
+            )
         outputs = self.model(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -389,22 +393,6 @@ class LMHFModel(
                 end_idx = first_slc.stop - 1
                 response_logits = logits[:, start_idx:end_idx, :]
 
-                ## [DISABLED] Currently not supported: variable-length target sequences (as we calculate loss per message)
-                ## Otherwise, we fallback to padding of the variable lengths
-                # if not are_slcs_aligned:
-                # response_logits = [
-                #     logits[i, response_slcs[i].start - 1 : response_slcs[i].stop - 1, :]
-                #     for i in range(logits.shape[0])
-                # ]  # bsz of (target_seq_len[i], vocab_size)
-                # # Pad logits to the same length
-                # response_logits = pad_sequence(
-                #     response_logits, batch_first=True, padding_value=0.0
-                # )
-                # # Pad targets and place -100 where we have padding (to ignore in loss)
-                # response_target_ids = pad_sequence(
-                #     response_target_ids, batch_first=True, padding_value=-100
-                # )
-
                 # Compute loss
                 loss = _loss_func(
                     response_logits,
@@ -436,7 +424,6 @@ class LMHFModel(
                     trigger_logits,
                     _trigger_ids,
                 )  # shape: (bsz,)
-                # print("trigger", loss.mean().item())  # TODO make sure it's good
 
             elif isinstance(_loss_func, AttentionBasedLoss):
                 attentions = torch.stack(
@@ -489,7 +476,7 @@ class LMHFModel(
         return_full_template: bool = False,
     ) -> List[str]:
         """Get the embeddings for the given texts."""
-        # TODO this doubles the BOS - resolve!
+        # TODO this doubles the BOS - resolve!  -> TODO-claude-code -- make sure it's fixed and the logic of the tokenization here works across MULTIPLE modles (eg gemma, qwen, llama, etc)
         assert isinstance(texts, list), "texts must be a string or a list of strings."
 
         # Add chat template and tokenize

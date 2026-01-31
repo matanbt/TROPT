@@ -41,6 +41,7 @@ class BaseTracker(ABC):
         """Closes the tracker and performs any necessary cleanup."""
         pass
 
+
 class DummyTracker(BaseTracker):
     def __init__(
         self,
@@ -56,6 +57,7 @@ class DummyTracker(BaseTracker):
         pass
 
 # TODO decouple the tracker to separate modules
+
 
 class JSONTracker(BaseTracker):
     def __init__(
@@ -78,7 +80,6 @@ class JSONTracker(BaseTracker):
     def finish(self):
         with open(self.log_file_path, "w") as f:
             json.dump(self.log_data, f, indent=4)
-
 
 
 class WandbTracker(BaseTracker):
@@ -115,7 +116,7 @@ class WandbTracker(BaseTracker):
     def finish(self):
         wandb.finish()
 
-# TODO Add HF's trackio
+# TODO Add HF's trackio integration
 
 class LiveLossPlotTracker(BaseTracker):
     def __init__(
@@ -142,4 +143,3 @@ class LiveLossPlotTracker(BaseTracker):
 
     def finish(self):
         pass
-    

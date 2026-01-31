@@ -46,14 +46,7 @@ def run_rasliteplus(
         )  # or any black-box-access encoder model
         device = model.device
 
-    util_lm = None
-    # util_lm = LMHFModel(
-    #     model_name=util_lm_name,
-    #     device=device,
-    #     use_prefix_cache=False,
-    # )  # TODO replace with tokenizer only model (for "random logits")
-
-    # assert isinstance(model, TextAccessMixin) and (util_lm is None or isinstance(util_lm, TokenAccessMixin))
+    util_lm = None  # we dont use logits
 
     target_vector = model(["paris is the capital of france. It is also known for the Eiffel Tower, its art, culture, and history."])
 
