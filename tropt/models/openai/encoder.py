@@ -2,10 +2,8 @@ from typing import List, Optional, Literal, Any, Tuple
 
 import torch
 from jaxtyping import Float, Int
-from openai import OpenAI
 from torch import Tensor
 from tenacity import retry, stop_after_attempt, wait_exponential
-import tiktoken
 import numpy as np
 from transformers import BatchEncoding
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
@@ -30,6 +28,9 @@ class OpenAITokenizer(BaseTokenizer):
     A wrapper around OpenAI's tokenizer that mimics the HuggingFace interface.
     """
     def __init__(self, model_name: str) -> None:
+        # Import tiktoken only when instantiating (optional dependency)
+        import tiktoken
+
         # Get the tokeniser corresponding to a specific model in the OpenAI API
         try:
             self._encoding = tiktoken.encoding_for_model(model_name)
@@ -246,6 +247,9 @@ class EncoderOpenAIModel(
             api_key: The OpenAI API key. If None, it will be read from the OPENAI_API_KEY environment variable.
             base_url: Optional base URL for the OpenAI client. If None, the default OpenAI API URL is used.
         """
+        # Import openai only when instantiating (optional dependency)
+        from openai import OpenAI
+
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
 
