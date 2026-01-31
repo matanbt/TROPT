@@ -71,7 +71,11 @@ For advanced research, you can construct the optimization pipeline manually. Thi
 
 ### 🫴 Via Manual Composition
 
-For maximal flexibility, manually compose components (Model, Loss, Optimizer) in Python. You can use existing components or write your own—the backend handles the complex infrastructure (gradients, tokenization, library integration) so custom optimizers focus on pure search logic. See `guide.ipynb` for comprehensive examples covering all features (multi-instruction, encoders, combined losses, activation steering, and custom components).
+While Attack Zoo provides predefined attacks for convenience, you can also manually compose the optimization pipeline for greater flexibility.
+This allow you to choose what model you would like to target, what loss function to optimize against, and what specifitc optimization strategy to use (along its hyperparameters).
+
+See [guide.ipynb](guide.ipynb) for comprehensive examples covering several features enabled be such manual attack composition (multi-instruction, encoders, combined losses, activation steering, and custom components).
+
 
 ### 🔬 Research: Custom Optimizers
 
@@ -85,9 +89,7 @@ Once implemented following the package's guidelines, the optimizer automatically
 
 ## Development
 
-For contributors and developers:
-
-- **Architecture & Design**: See `DESIGN.md` for comprehensive design philosophy and architectural details
+For contributors and developers: See [DESIGN.md](DESIGN.md) for comprehensive design philosophy and architectural details.
 
 
 ```bash
