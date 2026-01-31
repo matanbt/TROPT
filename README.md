@@ -6,7 +6,7 @@
 
 <div align="center">
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 <!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/) -->
 
@@ -27,10 +27,44 @@ It supports any optimization approach that minimizes a quantifiable objective by
 
 ## Installation
 
-Install the `tropt` package via pip:
+### Basic Installation
+
+Install the core package (includes HuggingFace model support):
 
 ```bash
 pip install tropt
+
+# Or install all dependencies:
+pip install tropt[all]
+```
+
+### Optional Features
+
+You may install additional dependencies for specific features, such as model support (e.g., OpenAI), and integration with common trackers (e.g., Wandb). These are already included if you install with the `[all]` extra.
+
+```bash
+# OpenAI models (GPT, embeddings)
+pip install tropt[openai]
+
+# Google models (Gemini)
+pip install tropt[google]
+
+# LiteLLM proxy support
+pip install tropt[litellm]
+
+# Experiment tracking (Weights & Biases)
+pip install tropt[tracking]
+
+```
+
+### Development Installation
+
+For contributing or local development:
+
+```bash
+git clone https://github.com/matanbt/tropt.git
+cd tropt
+pip install -e ".[dev]"
 ```
 
 ## Usage
