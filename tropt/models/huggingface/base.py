@@ -191,7 +191,7 @@ class _HFTokenInputsManager(TokenInputsManager):
                 - targets: MessageTargets
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
-        assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
+        # assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
         assert chosen_message_idx is not None, "`chosen_message_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
         # TODO re-read and test this critical code
 
@@ -277,7 +277,8 @@ class _HFTokenInputsManager(TokenInputsManager):
             )
 
         return ModelInput(
-            # TODO return input texts?
+            # input_texts=TODO
+            # input_trigger_strs=TODO
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
             input_attention_mask=attention_mask.to(self.device, torch.int64),
@@ -378,20 +379,67 @@ class _HuggingFaceModelMixins:
         # Hard trigger input:
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"]=None,
 
-        # Soft trigger input:
+        # Semi-Soft trigger input:
         candidate_trigger_probs: Float[Tensor, "n_candidates trigger_seq_len vocab_size"] = None,
         do_gumbel_softmax: bool = False,
         gumbel_softmax_temp: Optional[float] = None,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
-        """
-        Computes the gradient of the loss w.r.t the one-hot token matrix
-        for a batch of triggers. Uses dynamic batch size.
+        """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
+
+        This method is the core of white-box, gradient-based trigger optimization (e.g., GCG, GASLITE).
+        It computes the gradient of the loss with respect to the one-hot token matrix for each candidate
+        trigger, enabling gradient-guided token selection.
 
         Args:
-            # TODO-claude=doce doc
+            inputs: Token inputs manager containing templates and tokenization info.
+                Created by `prepare_token_inputs()`.
+            loss_func: Loss function to optimize. Must be compatible with model outputs
+                (e.g., LogitBasedLoss for LMs, EmbeddingBasedLoss for encoders).
+
+            candidate_trigger_ids: Discrete token IDs for hard triggers.
+                Shape: (n_candidates, trigger_seq_len)
+                Mutually exclusive with `candidate_trigger_probs`.
+
+            candidate_trigger_probs: Probability distributions over vocabulary for semi-soft triggers.
+                Shape: (n_candidates, trigger_seq_len, vocab_size)
+                Mutually exclusive with `candidate_trigger_ids`.
+                Used for continuous optimization methods.
+
+            do_gumbel_softmax: If True, apply Gumbel-softmax to `candidate_trigger_probs`
+                before embedding. Adds stochastic exploration for soft optimization.
+                Requires `gumbel_softmax_temp` to be set.
+
+            gumbel_softmax_temp: Temperature for Gumbel-softmax sampling.
+                Lower values → more discrete (sharper), higher values → more uniform.
+                Only used when `do_gumbel_softmax=True`.
+
+        Returns:
+            Normalized gradients w.r.t. one-hot token matrix.
+            Shape: (n_candidates, trigger_seq_len, vocab_size)
+
+            Gradients are L2-normalized along the vocab dimension (dim=-1) to enable
+            fair comparison across different token positions.
+
+        Raises:
+            AssertionError: If not exactly one of the trigger input modes is provided.
+            AssertionError: If effective embedding matrix doesn't match embed function
+                (indicates non-standard model embedding logic).
+
+        Example:
+            >>> # GCG-style optimization with discrete token candidates
+            >>> inputs = model.prepare_token_inputs(texts, initial_trigger, targets)
+            >>> candidate_ids = torch.randint(0, vocab_size, (128, 20))  # 128 candidates
+            >>> grads = model.compute_grad_from_tokens(
+            ...     inputs=inputs,
+            ...     loss_func=PrefillCELoss(),
+            ...     candidate_trigger_ids=candidate_ids
+            ... )
+            >>> # grads shape: (128, 20, vocab_size)
+            >>> # Use grads to select top-k tokens per position for next iteration
+
         """
         assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
-            "Either `candidate_trigger_ids` or `candidate_trigger_probs` must be provided, but not both."
+            "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
         model = self.model
         embedding_layer = self.embedding_layer
         n_messages = inputs.n_messages
@@ -399,7 +447,7 @@ class _HuggingFaceModelMixins:
         # Get shape from whichever input is provided
         if candidate_trigger_ids is not None:
             n_candidates, trigger_seq_len = candidate_trigger_ids.shape
-        else:
+        else: # candidate_trigger_probs is not None:
             n_candidates, trigger_seq_len = candidate_trigger_probs.shape[:2]
         # [TODO: allow second order grads] make it another function
 
@@ -471,7 +519,7 @@ class _HuggingFaceModelMixins:
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
-                    
+
                     # Get trigger IDs for reference (if using discrete tokens)
                     # For soft triggers, compute argmax from probabilities
                     if candidate_trigger_ids is not None:
@@ -528,6 +576,105 @@ class _HuggingFaceModelMixins:
         all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         return all_grads
+
+    def compute_grad_from_embeds(
+        self,
+        inputs: _HFTokenInputsManager,
+        loss_func: BaseLoss,
+        candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
+        return_loss: bool = False,
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"]:
+        """Compute gradients of loss w.r.t. trigger embeddings.
+
+        This variant optimizes directly in the continuous embedding space, with no constraints.
+
+        Args:
+            inputs: Token inputs manager.
+            loss_func: Loss function to optimize.
+            candidate_trigger_embeds: Continuous embedding vectors for triggers.
+                Shape: (n_candidates, trigger_seq_len, embed_dim)
+
+        Returns:
+            Gradients w.r.t. the input embeddings.
+            Shape: (n_candidates, trigger_seq_len, embed_dim)
+        """
+        model = self.model
+        n_messages = inputs.n_messages
+        n_candidates = candidate_trigger_embeds.shape[0]
+
+        @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
+        def _compute_grad__batched(
+            batch_size: int,
+        ) -> Float[Tensor, "n_messages n_candidates"]:
+
+            # --- Update backward batch size ---
+            if batch_size < self.backward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing backward_pass_batch_size from {self.backward_pass_batch_size} to {batch_size}")
+                self.backward_pass_batch_size = batch_size
+            # --------------------
+
+            all_grads = []
+            all_losses = []
+
+            for cand_idx_start in range(0, n_candidates, batch_size):
+                batch_losses = []
+                cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
+
+                for message_idx in range(0, n_messages):
+                    # 1. Enable gradients on the embedding input directly
+                    candidate_embeds = candidate_trigger_embeds[cand_idx_start:cand_idx_end].clone().detach()
+                    candidate_embeds.requires_grad_()
+
+                    # 2. Get batched inputs
+                    model_input = inputs.get_triggered_inputs(
+                        trigger_embeds=candidate_embeds,
+                        chosen_message_idx=message_idx,
+                    )
+
+                    # 3. Forward pass
+                    model_output = self.token_forward_pass(
+                        model_input=model_input,
+                        reference_loss_func=loss_func,
+                    )
+
+                    # 4. Compute Loss
+                    loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+                    batch_losses.append(loss)
+
+                # Collect losses & average over messages
+                batch_losses = torch.stack(batch_losses, dim=0) # (n_messages, bsz_triggers)
+                batch_losses = batch_losses.mean(dim=0)
+
+                # Update usage stats
+                self._update_usage_stats(
+                    grad_calls=1,
+                    grad_samples=len(batch_losses) * n_messages
+                )
+
+                # 5. Compute gradients w.r.t. the embeddings
+                candidate_embeds_grad = torch.autograd.grad(
+                    outputs=batch_losses,
+                    inputs=[candidate_embeds],
+                    grad_outputs=torch.ones_like(batch_losses, device=model.device),
+                )[0] # (bsz_triggers, trigger_seq_len, embed_dim)
+
+                all_grads.append(candidate_embeds_grad)
+                all_losses.extend(batch_losses.detach().cpu().tolist())
+
+            return torch.cat(all_grads, dim=0), torch.tensor(all_losses, device=model.device).mean().item()
+
+        # Execute batched computation
+        all_grads, avg_loss = _compute_grad__batched()
+
+        # Normalize gradients (L2 norm along the embedding dimension)
+        # TODO ??
+        all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
+
+        if return_loss:
+            return all_grads, avg_loss
+
+        return all_grads
+
 
     @torch.no_grad()
     def compute_loss_from_tokens(

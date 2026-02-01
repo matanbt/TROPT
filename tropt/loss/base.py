@@ -201,7 +201,7 @@ class TriggerLogitBasedLoss(BaseLoss):
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "trigger_seq_len"],
-        input_slices: dict[str, slice],
+        input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -220,7 +220,7 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
-        input_slices: dict[str, slice],
+        input_slices: dict[SliceKey, slice],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
 
@@ -232,14 +232,20 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
             trigger_logits.ndim == 3 and trigger_logits.shape[:2] == input_trigger_ids.shape[:2]
         ), f"Shape mismatch: trigger_logits {trigger_logits.shape}, input_trigger_ids {input_trigger_ids.shape}"
 
-        # Reuse the exact logic from PrefillCELoss
-        ce_loss_fn = PrefillCELoss(temperature=self.temperature)
-        ce_loss = ce_loss_fn(
-            trigger_logits,
-            input_trigger_ids,
-            ignore_index=ignore_index
-        )  # (bsz,)
+        # Compute cross-entropy for each sample in batch
+        # NOTE: PrefillCELoss expects unbatched targets, but we have batched input_trigger_ids
+        # So we compute CE for each sample separately and stack
+        ce_losses = []
+        for i in range(trigger_logits.shape[0]):
+            ce_loss_fn = PrefillCELoss(temperature=self.temperature)
+            ce_loss_i = ce_loss_fn(
+                trigger_logits[i:i+1],  # (1, trigger_seq_len, vocab_size)
+                input_trigger_ids[i],    # (trigger_seq_len,) - unbatched for this sample
+                ignore_index=ignore_index
+            )  # (1,)
+            ce_losses.append(ce_loss_i)
 
+        ce_loss = torch.cat(ce_losses, dim=0)  # (bsz,)
         return torch.exp(ce_loss)
 
 #############################
@@ -250,7 +256,7 @@ class AttentionBasedLoss(BaseLoss):
     def __call__(
         self,
         output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        input_slices: dict[str, slice],
+        input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -272,17 +278,20 @@ class AttentionEnhLoss(AttentionBasedLoss):
     def __call__(
         self,
         output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        input_slices: dict[str, slice],
+        input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         if SliceKey.INPUT_AFTER in (self.src_slc_name, self.dst_slc_name):
             logger.debug("Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
         slc_src = input_slices.get(self.src_slc_name, slice(None))
         slc_dst = input_slices.get(self.dst_slc_name, slice(None))
 
-        loss = torch.zeros(output_attentions.shape[0], device=output_attentions.device)  # (bsz,)
-        loss = output_attentions[
+        # Extract attention weights for target slices and layers
+        attn_subset = output_attentions[
             :, self.targeted_layers, :, slc_dst, slc_src
-        ].mean(dim=(-1, -2, -3))  # mean over heads, dst, src -> (bsz,)
+        ]  # (bsz, n_targeted_layers, n_heads, dst_len, src_len)
+
+        # Mean over all dimensions except batch: layers, heads, dst, src
+        loss = attn_subset.mean(dim=tuple(range(1, attn_subset.ndim)))  # (bsz,)
         loss *= -1  # maximize attention
 
         return loss
@@ -412,7 +421,10 @@ class SteeringActivationLoss(HiddenStateBased):
         target_directions = target_directions / target_directions.norm(dim=-1, keepdim=True)
 
         # Extract slices for the tokens we want to steer
-        slc = input_slices.get(self.slc_name, slice(None))
+        if input_slices is not None:
+            slc = input_slices.get(self.slc_name, slice(None))
+        else:
+            slc = slice(None)  # Use all positions if no slices provided
 
         # (bsz, n_targeted_layers, slc_seq_len, d_model)
         h = output_hidden_states[:, self.targeted_layers, slc, :]

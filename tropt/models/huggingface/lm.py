@@ -16,7 +16,7 @@ from tropt.common import (
     ModelInput,
     ModelOutput,
     SliceKey,
-    Targets
+    Targets,
 )
 from tropt.loss.base import (
     AttentionBasedLoss,
@@ -32,6 +32,7 @@ from tropt.models import (
     LossTokenAccessMixin,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,7 @@ class LMHFModel(
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
     LogitsTokenAccessMixin,
+    GradientEmbedAccessMixin,
     # text-level access mixins:
     LossTextAccessMixin,
 ):
@@ -226,8 +228,6 @@ class LMHFModel(
             targets=targets,
         )
 
-
-
         # Tokenizer trigger
         if not initial_trigger:
             # start with an empty trigger
@@ -368,7 +368,6 @@ class LMHFModel(
         
         assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
         
-
         outputs = self.model(
             inputs_embeds=model_input.input_embeds,
             attention_mask=model_input.input_attention_mask,

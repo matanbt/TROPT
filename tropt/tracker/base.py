@@ -7,6 +7,7 @@ from typing import Any, Dict
 import livelossplot
 import wandb
 
+# TODO set default exp name to support quick init
 
 class BaseTracker(ABC):
     """

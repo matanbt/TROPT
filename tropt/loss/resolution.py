@@ -186,7 +186,7 @@ def _compute_combined_loss(
         Weighted combination of component losses
     """
     component_losses = []
-    for component_loss in loss_func.losses:
+    for component_loss in loss_func.loss_funcs:
         # Recursive call - each component loss gets resolved independently
         component_loss_value = compute_loss_from_model_data(
             model_output, model_input, component_loss

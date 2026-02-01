@@ -23,6 +23,7 @@ from .model_mixins import (
     LossTokenAccessMixin,
     TextAccessMixin,
     TokenAccessMixin,
+    GradientEmbedAccessMixin,
 )
 
 # Import all OpenAI models:

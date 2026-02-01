@@ -23,6 +23,7 @@ from tropt.models import (
     LossTokenAccessMixin,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
@@ -44,6 +45,7 @@ class EncoderHFModel(
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
+    GradientEmbedAccessMixin,
     # text-level access mixins:
     LossTextAccessMixin,
 ):
@@ -203,7 +205,7 @@ class EncoderHFModel(
         outputs = self.model(
             dict(
                 inputs_embeds=model_input.input_embeds,  # (bsz, seq_len, embd_dim)
-                attention_mask=model_input.attention_mask, # (bsz, seq_len
+                attention_mask=model_input.input_attention_mask, # (bsz, seq_len
             )
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)

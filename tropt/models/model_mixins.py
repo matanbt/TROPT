@@ -89,6 +89,19 @@ class GradientTokenAccessMixin(TokenAccessMixin):
         """Compute gradients w.r.t. `trigger` tokens that are merge into `inputs`"""
         raise NotImplementedError
 
+## "White-box" Model Mixins w/ embed access:
+class GradientEmbedAccessMixin(TokenAccessMixin):
+    """Mixin for models that can compute gradients based on token-level inputs."""
+
+    @abstractmethod
+    def compute_grad_from_embeds(
+        self,
+        inputs: TokenInputsManager,
+        loss_func: BaseLoss,
+        candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"]:
+        """Compute gradients w.r.t. `trigger` tokens that are merge into `inputs`"""
+        raise NotImplementedError
 
 ## -------- Text-level access mixins ------- ##
 

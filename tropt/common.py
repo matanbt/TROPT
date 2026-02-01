@@ -72,7 +72,7 @@ class Targets(BaseModel):
     For example, a standard LM jailbreak only needs `target_response_strs` (which will be
     tokenized internally).
     """
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
     target_response_strs: Optional[Annotated[List[str], "n_messages"]] = None
     """Raw text target outputs, one per message.
@@ -163,7 +163,7 @@ class ModelInput(BaseModel):
         ... )
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
     # === Text-level inputs (TextInputsManager) ===
     input_texts: Optional[Annotated[List[str], "bsz"]] = None
@@ -267,7 +267,7 @@ class ModelOutput(BaseModel):
         ... )
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
     # === Embedding outputs (Encoder models) ===
     output_embeddings: Optional[Float[Tensor, "bsz d_model"]] = None
