@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Annotated
 
 import numpy as np
 import torch
@@ -10,8 +10,7 @@ from transformers import BatchEncoding, PreTrainedTokenizer
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     ModelInput,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets,
     TokenTriggerCandidates,
 )
 from tropt.loss.base import BaseLoss
@@ -32,9 +31,9 @@ class TokenAccessMixin(ABC):
     @abstractmethod
     def prepare_token_inputs(
         self,
-        text_templates: List[str],  # n_messages texts
+        text_templates: Annotated[List[str], "n_messages"],
         initial_trigger: str,  # initial trigger string
-        targets: TargetsDict = None,  # also n_messages, depends on the objective
+        targets: Targets = None,  # also n_messages, depends on the objective
     ) -> tuple[TokenInputsManager, Float[Tensor, "1 trigger_len"] | str]:
         """Prepare the model's inputs object and initial trigger from raw texts.
 
@@ -98,8 +97,8 @@ class GradientTokenAccessMixin(TokenAccessMixin):
 class TextAccessMixin(ABC):
     def prepare_text_inputs(
         self,
-        texts: List[str],  # n_messages texts
-        targets: TargetsDict = None,
+        texts: Annotated[List[str], "n_messages"],
+        targets: Targets = None,
         initial_trigger: str = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[TextInputsManager, List[str]]:
         """

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import torch
 from jaxtyping import Float, Int
@@ -9,8 +9,7 @@ from tqdm import tqdm
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    TargetKey,
-    TargetsDict,
+    Targets,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -132,10 +131,10 @@ class GCGOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Annotated[List[str], "n_messages"],
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
-        targets: TargetsDict = None,  # depends on the objective
+        targets: Targets = None,  # depends on the objective
     ) -> OptimizerResult:
         # Initialization:
         inputs: TokenInputsManager

@@ -16,9 +16,7 @@ from tropt.common import (
     ModelInput,
     ModelOutput,
     SliceKey,
-    TargetKey,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets
 )
 from tropt.loss.base import (
     AttentionBasedLoss,
@@ -40,18 +38,18 @@ logger = logging.getLogger(__name__)
 
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputsManager(_HFTokenInputsManager):
-    targets: TargetsDictPlus | TargetsDict
+    targets: Targets
     # includes `target_response_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
 
     @property
     def _do_prefill_targets(self) -> bool:
-        return TargetKey.TARGET_RESPONSE_TOKS in self.targets
+        return self.targets.target_response_toks is not None
 
     @cached_property
     def _prefill_embeds(self) -> List[Float[Tensor, "target_seq_len embd_dim"]]:
         if self._do_prefill_targets:
-            return [self.embed_func(target_output) for target_output in self.targets[TargetKey.TARGET_RESPONSE_TOKS]]
+            return [self.embed_func(target_output) for target_output in self.targets.target_response_toks]
         return None
 
     def get_triggered_inputs(self, *args, **kwargs):
@@ -174,7 +172,7 @@ class LMHFModel(
     def prepare_token_inputs(
         self,
         texts: List[str],
-        targets: TargetsDict | TargetsDictPlus,
+        targets: Optional[Targets] = None,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[LMHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """
@@ -200,16 +198,22 @@ class LMHFModel(
             for text in texts
         ]
 
+        if targets is None:
+            targets = Targets()
+
         # Encode target outputs, if provided
-        if TargetKey.TARGET_RESPONSE_STRS in targets:
+        if targets.target_response_strs is not None:
             tokenized_lists = self.tokenizer(
-                targets[TargetKey.TARGET_RESPONSE_STRS], add_special_tokens=False
+                targets.target_response_strs, add_special_tokens=False
             )["input_ids"]
             # convert to list of tensors
-            targets[TargetKey.TARGET_RESPONSE_TOKS] = [
+            targets.target_response_toks = [
                 torch.tensor(ids, device=self.model.device) for ids in tokenized_lists
                 # each of shape (target_seq_len,)
             ]
+
+        # Move targets to device
+        targets = targets.to_device(self.model.device)
 
         # Build the input manager, that will allow combining with different triggers
         inputs = LMHFTokenInputsManager(
@@ -221,6 +225,8 @@ class LMHFModel(
             use_prefix_cache=self.use_prefix_cache,
             targets=targets,
         )
+
+
 
         # Tokenizer trigger
         if not initial_trigger:

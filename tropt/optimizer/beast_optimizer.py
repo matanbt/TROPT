@@ -1,5 +1,5 @@
 import logging
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import numpy as np
 import torch
@@ -7,7 +7,7 @@ from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import TargetsDict
+from tropt.common import Targets
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -88,8 +88,8 @@ class BEASTOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: List[str],  # of length n_messages
-        targets: TargetsDict = None,
+        texts: Annotated[List[str], "n_messages"],
+        targets: Targets = None,
         initial_trigger: str = "",
         util_lm_texts: Optional[List[str]] = None,
     ) -> OptimizerResult:
@@ -98,7 +98,7 @@ class BEASTOptimizer(BaseOptimizer):
 
         Args:
             texts (List[str]): List of input texts to prepend the trigger to.
-            targets (TargetsDict, optional): Target values for the loss function.
+            targets (Targets, optional): Target values for the loss function.
             initial_trigger (str, optional): Initial trigger string (not used in BEAST).
             util_lm_texts (List[str], optional): Texts for the util LM to compute logits.
                 If None, defaults to `texts`.

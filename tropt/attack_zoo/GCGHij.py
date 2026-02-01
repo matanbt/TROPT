@@ -2,7 +2,7 @@ import math
 
 import torch
 
-from tropt.common import SliceKey, TargetKey
+from tropt.common import SliceKey, Targets
 from tropt.loss.base import AttentionEnhLoss, CombinedLoss, PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -62,7 +62,9 @@ def run_gcghij(
 
     result = optimizer.optimize_trigger(
         texts=[instruction],
-        targets={TargetKey.TARGET_RESPONSE_STRS: [target_output]},
+        targets=Targets(
+            target_response_strs=[target_output]
+        ),
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
     )
 
