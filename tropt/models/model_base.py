@@ -11,13 +11,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.common import (
-    DEFAULT_INIT_TRIGGER,
-    ModelInput,
-    ModelOutput,
-    TargetsDict,
-    TargetsDictPlus,
-)
+from tropt.common import DEFAULT_INIT_TRIGGER, ModelOutput, Targets
 from tropt.models.inputs import (
     TextInputsManager,
     TokenInputsManager,

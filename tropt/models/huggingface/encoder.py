@@ -13,8 +13,7 @@ from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -30,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class EncoderHFTokenInputsManager(_HFTokenInputsManager):
-    targets: TargetsDict | TargetsDictPlus
+    targets: Targets
     # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
     # to optimize towards an vector per message
 
@@ -152,7 +151,7 @@ class EncoderHFModel(
     def prepare_token_inputs(
         self,
         texts: List[str],  # n_messages texts
-        targets: TargetsDict | TargetsDictPlus,
+        targets: Targets,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
 

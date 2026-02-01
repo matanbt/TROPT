@@ -1,6 +1,6 @@
 import torch
 
-from tropt.common import TargetKey
+from tropt.common import Targets
 from tropt.loss.base import PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -41,7 +41,9 @@ def run_beast(
 
     result = optimizer.optimize_trigger(
         texts=[instruction],
-        targets={TargetKey.TARGET_RESPONSE_STRS: [target_output]},
+        targets=Targets(
+            target_response_strs=[target_output]
+        )
     )
 
     return result

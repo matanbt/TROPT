@@ -13,12 +13,11 @@ from torch import Tensor
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    MessageTargetsDict,
+    MessageTargets,
     ModelInput,
     ModelOutput,
     SliceKey,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets,
 )
 from tropt.loss.base import BaseLoss
 from tropt.loss.resolution import compute_loss_from_model_data
@@ -35,7 +34,7 @@ class _HFTokenInputsManager(TokenInputsManager):
     before_ids: List[Float[Tensor, "bef_len"]]
     after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
     embed_func: torch.nn.Embedding
-    targets: TargetsDictPlus
+    targets: Targets
     padding_side: str
     pad_token_id: int
     tokenizer: transformers.PreTrainedTokenizer
@@ -52,7 +51,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         embed_func: torch.nn.Embedding,
         optimized_trigger_placeholder: Optional[str] = OPTIMIZED_TRIGGER_PLACEHOLDER,
         use_prefix_cache: Optional[bool] = False,
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
     ):
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
@@ -85,10 +84,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         self.tokenizer = tokenizer
 
         # Prepare targets
-        # make sure it's a TargetsDictPlus, we use its utils later
-        targets = TargetsDictPlus(targets, n_messages=self.n_messages)
-        targets = targets.to_device(model.device)
-        self.targets = targets
+        self.targets = targets.to_device(model.device)
 
         # Compute the KV Cache for tokens that appear before the optimized tokens
         prefix_cache: List[ # per message
@@ -192,7 +188,7 @@ class _HFTokenInputsManager(TokenInputsManager):
                     if the provided input_embds required grad, then this tensor will also require grad.
                 - attention_mask: Tensor, shape = (n_candidates, seq_len)
                     the attention mask matching the input embeddings
-                - targets: MessageBatchedTargetsDict
+                - targets: MessageTargets
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
         assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
@@ -270,12 +266,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         }
 
         ## Prepare the targets repeated for each candidate
-        targets: TargetsDictPlus = self.targets.copy()
-        # targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-        # targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
-        #     targets, chosen_message_idx
-        # )
-        targets: MessageTargetsDict = TargetsDictPlus.select_message(targets, chosen_message_idx)
+        targets: MessageTargets = Targets.select_message(targets, chosen_message_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}

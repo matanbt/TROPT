@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, SliceKey, TargetKey
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, SliceKey, Targets
 from tropt.loss.base import PrefillCELoss, SteeringActivationLoss
 from tropt.models.huggingface.lm import LMHFModel
 
@@ -22,7 +22,7 @@ def test_lm_init(lm_model):
 
 def test_lm_prepare_token_inputs(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Sure, the world is hello"]}
+    targets = Targets(target_response_strs=["Sure, the world is hello"])
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets, initial_trigger="test....")
 
@@ -34,7 +34,7 @@ def test_lm_prepare_token_inputs(lm_model):
 
 def test_lm_prepare_token_multi_inputs(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World", f"Hi! Be honest. {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Sure, the world is hello", "Sure."]}
+    targets = Targets(target_response_strs=["Sure, the world is hello", "Sure."])
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets, initial_trigger="test....")
 
@@ -43,9 +43,7 @@ def test_lm_prepare_token_multi_inputs(lm_model):
     assert trigger_ids.ndim == 2 and trigger_ids.shape[0] == 1
     assert inputs.n_messages == 2
 
-def test_lm_compute_loss(lm_model):
-    texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Target output"]}
+    targets = Targets(target_response_strs=["Target output"])
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
     
     # sample 2 cand triggers
@@ -87,7 +85,7 @@ def test_inputs_manager_initialization(lm_model):
     assert len(inputs.before_ids) == n_messages
     assert len(inputs.after_ids) == n_messages
     assert inputs.vocab_size == lm_model.tokenizer.vocab_size
-    assert len(inputs.targets[TargetKey.TARGET_RESPONSE_TOKS]) == n_messages
+    assert len(inputs.targets.target_response_toks) == n_messages
 
 def test_inputs_manager_get_triggered_inputs(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D", f"E {OPTIMIZED_TRIGGER_PLACEHOLDER} F"]
@@ -115,7 +113,7 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
 
         # Check targets expansion
         assert "targets" in res
-        assert TargetKey.TARGET_RESPONSE_TOKS in res["targets"]
+        assert res["targets"].target_response_toks is not None
 
         tgt = res["targets"][TargetKey.TARGET_RESPONSE_TOKS]
         assert isinstance(tgt, torch.Tensor)

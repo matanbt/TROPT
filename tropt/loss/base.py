@@ -41,7 +41,7 @@ class BaseLoss(ABC):
 class LogitBasedLoss(BaseLoss):
     """
     Loss is computed based on model output (response) logits.
-    These losses required target tokens (i.e. `target_response_toks`); commonly automatically derived from `target_outputs` strings.
+    These losses required target tokens (i.e. `target_response_toks`); commonly automatically derived from `target_response_strs` strings.
     """
 
     def __call__(

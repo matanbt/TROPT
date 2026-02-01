@@ -12,8 +12,7 @@ from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets
 )
 from tropt.models import (
     BaseTokenizer,
@@ -145,7 +144,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         tokenizer: Any, # The OpenAITokenizer wrapper
         tok_ids: List[List[int]],
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
         **kwargs,
     ):
         self.tokenizer = tokenizer
@@ -168,8 +167,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         self.n_messages = len(raw_texts)
 
         # 2. Prepare Targets
-        # We use TargetsDictPlus to handle target expansion/broadcasting later
-        self.targets = TargetsDictPlus(targets, n_messages=self.n_messages)
+        self.targets = targets
 
     @property
     def vocab_size(self):
@@ -200,9 +198,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         ]
 
         # 3. Handle Targets (select chosen message)
-        targets = TargetsDictPlus.select_message(
-            self.targets, chosen_message_idx
-        )
+        targets = self.targets.select_message(chosen_message_idx)
         
         # 4. Build ModelInput
         return ModelInput(
@@ -320,7 +316,7 @@ class EncoderOpenAIModel(
     def prepare_token_inputs(
         self,
         texts: List[str],  # n_messages texts
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[OpenAITokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """

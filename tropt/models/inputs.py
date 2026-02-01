@@ -1,20 +1,17 @@
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional
 
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    MessageTargetsDict,
+    MessageTargets,
     ModelInput,
     SliceKey,
-    TargetKey,
-    TargetsDict,
-    TargetsDictPlus,
+    Targets,
 )
 
 # ======================= Triggered Input Managers =======================
@@ -31,7 +28,7 @@ class InputsManager(ABC):
     def __init__(
         self,
         text_templates: List[str],  # n_messages texts
-        targets: TargetsDict | TargetsDictPlus,  # n_messages elements per target entry
+        targets: Targets,  # n_messages elements per target entry
     ):
         raise NotImplementedError
 
@@ -45,19 +42,20 @@ class TextInputsManager(InputsManager):
     Class for maintaining text-based trigger-combined inputs (fits black-box text-level query access).
     """
 
-    before_texts: List[str]
-    after_texts: List[str]  # of length n_messages
-    targets: TargetsDict | TargetsDictPlus
+    before_texts: Annotated[List[str], "n_messages"]
+    after_texts: Annotated[List[str], "n_messages"]
+    targets: Targets
 
     def __init__(
         self,
-        texts: List[str],  # n_messages texts
-        targets: TargetsDict = {},  # n_messages elements per target entry
+        texts: Annotated[List[str], "n_messages"],
+        targets: Targets = None,
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
     ):
         assert isinstance(texts, list), "texts must be a string or a list of strings."
-        n_messages = len(texts)
-        targets = TargetsDictPlus(targets, n_messages=n_messages)
+        if targets is None:
+            targets = Targets()
+
         targets = targets.to_device("cuda" if torch.cuda.is_available() else "cpu")
 
         before_texts, after_texts = [], []
@@ -100,9 +98,7 @@ class TextInputsManager(InputsManager):
             input_texts.append(curr_text)
 
         # select only the chosen message's targets
-        targets = TargetsDictPlus.select_message(
-            self.targets, chosen_message_idx
-        )
+        targets = self.targets.select_message(chosen_message_idx)
 
         return ModelInput(
             input_texts=input_texts,
@@ -118,10 +114,9 @@ class TokenInputsManager(InputsManager):
 
     before_ids: List[Float[Tensor, "bef_len"]]
     after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
-    targets: TargetsDict | TargetsDictPlus
+    targets: Targets
     tokenizer: Any
 
     # Properties:
     vocab_size: int
     n_messages: int
-

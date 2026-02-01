@@ -8,7 +8,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.common import ModelInput, ModelOutput, SliceKey, TargetKey
+from tropt.common import ModelInput, ModelOutput
 from tropt.loss.base import BaseLoss, CombinedLoss
 
 
@@ -67,16 +67,17 @@ def compute_loss_from_model_data(
         TypeError: If loss function signature is invalid
 
     Examples:
+        >>> from tropt.common import MessageTargets
         >>> # Encoder model with SimilarityLoss(output_embeddings, target_embeddings)
         >>> output = ModelOutput(output_embeddings=torch.randn(4, 768))
-        >>> input_data = ModelInput(targets={"target_embeddings": target_vecs})
+        >>> input_data = ModelInput(targets=MessageTargets(target_vectors=target_vecs))
         >>> loss = compute_loss_from_model_data(output, input_data, SimilarityLoss())
 
         >>> # Language model with PrefillCELoss(response_logits, input_slices, targets)
         >>> output = ModelOutput(response_logits=torch.randn(2, 50, 32000))
         >>> input_data = ModelInput(
         ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
-        ...     targets={TargetKey.TARGET_RESPONSE_TOKS: target_ids}
+        ...     targets=MessageTargets(target_response_toks=target_ids)
         ... )
         >>> loss = compute_loss_from_model_data(output, input_data, PrefillCELoss())
 
@@ -123,10 +124,12 @@ def compute_loss_from_model_data(
                 continue
             # If value is None but parameter is required, fall through to error
 
-        # Special handling for target fields from model_input.targets dict
-        if model_input.targets is not None and param_name in model_input.targets:
-            kwargs[param_name] = model_input.targets[param_name]
-            continue
+        # Special handling for target fields from model_input.targets
+        if model_input.targets is not None and hasattr(model_input.targets, param_name):
+            value = getattr(model_input.targets, param_name)
+            if value is not None:
+                kwargs[param_name] = value
+                continue
 
         # Parameter not found - raise error if it's required
         if param.default == inspect.Parameter.empty:
@@ -136,7 +139,7 @@ def compute_loss_from_model_data(
                 f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
-                f"Available in targets: {list(model_input.targets.keys()) if model_input.targets else []}"
+                f"Available in targets: {list(model_input.targets.model_fields.keys()) if model_input.targets else []}"
             )
 
     # Call the loss function with matched arguments

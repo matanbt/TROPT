@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import torch
 
-from tropt.common import TargetsDict, TokenTrigger
+from tropt.common import Targets, TokenTrigger
 from tropt.loss.base import BaseLoss
 from tropt.models import BaseModel
 from tropt.tracker.base import BaseTracker, DummyTracker
@@ -57,9 +57,9 @@ class BaseOptimizer(ABC):
     @abstractmethod
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Annotated[List[str], "n_messages"],
         initial_trigger: Optional[str] | str | TokenTrigger = None,
-        targets: TargetsDict = None,
+        targets: Targets = None,
     ) -> OptimizerResult:
         """Optimize the trigger to minimize the loss on the given inputs.
 

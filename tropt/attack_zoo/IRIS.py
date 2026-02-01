@@ -7,7 +7,7 @@ https://aclanthology.org/2025.naacl-long.302/
 
 import torch
 
-from tropt.common import SliceKey, TargetKey
+from tropt.common import SliceKey, Targets
 from tropt.loss.base import CombinedLoss, PrefillCELoss, SteeringActivationLoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -100,10 +100,10 @@ def run_iris(
     # Run optimization with jailbroken target
     result = optimizer.optimize_trigger(
         texts=[instruction],
-        targets={
-            TargetKey.TARGET_RESPONSE_STRS: [target_output],  # Jailbroken response from refusal ablation
-            TargetKey.TARGET_DIRECTIONS: refusal_directions,  # For steering loss
-        },
+        targets=Targets(
+            target_response_strs=[target_output],  # Jailbroken response from refusal ablation
+            target_directions=refusal_directions,  # For steering loss
+        ),
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",  # 20 tokens
     )
 
