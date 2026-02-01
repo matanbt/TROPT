@@ -401,7 +401,12 @@ class _HuggingFaceModelMixins:
         model = self.model
         embedding_layer = self.embedding_layer
         n_messages = inputs.n_messages
-        n_candidates, trigger_seq_len = candidate_trigger_ids.shape
+
+        # Get shape from whichever input is provided
+        if candidate_trigger_ids is not None:
+            n_candidates, trigger_seq_len = candidate_trigger_ids.shape
+        else:
+            n_candidates, trigger_seq_len = candidate_trigger_probs.shape[:2]
         # [TODO: allow second order grads] make it another function
 
         @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
@@ -460,23 +465,34 @@ class _HuggingFaceModelMixins:
                     candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
                     # TODO move to this check to the tests, to avoid slowing down this function
-                    assert torch.allclose(
-                        candidate_embeds,
-                        inputs.embed_func(
-                            candidate_trigger_ids[cand_idx_start:cand_idx_end]
-                        )
-                    ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
-                    "a model with non-standard embedding logic. Please report this issue!")
+                    # Only check when using discrete tokens (not soft probabilities)
+                    if candidate_trigger_ids is not None:
+                        assert torch.allclose(
+                            candidate_embeds,
+                            inputs.embed_func(
+                                candidate_trigger_ids[cand_idx_start:cand_idx_end]
+                            )
+                        ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
+                        "a model with non-standard embedding logic. Please report this issue!")
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
+
+                    # Get trigger IDs for reference (if using discrete tokens)
+                    # For soft triggers, compute argmax from probabilities
+                    if candidate_trigger_ids is not None:
+                        ref_trigger_ids = candidate_trigger_ids[cand_idx_start:cand_idx_end]
+                    else:
+                        # Compute discrete tokens from soft probabilities (before Gumbel-softmax)
+                        ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
+
                     loss = self._loss_hook(
                         **inputs.get_triggered_inputs(
                             trigger_embeds=candidate_embeds,
                             chosen_message_idx=message_idx,
 
                             # Also pass trigger ids as a reference
-                            trigger_ids=candidate_trigger_ids[cand_idx_start:cand_idx_end],
+                            trigger_ids=ref_trigger_ids,
                         ),
                         loss_func=loss_func,
                     )
