@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import torch
 
@@ -56,7 +56,7 @@ class BaseOptimizer(ABC):
     @abstractmethod
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Annotated[List[str], "n_messages"],  # TODO-claude-code annotate all the n_messages long lists this way (as well as other lists that have predefined length)
         initial_trigger: Optional[str] | str | TokenTrigger = None,
         targets: TargetsDict = None,
     ) -> OptimizerResult:
