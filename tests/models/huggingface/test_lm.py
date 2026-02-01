@@ -115,7 +115,7 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
         assert "targets" in res
         assert res["targets"].target_response_toks is not None
 
-        tgt = res["targets"][TargetKey.TARGET_RESPONSE_TOKS]
+        tgt = res["targets"].target_response_toks
         assert isinstance(tgt, torch.Tensor)
         assert tgt.shape[0] == n_candidates
 
@@ -155,7 +155,7 @@ def test_lm_steering_loss(lm_model):
     d_model = lm_model.model.config.hidden_size
     target_direction = torch.randn(1, d_model)
 
-    targets = {TargetKey.TARGET_DIRECTIONS: target_direction}
+    targets = Targets(target_directions=target_direction)
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     # Sample 2 candidate triggers

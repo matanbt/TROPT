@@ -218,8 +218,7 @@ class ModelInput(BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    # targets: Optional[MessageTargetsDict] = None   # <-- deprecated 
-    targets: Optional[Targets] = None  
+    targets: Optional[MessageTargets] = None
     """Target data required by loss functions.
 
     Dictionary mapping `TargetKey`s to their corresponding target values. The specific
