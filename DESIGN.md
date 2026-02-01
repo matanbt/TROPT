@@ -97,6 +97,10 @@ Also note that some models may have token input access, despite having limited l
 
 The aforementioned two generic methods (*prepare input*, *compute loss*), interact with the two following pillars: **input managers** and **loss classes** accordingly.
 
+<!-- TODO fully document access levels (e.g., token level also assume prefilling; text-level only assume query, and sometime generated logits [different from prefilled logits]) -->
+
+<!-- TODO make sure it's clear that __call__ is part of the query level (thus for example doesn't support prefill) -->
+
 ## Pillar 2: Input and target manager
 
 > Classes wrapping the target models. Located at `tropt/models/inputs.py`.
