@@ -7,21 +7,19 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.common import DEFAULT_INIT_TRIGGER
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss, LogitBasedLoss
-from tropt.loss.resolution import compute_loss_from_model_data
-from tropt.loss.text_loss import InputReadabilityLoss
-
-from .inputs import (
-    BatchedTargetsDict,
-    MessageBatchedTargetsDict,
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
     ModelInput,
     TargetsDict,
     TargetsDictPlus,
+    TokenTriggerCandidates,
+)
+from tropt.loss.base import BaseLoss
+from tropt.loss.resolution import compute_loss_from_model_data
+
+from .inputs import (
     TextInputsManager,
     TokenInputsManager,
-    TokenTrigger,
-    TokenTriggerCandidates,
 )
 from .model_base import BaseTokenizer
 
@@ -37,7 +35,7 @@ class TokenAccessMixin(ABC):
         text_templates: List[str],  # n_messages texts
         initial_trigger: str,  # initial trigger string
         targets: TargetsDict = None,  # also n_messages, depends on the objective
-    ) -> tuple[TokenInputsManager, TokenTrigger | str]:
+    ) -> tuple[TokenInputsManager, Float[Tensor, "1 trigger_len"] | str]:
         """Prepare the model's inputs object and initial trigger from raw texts.
 
         Args:

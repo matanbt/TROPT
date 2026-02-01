@@ -3,7 +3,6 @@ import torch
 
 from tropt.models.inputs import TargetsDictPlus, TextInputsManager
 
-
 # --- TargetsDictPlus Tests ---
 
 def test_targets_dict_plus_init():

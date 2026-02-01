@@ -7,18 +7,21 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from torch import Tensor
 from transformers import BatchEncoding
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    ModelInput,
+    ModelOutput,
+    TargetsDict,
+    TargetsDictPlus,
+)
 from tropt.models import (
     BaseTokenizer,
     EncoderBaseModel,
     LossTextAccessMixin,
-    TargetsDict,
-    TargetsDictPlus,
     TokenAccessMixin,
     TokenInputsManager,
 )
-from tropt.models.inputs import ModelInput
-from tropt.models.outputs import ModelOutput
 
 
 # --------------------------------------------------------------------------
@@ -202,7 +205,6 @@ class OpenAITokenInputsManager(TokenInputsManager):
         )
         
         # 4. Build ModelInput
-        from tropt.models.inputs import ModelInput
         return ModelInput(
             trigger_ids=trigger_ids,
             trigger_strs=trigger_strs,
@@ -309,7 +311,6 @@ class EncoderOpenAIModel(
         )
 
         if return_full_output:
-            from tropt.models.outputs import ModelOutput
             return ModelOutput(
                 output_embeddings=result,
             )

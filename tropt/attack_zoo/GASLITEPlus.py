@@ -1,9 +1,9 @@
 import torch
 from jaxtyping import Float
 
+from tropt.common import TargetKey
 from tropt.loss.base import SimilarityLoss
 from tropt.models.huggingface.encoder import EncoderHFModel
-from tropt.models.inputs import TargetKey
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.gasliteplus_optimizer import GASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints

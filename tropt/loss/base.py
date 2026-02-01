@@ -15,8 +15,8 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
+from tropt.common import SliceKey
 from tropt.loss.utils import masked_mean
-from tropt.models.inputs import SliceKey
 
 logger = logging.getLogger(__name__)
 

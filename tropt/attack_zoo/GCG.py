@@ -1,5 +1,6 @@
 import torch
 
+from tropt.common import TargetKey
 from tropt.loss.base import PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -44,7 +45,7 @@ def run_gcg(
 
     result = optimizer.optimize_trigger(
         texts=[instruction],
-        targets=dict(target_outputs=[target_output]),
+        targets={TargetKey.TARGET_RESPONSE_STRS: [target_output]},
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
     )
 

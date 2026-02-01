@@ -3,8 +3,8 @@ from typing import Dict, List, Optional
 
 import litellm
 
+from tropt.common import ModelOutput
 from tropt.models import LMBaseModel, LossTextAccessMixin
-from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 

@@ -8,20 +8,22 @@ from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    ModelInput,
+    ModelOutput,
+    TargetsDict,
+    TargetsDictPlus,
+)
+from tropt.loss.base import BaseLoss
 from tropt.models import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
-from tropt.models.inputs import ModelInput
-from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================

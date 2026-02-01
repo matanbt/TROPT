@@ -2,6 +2,7 @@ from typing import List
 
 import torch
 
+from tropt.common import TargetKey
 from tropt.loss.base import PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -45,7 +46,7 @@ def run_gcg_mutl_instruction(
 
     result = optimizer.optimize_trigger(
         texts=instructions,
-        targets=dict(target_outputs=target_outputs),
+        targets={TargetKey.TARGET_RESPONSE_STRS: target_outputs},
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
     )
 

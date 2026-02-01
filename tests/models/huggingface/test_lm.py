@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, SliceKey, TargetKey
 from tropt.loss.base import PrefillCELoss, SteeringActivationLoss
 from tropt.models.huggingface.lm import LMHFModel
 
@@ -22,7 +22,7 @@ def test_lm_init(lm_model):
 
 def test_lm_prepare_token_inputs(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {"target_outputs": ["Sure, the world is hello"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Sure, the world is hello"]}
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets, initial_trigger="test....")
 
@@ -34,7 +34,7 @@ def test_lm_prepare_token_inputs(lm_model):
 
 def test_lm_prepare_token_multi_inputs(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World", f"Hi! Be honest. {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
-    targets = {"target_outputs": ["Sure, the world is hello", "Sure."]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Sure, the world is hello", "Sure."]}
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets, initial_trigger="test....")
 
@@ -45,7 +45,7 @@ def test_lm_prepare_token_multi_inputs(lm_model):
 
 def test_lm_compute_loss(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {"target_outputs": ["Target output"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Target output"]}
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
     
     # sample 2 cand triggers
@@ -61,7 +61,7 @@ def test_lm_compute_loss(lm_model):
 
 def test_lm_compute_grad(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {"target_outputs": ["Target output"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Target output"]}
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     n_candidates = 2
@@ -79,7 +79,7 @@ def test_lm_compute_grad(lm_model):
 
 def test_inputs_manager_initialization(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
-    targets = {"target_outputs": ["T1", "T2"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2"]}
     inputs, _ = lm_model.prepare_token_inputs(texts, targets)
 
     n_messages = len(texts)
@@ -87,11 +87,11 @@ def test_inputs_manager_initialization(lm_model):
     assert len(inputs.before_ids) == n_messages
     assert len(inputs.after_ids) == n_messages
     assert inputs.vocab_size == lm_model.tokenizer.vocab_size
-    assert len(inputs.targets["target_outputs_toks"]) == n_messages
+    assert len(inputs.targets[TargetKey.TARGET_RESPONSE_TOKS]) == n_messages
 
 def test_inputs_manager_get_triggered_inputs(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D", f"E {OPTIMIZED_TRIGGER_PLACEHOLDER} F"]
-    targets = {"target_outputs": ["T1", "T2", "T3"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2", "T3"]}
     n_messages = len(texts)
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
@@ -115,16 +115,14 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
 
         # Check targets expansion
         assert "targets" in res
-        assert "target_outputs_toks" in res["targets"]
+        assert TargetKey.TARGET_RESPONSE_TOKS in res["targets"]
 
-        tgt = res["targets"]["target_outputs_toks"]
+        tgt = res["targets"][TargetKey.TARGET_RESPONSE_TOKS]
         assert isinstance(tgt, torch.Tensor)
         assert tgt.shape[0] == n_candidates
 
         tgt_slices = res["targets"]["slices"]
         assert isinstance(tgt_slices, list) and len(tgt_slices) == n_candidates
-        from tropt.models.inputs import SliceKey
-
         tgt_slices_0 = tgt_slices[0]
         assert isinstance(tgt_slices_0, dict)
         assert isinstance(tgt_slices_0[SliceKey.TRIGGER], slice)
@@ -132,7 +130,7 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
 
 def test_inputs_manager_chosen_message(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
-    targets = {"target_outputs": ["T1", "T2"]}
+    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2"]}
     inputs, _ = lm_model.prepare_token_inputs(texts, targets)
 
     n_candidates, trigger_len = 2, 3
@@ -147,7 +145,7 @@ def test_inputs_manager_chosen_message(lm_model):
 
     # Targets should be for single message now
     # get_message_from_batched_targets selects the item at chosen_message_idx
-    tgt = res["targets"]["target_outputs_toks"]
+    tgt = res["targets"][TargetKey.TARGET_RESPONSE_TOKS]
     assert isinstance(tgt, torch.Tensor)
     assert tgt.shape[0] == n_candidates
 
@@ -159,7 +157,7 @@ def test_lm_steering_loss(lm_model):
     d_model = lm_model.model.config.hidden_size
     target_direction = torch.randn(1, d_model)
 
-    targets = {"target_directions": target_direction}
+    targets = {TargetKey.TARGET_DIRECTIONS: target_direction}
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     # Sample 2 candidate triggers
@@ -188,7 +186,7 @@ def test_lm_steering_loss_multi_message(lm_model):
     d_model = lm_model.model.config.hidden_size
     target_directions = torch.randn(2, d_model)
 
-    targets = {"target_directions": target_directions}
+    targets = {TargetKey.TARGET_DIRECTIONS: target_directions}
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     # Sample candidates
