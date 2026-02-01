@@ -372,14 +372,26 @@ class _HuggingFaceModelMixins:
 
     def compute_grad_from_tokens(
         self,
-        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
+
+        # Hard trigger input:
+        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"]=None,
+
+        # Soft trigger input:
+        candidate_trigger_probs: Float[Tensor, "n_candidates trigger_seq_len vocab_size"] = None,
+        do_gumbel_softmax: bool = False,
+        gumbel_softmax_temp: Optional[float] = None,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
         """
         Computes the gradient of the loss w.r.t the one-hot token matrix
         for a batch of triggers. Uses dynamic batch size.
+
+        Args:
+            # TODO-claude=doce doc
         """
+        assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
+            "Either `candidate_trigger_ids` or `candidate_trigger_probs` must be provided, but not both."
         model = self.model
         embedding_layer = self.embedding_layer
         n_messages = inputs.n_messages
@@ -402,10 +414,13 @@ class _HuggingFaceModelMixins:
 
             # Prepare the one-hot encoding matrix
             # (n_candidates, trigger_seq_len, vocab_size)
-            candidate_ids_onehot_detached = torch.nn.functional.one_hot(
-                candidate_trigger_ids,
-                num_classes=embedding_layer.num_embeddings,
-            ).to(model.device, model.dtype)
+            if candidate_trigger_probs is None:
+                candidate_ids_onehot_detached = torch.nn.functional.one_hot(
+                    candidate_trigger_ids,
+                    num_classes=embedding_layer.num_embeddings,
+                ).to(model.device, model.dtype)
+            else:
+                candidate_ids_onehot_detached = candidate_trigger_probs.to(model.device, model.dtype)
 
             # Prepare the effective embedding matrix:
             embedding_matrix = self.effective_embedding_matrix  # (vocab_size, embd_dim)
@@ -423,6 +438,16 @@ class _HuggingFaceModelMixins:
                     candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
                     candidate_ids_onehot.requires_grad_()
                     # [TODO: allow second order grads] accept the `candidate_ids_onehot` as input (so the user can use the non-detached gradients later)
+
+                    # 1'. optionally apply gumbel-softmax to the trigger probs
+                    if do_gumbel_softmax:
+                        assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
+                        candidate_ids_onehot = torch.nn.functional.gumbel_softmax(
+                            logits=candidate_ids_onehot,
+                            tau=gumbel_softmax_temp,
+                            hard=False,
+                            dim=-1,
+                        )
 
                     # 2. Apply embedding to get trigger_embeds
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
@@ -458,7 +483,6 @@ class _HuggingFaceModelMixins:
                     batch_losses, dim=0
                 )  # (n_messages, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
-                # logger.debug(f"\tgrad: {batch_losses.mean().item()}")
 
                 # Update usage stats
                 self._update_usage_stats(
@@ -583,37 +607,37 @@ class _HuggingFaceModelMixins:
         """
         raise NotImplementedError("`token_forward_pass` must be implemented in subclasses of `_HuggingFaceModelMixins`.")
 
-    # @staticmethod
-    # def cast_to_model_tokenizer(
-    #     old_ids: Float[Tensor, "bsz seq_len"],
-    #     model_from: "_HuggingFaceModelMixins",
-    #     model_to: "_HuggingFaceModelMixins",
-    # ):
-    #     """
-    #     Given `ids` in the `model_from` tokenizer, heurisically casts them to the
-    #     `model_to` tokenizer, while filtering out mismatches.
-    #     """
-    #     # a. decode w/ util-model tokenizer
-    #     strs = model_from.tokenizer.batch_decode(old_ids)
+    @staticmethod
+    def cast_to_model_tokenizer(
+        old_ids: Float[Tensor, "bsz seq_len"],
+        model_from: "_HuggingFaceModelMixins",
+        model_to: "_HuggingFaceModelMixins",
+    ) -> Tuple[Float[Tensor, "bsz len_old"], Float[Tensor, "bsz len_new"]]:
+        """
+        Given `ids` in the `model_from` tokenizer, heurisically casts them to the
+        `model_to` tokenizer, while filtering out mismatches.
+        """
+        # a. decode w/ util-model tokenizer
+        strs = model_from.tokenizer.batch_decode(old_ids)
 
-    #     # b. encode w/ model tokenizer
-    #     new_ids = [
-    #         model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
-    #         .to(model_to.device)
-    #         .squeeze(0)
-    #         for s in strs
-    #     ]
+        # b. encode w/ model tokenizer
+        new_ids = [
+            model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
+            .to(model_to.device)
+            .squeeze(0)
+            for s in strs
+        ]
 
-    #     # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
-    #     lengths = [ids.shape[-1] for ids in new_ids]
-    #     counts = np.bincount(lengths)
-    #     _min_len = np.argmax(counts)  # so most ids will be kept as fully
-    #     # smaller than min -> drop
-    #     to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
-    #     old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
-    #     new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
-    #     # longer than min -> trim
-    #     new_ids = [ids[..., :_min_len] for ids in new_ids]
-    #     new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
+        # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
+        lengths = [ids.shape[-1] for ids in new_ids]
+        counts = np.bincount(lengths)
+        _min_len = np.argmax(counts)  # so most ids will be kept as fully
+        # smaller than min -> drop
+        to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
+        old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
+        new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
+        # longer than min -> trim
+        new_ids = [ids[..., :_min_len] for ids in new_ids]
+        new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
 
-    #     return old_ids, new_ids.to(model_to.device, torch.int64)
+        return old_ids, new_ids.to(model_to.device, torch.int64)

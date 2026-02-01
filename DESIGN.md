@@ -97,6 +97,7 @@ Also note that some models may have token input access, despite having limited l
 
 The aforementioned two generic methods (*prepare input*, *compute loss*), interact with the two following pillars: **input managers** and **loss classes** accordingly.
 
+
 ### Standardized Input/Output Interfaces
 
 **Design Motivation**: Prior to this refactoring, model inputs and outputs were passed as dictionaries with string keys, leading to inconsistent interfaces and requiring each model to implement its own loss resolution logic. This resulted in ~180 lines of duplicated code across 3 locations, making maintenance difficult and new model implementation error-prone.
@@ -123,6 +124,12 @@ texts = model_input.input_texts  # Type-safe attribute access
 ```
 
 This standardization enabled the unified loss resolution system described in Pillar 3.
+
+
+<!-- TODO fully document access levels (e.g., token level also assume prefilling; text-level only assume query, and sometime generated logits [different from prefilled logits]) -->
+
+<!-- TODO make sure it's clear that __call__ is part of the query level (thus for example doesn't support prefill) -->
+
 
 ## Pillar 2: Input and target manager
 
