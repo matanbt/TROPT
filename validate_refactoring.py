@@ -75,9 +75,9 @@ def test_model_output_fields():
 
     try:
         from tropt.models import ModelOutput
-        from dataclasses import fields
 
-        field_names = {f.name for f in fields(ModelOutput)}
+        # Pydantic models use model_fields instead of dataclasses.fields()
+        field_names = set(ModelOutput.model_fields.keys())
         expected_fields = {
             'output_embeddings',
             'output_logits',
@@ -114,9 +114,9 @@ def test_model_input_fields():
 
     try:
         from tropt.models import ModelInput
-        from dataclasses import fields
 
-        field_names = {f.name for f in fields(ModelInput)}
+        # Pydantic models use model_fields instead of dataclasses.fields()
+        field_names = set(ModelInput.model_fields.keys())
         expected_fields = {
             'input_texts',
             'input_trigger_ids',
@@ -146,11 +146,12 @@ def test_model_input_fields():
 
 
 def test_loss_resolution_imports():
-    """Test that loss resolution can access all required loss types."""
+    """Test that loss resolution can import loss types from base module."""
     print("\nTesting loss resolution imports...")
 
     try:
-        from tropt.loss.resolution import (
+        # Loss types should be imported from tropt.loss.base, not resolution.py
+        from tropt.loss.base import (
             LogitBasedLoss,
             TriggerLogitBasedLoss,
             AttentionBasedLoss,
@@ -159,7 +160,8 @@ def test_loss_resolution_imports():
             TextBasedLoss,
             CombinedLoss,
         )
-        print("[OK] All loss type imports in resolution.py are accessible")
+        from tropt.loss.resolution import compute_loss_from_model_data, LossResolutionError
+        print("[OK] All loss types and resolution functions are accessible")
     except ImportError as e:
         print(f"[FAIL] Loss type import failed: {e}")
         return False
