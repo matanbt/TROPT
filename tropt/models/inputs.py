@@ -183,16 +183,19 @@ class TargetsDictPlus(dict):
 
 # ======================= Model Input Wrapper =======================
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
-@dataclass
-class ModelInput:
+class ModelInput(BaseModel):
     """Standardized input container returned by InputsManager.get_triggered_inputs().
 
     Contains all prepared inputs for model forward passes, supporting both
     token-level and text-level access patterns. Provides a unified interface
     for different input types across all model implementations.
+
+    This class uses Pydantic for runtime type and shape validation, ensuring
+    that inputs are correctly formatted before being passed to model forward
+    passes and loss functions.
 
     Field Naming Convention:
         All fields are prefixed with `input_` for clarity and to distinguish
@@ -219,6 +222,8 @@ class ModelInput:
         ...     targets={"target_outputs": ["Response 1", "Response 2"]}
         ... )
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # === Text-level inputs (TextInputsManager) ===
     input_texts: Optional[List[str]] = None
@@ -301,6 +306,73 @@ class ModelInput:
         - "target_directions": Tensor - Steering directions for activation losses
         - "slices": List[Dict] - Same as input_slices (often included for convenience)
     """
+
+    # === Validators ===
+
+    @field_validator('input_texts')
+    @classmethod
+    def validate_input_texts(cls, v):
+        """Validate that input_texts is a list of strings."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"input_texts must be a list, got {type(v)}")
+            for i, text in enumerate(v):
+                if not isinstance(text, str):
+                    raise TypeError(f"input_texts[{i}] must be a string, got {type(text)}")
+        return v
+
+    @field_validator('input_trigger_ids')
+    @classmethod
+    def validate_trigger_ids_shape(cls, v):
+        """Validate that trigger IDs are 2D tensors."""
+        if v is not None:
+            if not isinstance(v, torch.Tensor):
+                raise TypeError(f"input_trigger_ids must be a Tensor, got {type(v)}")
+            if v.ndim != 2:
+                raise ValueError(
+                    f"input_trigger_ids must be 2D (bsz, trigger_seq_len), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('input_embeds')
+    @classmethod
+    def validate_embeds_shape(cls, v):
+        """Validate that input embeddings are 3D tensors."""
+        if v is not None:
+            if not isinstance(v, torch.Tensor):
+                raise TypeError(f"input_embeds must be a Tensor, got {type(v)}")
+            if v.ndim != 3:
+                raise ValueError(
+                    f"input_embeds must be 3D (bsz, seq_len, d_model), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('input_attention_mask')
+    @classmethod
+    def validate_attention_mask_shape(cls, v):
+        """Validate that attention mask is 2D tensor."""
+        if v is not None:
+            if not isinstance(v, torch.Tensor):
+                raise TypeError(f"input_attention_mask must be a Tensor, got {type(v)}")
+            if v.ndim != 2:
+                raise ValueError(
+                    f"input_attention_mask must be 2D (bsz, seq_len), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('input_slices')
+    @classmethod
+    def validate_input_slices(cls, v):
+        """Validate that input_slices is a list of dicts."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"input_slices must be a list, got {type(v)}")
+            for i, slices_dict in enumerate(v):
+                if not isinstance(slices_dict, dict):
+                    raise TypeError(
+                        f"input_slices[{i}] must be a dict, got {type(slices_dict)}"
+                    )
+        return v
 
 
 # TODO-CLAUDE-CODE: add enum for target entry keys (e.g., "target_outputs", "target_output_tokens", etc); so we don't hardcode strings everywhere! we should also explain what each naming means and what is the expected format, typing and shape
