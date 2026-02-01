@@ -6,15 +6,19 @@ from .model_base import (
     BaseTokenizer,
 )
 
+# Output classes:
+from .outputs import ModelOutput
+
 # Input classes:
 from .inputs import (
     BatchedTargetsDict,
     InputsManager,
     MessageBatchedTargetsDict,
+    ModelInput,
     TargetsDict,
     TargetsDictPlus,
     TextInputsManager,
-    
+
     TokenInputsManager,
     TokenTrigger,
     TokenTriggerCandidates,

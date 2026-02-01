@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import Dict, List, Optional
 
@@ -61,7 +63,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         temperature: float = 0.0,
         return_full_output: bool = False,
         **kwargs,
-    ) -> List[str]:
+    ) -> List[str] | "ModelOutput":
         """
         Generates text completions for the given input texts using parallel execution.
         """
@@ -110,7 +112,8 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         )
 
         if return_full_output:
-            return dict(
+            from tropt.models.outputs import ModelOutput
+            return ModelOutput(
                 generated_response_strs=responses,
             )
 

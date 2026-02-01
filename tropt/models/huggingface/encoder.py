@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from typing import Annotated, List, Optional, Tuple
 
@@ -194,41 +196,27 @@ class EncoderHFModel(
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
-        # Recursive loss calculation helper
-        def _calc_loss_from_outputs(_output_emb, _targets, _loss_func):
-            if isinstance(_loss_func, EmbeddingBasedLoss):
-                # Base case: Compute embedding loss
-                return _loss_func(
-                    _output_emb,
-                    _targets["target_vectors"]
-                    )  # shape: (bsz,)
+        # Create ModelOutput and ModelInput for unified loss resolution
+        from tropt.models.outputs import ModelOutput
+        from tropt.models.inputs import ModelInput
+        from tropt.loss.resolution import compute_loss_from_model_data
 
-            elif isinstance(_loss_func, CombinedLoss):
-                # Recursive case: Compute all child losses
-                losses = []
-                for _nested_loss_func in _loss_func.loss_funcs:
-                    losses.append(
-                        _calc_loss_from_outputs(_output_emb, _targets, _nested_loss_func)
-                    )
+        model_output = ModelOutput(
+            output_embeddings=output_emb,
+        )
 
-                # Stack results: (n_losses, bsz)
-                losses = torch.stack(losses, dim=0)
+        model_input = ModelInput(
+            targets=targets,
+        )
 
-                # Apply combination logic (e.g. weighted sum) -> (bsz,)
-                return _loss_func(losses)
-
-            else:
-                raise NotImplementedError(
-                    f"Loss function {_loss_func} not supported for HuggingFace models yet."
-                )
-
-        return _calc_loss_from_outputs(output_emb, targets, loss_func)
+        # Use unified loss resolution
+        return compute_loss_from_model_data(model_output, model_input, loss_func)
     @torch.no_grad()
     def __call__(
         self,
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"]:
+    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
         """
         Get the embeddings for the given texts (n_texts elements).
         Note: we mostly assume any prompting/instruction will be applied before the call to this function.
@@ -238,7 +226,8 @@ class EncoderHFModel(
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
 
         if return_full_output:
-            return dict(
+            from tropt.models.outputs import ModelOutput
+            return ModelOutput(
                 output_embeddings=emb,
             )
 

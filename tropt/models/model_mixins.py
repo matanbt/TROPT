@@ -134,61 +134,36 @@ class LossTextAccessMixin(TextAccessMixin):
         n_messages = inputs.n_messages
         n_candidates = len(candidate_trigger_strs)
 
-        # Helper function to calculate loss from outputs
-        def _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _loss_func):
-            if isinstance(_loss_func, EmbeddingBasedLoss):
-                return _loss_func(
-                    _outputs["output_embeddings"], # TODO support in hf/encoder.py
-                    _curr_targets[_loss_func.TARGET_KEY]
-                )  # shape: (n_candidates,)
-
-            if isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
-                return _loss_func(
-                    _inputs,
-                )  # shape: (n_candidates,)
-
-            if isinstance(_loss_func, LogitBasedLoss):
-                return _loss_func(
-                    _outputs["generated_response_logits"],
-                    _curr_targets[_loss_func.TARGET_KEY]
-                )  # shape: (n_candidates,)
-
-            elif isinstance(_loss_func, CombinedLoss):
-                child_losses = []
-                for _nested_loss_func in _loss_func.loss_funcs:
-                    # Recursive call
-                    child_losses.append(
-                        _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _nested_loss_func)
-                    )
-
-                # Stack child losses: (n_candidates, n_losses)
-                child_losses = torch.stack(child_losses, dim=1)
-
-                # Apply the combinator (e.g. weighted sum) -> (n_candidates,)
-                return _loss_func(child_losses)
-
-            else:
-                raise NotImplementedError(f"Loss function {_loss_func} not supported.")
+        # Import unified loss resolution
+        from tropt.models.outputs import ModelOutput
+        from tropt.models.inputs import ModelInput
+        from tropt.loss.resolution import compute_loss_from_model_data
 
         # Main Loop: for each message, we compute the loss for all candidates
         losses = []
         for message_idx in range(n_messages):
-            curr_inputs_dict = inputs.get_triggered_inputs(
+            curr_model_input = inputs.get_triggered_inputs(
                 candidate_trigger_strs, chosen_message_idx=message_idx
             )
             curr_texts, curr_targets = (
-                curr_inputs_dict["inputs_texts"],
-                curr_inputs_dict["targets"],
+                curr_model_input.input_texts,
+                curr_model_input.targets,
             )
 
             # Forward pass once per message bulk
-            outputs = self(
+            model_output = self(
                 curr_texts,
                 return_full_output=True,
-            )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
+            )  # Returns ModelOutput with available data
 
-            # Calculate loss
-            loss = _calc_loss_from_outputs(curr_texts, outputs, curr_targets, loss_func)  # shape: (n_candidates,)
+            # Create ModelInput wrapper
+            model_input = ModelInput(
+                input_texts=curr_texts,
+                targets=curr_targets,
+            )
+
+            # Use unified loss resolution
+            loss = compute_loss_from_model_data(model_output, model_input, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)

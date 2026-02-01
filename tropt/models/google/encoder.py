@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import List
 
 import torch
@@ -41,7 +43,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         texts: List[str],
         text_type: str = None,
         return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"]:
+    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
         """
         Generates embeddings for the given texts using the Gemini API.
 
@@ -86,7 +88,8 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         )
 
         if return_full_output:
-            return dict(
+            from tropt.models.outputs import ModelOutput
+            return ModelOutput(
                 output_embeddings=result,
             )
 

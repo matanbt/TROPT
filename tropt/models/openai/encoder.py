@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import Annotated, Any, List, Literal, Optional, Tuple
 
 import numpy as np
@@ -175,7 +177,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         chosen_message_idx: Optional[int] = None,
         **kwargs
-    ) -> dict[str, Any]:
+    ) -> "ModelInput":
         """
         Constructs the full text inputs for the API by decoding the candidate trigger tokens
         and inserting them into the templates.
@@ -208,11 +210,12 @@ class OpenAITokenInputsManager(TokenInputsManager):
         
         if chosen_message_idx is not None:
             # Flatten inputs_texts if only one message (List[str] instead of List[List[str]])
-            inputs_texts = inputs_texts[0] 
+            inputs_texts = inputs_texts[0]
             targets = TargetsDictPlus.get_message_from_batched_targets(targets, chosen_message_idx)
 
-        return dict(
-            inputs_texts=inputs_texts,
+        from tropt.models.inputs import ModelInput
+        return ModelInput(
+            input_texts=inputs_texts,
             targets=targets
         )
 
@@ -287,7 +290,7 @@ class EncoderOpenAIModel(
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
         **kwargs
-    ) -> Float[Tensor, "n_texts d_model"]:
+    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
         """
         Generates embeddings for the given texts using the OpenAI API.
 
@@ -315,7 +318,8 @@ class EncoderOpenAIModel(
         )
 
         if return_full_output:
-            return dict(
+            from tropt.models.outputs import ModelOutput
+            return ModelOutput(
                 output_embeddings=result,
             )
 

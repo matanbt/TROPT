@@ -157,7 +157,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
         append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_messages
         chosen_message_idx: Optional[int] = None,
-    ) -> dict[str, Tensor | MessageBatchedTargetsDict]:
+    ) -> "ModelInput":
         """
         Returns the input embeddings with the given trigger merged in for a specific message.
 
@@ -273,7 +273,7 @@ class _HFTokenInputsManager(TokenInputsManager):
             targets, chosen_message_idx
         )
 
-        # add the slices info for loss computation
+        # add the slices info for loss computation (also stored separately in ModelInput)
         targets['slices'] = slices
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
@@ -284,12 +284,14 @@ class _HFTokenInputsManager(TokenInputsManager):
                 message_idx=chosen_message_idx,
             )
 
-        return dict(
-            trigger_ids=trigger_ids,  # detached triggers for reference
-            inputs_embeds=inputs_embeds.to(self.device, self.float_dtype),
-            attention_mask=attention_mask.to(self.device, torch.int64),
+        from tropt.models.inputs import ModelInput
+        return ModelInput(
+            input_trigger_ids=trigger_ids,  # detached triggers for reference
+            input_embeds=inputs_embeds.to(self.device, self.float_dtype),
+            input_attention_mask=attention_mask.to(self.device, torch.int64),
+            input_slices=slices,
             targets=targets,
-            prefix_cache_kwargs=prefix_cache_kwargs,
+            input_prefix_cache_kwargs=prefix_cache_kwargs,
         )
 
     def _get_prefix_cache_kwargs(
@@ -445,14 +447,19 @@ class _HuggingFaceModelMixins:
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
-                    loss = self._loss_hook(
-                        **inputs.get_triggered_inputs(
-                            trigger_embeds=candidate_embeds,
-                            chosen_message_idx=message_idx,
+                    model_input = inputs.get_triggered_inputs(
+                        trigger_embeds=candidate_embeds,
+                        chosen_message_idx=message_idx,
 
-                            # Also pass trigger ids as a reference
-                            trigger_ids=candidate_trigger_ids[cand_idx_start:cand_idx_end],
-                        ),
+                        # Also pass trigger ids as a reference
+                        trigger_ids=candidate_trigger_ids[cand_idx_start:cand_idx_end],
+                    )
+                    loss = self._loss_hook(
+                        inputs_embeds=model_input.input_embeds,
+                        attention_mask=model_input.input_attention_mask,
+                        targets=model_input.targets,
+                        prefix_cache_kwargs=model_input.input_prefix_cache_kwargs or {},
+                        trigger_ids=model_input.input_trigger_ids,
                         loss_func=loss_func,
                     )
                     batch_losses.append(loss)
@@ -542,11 +549,16 @@ class _HuggingFaceModelMixins:
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 logger.debug(f"from loss [msg={message_idx}]: {(cand_idx_end - cand_idx)}")
+                model_input = inputs.get_triggered_inputs(
+                    trigger_ids=batch_candidate_trigger_ids,
+                    chosen_message_idx=message_idx,
+                )
                 loss = self._loss_hook(
-                    **inputs.get_triggered_inputs(
-                        trigger_ids=batch_candidate_trigger_ids,
-                        chosen_message_idx=message_idx,
-                    ),
+                    inputs_embeds=model_input.input_embeds,
+                    attention_mask=model_input.input_attention_mask,
+                    targets=model_input.targets,
+                    prefix_cache_kwargs=model_input.input_prefix_cache_kwargs or {},
+                    trigger_ids=model_input.input_trigger_ids,
                     loss_func=loss_func,
                 )  # shape: (bsz,)
                 all_loss[message_idx].append(loss)
