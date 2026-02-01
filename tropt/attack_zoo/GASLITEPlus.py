@@ -3,6 +3,7 @@ from jaxtyping import Float
 
 from tropt.loss.base import SimilarityLoss
 from tropt.models.huggingface.encoder import EncoderHFModel
+from tropt.models.inputs import TargetKey
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.gasliteplus_optimizer import GASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -70,7 +71,7 @@ def run_gaslite_plus(
 
     result = optimizer.optimize_trigger(
         texts=[prefix_info],
-        targets={loss.TARGET_KEY: target_vector.to(model.device)},
+        targets={TargetKey.TARGET_VECTORS: target_vector.to(model.device)},
         initial_trigger=initial_trigger,
     )
 

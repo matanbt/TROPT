@@ -61,11 +61,32 @@ class TargetKey(str, Enum):
     """
     # TODO make everyone use this enum instead of hardcoding strings everywhere!
     TARGET_RESPONSE_STRS = "target_outputs"  # target_outputs
+    """Raw text target outputs (List[str])
+      Format: List of strings, one per message
+      Shape: n_messages strings
+      Used by: Language models for target matching
+    """
 
     TARGET_RESPONSE_TOKS = "target_outputs_toks" # target_response_toks
+    """Tokenized target outputs (List[Tensor] or Tensor)
+      Format: List of token ID tensors or batched tensor
+      Shape: List of (target_seq_len,) or (n_messages, target_seq_len)
+      Used by: Language models for computing cross-entropy loss
+    """
+
     TARGET_VECTORS = "target_vectors"
+    """Target embedding vectors (Tensor)
+        Format: Dense embedding vectors
+        Shape: (n_messages, d_model)
+        Used by: Encoder models for similarity-based losses
+    """
+
     TARGET_DIRECTIONS = "target_directions"
-    SLICES = "slices"
+    """Target directions in activation space (Tensor)
+        Format: Direction vectors for activation steering
+        Shape: (n_messages, d_model) or (n_messages, n_layers, d_model)
+        Used by: Steering losses (e.g., representation engineering)
+    """
 
 # ======================= Common input types =======================
 TokenTrigger = Float[Tensor, "1 trigger_seq_len"]
@@ -80,22 +101,31 @@ TargetsDict = Dict[str,
       | Float[Tensor, "n_messages d_model"],
 ]  # each entry has n_messages elements, each elenents has the target data.
 
+#### TODO remove
 ## A dict for each target; where each message is mapped
 # to a repeated _batch_ of its target tensor/string/etc
-BatchedTargetsDict = Dict[str,
-    List[List[str]]   # list of n_messages batches of strings
-      | Float[Tensor, "n_messages bsz target_seq_len"]
-      | List[Float[Tensor, "bsz target_seq_len"]]
-      | Float[Tensor, "n_messages bsz d_model"]
-]  # each entry has n_messages, each a batch of identical targets
+# BatchedTargetsDict = Dict[str,
+#     List[List[str]]   # list of n_messages batches of strings
+#       | Float[Tensor, "n_messages bsz target_seq_len"]
+#       | List[Float[Tensor, "bsz target_seq_len"]]
+#       | Float[Tensor, "n_messages bsz d_model"]
+# ]  # each entry has n_messages, each a batch of identical targets
 
 ## A dict for each target; where _a single pre-selected message_ is mapped
 #  to a batch of its target tensor/string/etc
-MessageBatchedTargetsDict = Dict[str,
-    List[str]   # of length bsz
-      | Float[Tensor, "bsz target_seq_len"]
-      | List[Float[Tensor, "target_seq_len"]]  # of length bsz
-      | Float[Tensor, "bsz d_model"]
+# MessageBatchedTargetsDict = Dict[str,
+#     List[str]   # of length bsz
+#       | Float[Tensor, "bsz target_seq_len"]
+#       | List[Float[Tensor, "target_seq_len"]]  # of length bsz
+#       | Float[Tensor, "bsz d_model"]
+# ]  # each entry has a batch of targets (for the selected message)
+
+## A dict for each target; where _a single pre-selected message_ is mapped
+#  to its target tensor/string/etc
+MessageTargetsDict = Dict[str,
+    str
+      | Float[Tensor, "target_seq_len"]
+      | Float[Tensor, "d_model"]
 ]  # each entry has a batch of targets (for the selected message)
 
 
@@ -144,38 +174,51 @@ class TargetsDictPlus(dict):
         return super().__setitem__(key, value)
 
     #----------------------------------------------------------------------------#
-    ## Utils for obtaining and manipulating different views of the TargetsDict: ##
+    # ## TODO remove
+    #     ## Utils for obtaining and manipulating different views of the TargetsDict: ##
+    # @staticmethod
+    # def get_expanded_with_candidates(targets: TargetsDict | "TargetsDictPlus", n_candidates: int) -> BatchedTargetsDict:
+    #     """
+    #     Repeats each target entry `n_repeats` times along the message dimension.
+    #     Useful when expanding targets to match multiple candidate triggers per message.
+    #     Returns result in a new dict (BatchedTargetsDict).
+    #     """
+    #     targets = targets.copy()
+
+    #     for k, v in targets.items():
+    #         if isinstance(v, torch.Tensor):
+    #             # (n_messages, ...) -> (n_messages, n_candidates, ...)
+    #             targets[k] = v.unsqueeze(1).expand(v.shape[0], n_candidates, *v.shape[1:])
+    #         elif isinstance(v, list) and isinstance(v[0], torch.Tensor):
+    #             # for each element: (...,) -> (n_candidates, ...)
+    #             targets[k] = [t.unsqueeze(0).expand(n_candidates, *t.shape) for t in v]
+    #         elif isinstance(v, list):
+    #             targets[k] = [[elem] * n_candidates for elem in v]
+    #         else:
+    #             raise ValueError(f"Unsupported target type for key {k}: {type(targets[k])}")
+
+    #     return targets
+
+    # @staticmethod
+    # def get_message_from_batched_targets(
+    #     targets: BatchedTargetsDict,
+    #     chosen_message_idx: int,
+    # ) -> MessageBatchedTargetsDict:
+    #     """
+    #     Selects the targets for a specific message index from the BatchedTargetsDict.
+    #     Returns result in a new dict (MessageBatchedTargetsDict).
+    #     """
+    #     targets = {k: v[chosen_message_idx] for k, v in targets.items()}
+    #     return targets
+
     @staticmethod
-    def get_expanded_with_candidates(targets: TargetsDict | "TargetsDictPlus", n_candidates: int) -> BatchedTargetsDict:
-        """
-        Repeats each target entry `n_repeats` times along the message dimension.
-        Useful when expanding targets to match multiple candidate triggers per message.
-        Returns result in a new dict (BatchedTargetsDict).
-        """
-        targets = targets.copy()
-
-        for k, v in targets.items():
-            if isinstance(v, torch.Tensor):
-                # (n_messages, ...) -> (n_messages, n_candidates, ...)
-                targets[k] = v.unsqueeze(1).expand(v.shape[0], n_candidates, *v.shape[1:])
-            elif isinstance(v, list) and isinstance(v[0], torch.Tensor):
-                # for each element: (...,) -> (n_candidates, ...)
-                targets[k] = [t.unsqueeze(0).expand(n_candidates, *t.shape) for t in v]
-            elif isinstance(v, list):
-                targets[k] = [[elem] * n_candidates for elem in v]
-            else:
-                raise ValueError(f"Unsupported target type for key {k}: {type(targets[k])}")
-
-        return targets
-
-    @staticmethod
-    def get_message_from_batched_targets(
-        targets: BatchedTargetsDict,
+    def select_message(
+        targets: TargetsDict | "TargetsDictPlus",
         chosen_message_idx: int,
-    ) -> MessageBatchedTargetsDict:
+    ) -> MessageTargetsDict:
         """
-        Selects the targets for a specific message index from the BatchedTargetsDict.
-        Returns result in a new dict (MessageBatchedTargetsDict).
+        Selects the targets for a specific message index from the TargetsDict.
+        Returns result in a new dict (MessageTargetsDict).
         """
         targets = {k: v[chosen_message_idx] for k, v in targets.items()}
         return targets
@@ -193,6 +236,9 @@ class ModelInput(BaseModel):
 
     This renders a uniform interface for model outputs, that can then be used
     to compute different losses agnostic of the underlying model type/implementation.
+
+    The convention is that such object conveys the data of a single message, without
+    mixing multiple messages.
 
     Shape Notation:
         - bsz: batch size (typically n_candidates for a single message)
@@ -223,6 +269,10 @@ class ModelInput(BaseModel):
     """List of complete text strings with triggers inserted, of length batch_size.
     """
 
+    input_trigger_strs: Optional[Annotated[List[str], "bsz"]] = None
+    """List of trigger strings used in the inputs, of length batch_size.
+    """
+
     # === Token-level inputs (TokenInputsManager) ===
     input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
     """Token IDs of the trigger candidates. Shape: (batch_size, trigger_sequence_length).
@@ -247,7 +297,7 @@ class ModelInput(BaseModel):
     """
 
     # === Position information (slicing) ===
-    input_slices: Optional[List[Dict[str, slice]]] = None
+    input_slices: Optional[Dict[str, slice]] = None
     """Position slices marking different regions in the input sequence.
 
     List of length batch_size, where each element is a dictionary mapping SliceKey
@@ -255,23 +305,25 @@ class ModelInput(BaseModel):
     input_after, appended) from model outputs like logits or hidden states.
 
     Example:
-        [{
-            SliceKey.TRIGGER: slice(10, 30),
-            SliceKey.INPUT_BEFORE: slice(0, 10),
-            SliceKey.INPUT_AFTER: slice(30, 50),
-            SliceKey.APPENDED: slice(50, 60)
-        }, ...]
+        >>> input_slices = {
+                SliceKey.TRIGGER: slice(10, 30),
+                SliceKey.INPUT_BEFORE: slice(0, 10),
+                SliceKey.INPUT_AFTER: slice(30, 50),
+                SliceKey.APPENDED: slice(50, 60)
+            }
 
     Critical for loss functions that need to identify specific token positions
     in the output (e.g., target output region for cross-entropy loss).
     """
 
     # === Targets (used by loss functions) ===
-    targets: Optional[TargetsDict | TargetsDictPlus] = None
+    targets: Optional[MessageTargetsDict] = None
     """Target data required by loss functions.
 
     Dictionary mapping `TargetKey`s to their corresponding target values. The specific
     keys and values depend on which loss function is being used.
+
+    Expects a single message's targets.
     """
 
     # === Validators ===
@@ -401,8 +453,8 @@ class TextInputsManager(InputsManager):
 
     def get_triggered_inputs(
         self,
-        trigger_strs: List[str],
-        chosen_message_idx: Optional[int] = None,
+        trigger_strs: Annotated[List[str], "n_candidates"],
+        chosen_message_idx: Optional[int],
     ) -> ModelInput:
         """
         Returns a list of inputs with the given trigger strings merged in.
@@ -414,31 +466,24 @@ class TextInputsManager(InputsManager):
             isinstance(s, str) for s in trigger_strs
         ), "trigger_strs must be a list of strings."
         n_candidates = len(trigger_strs)
-        inputs = []
 
-        for message_idx in range(self.n_messages):
-            inputs.append([])
-            for trigger_str in trigger_strs:
-                curr_text = (
-                    self.before_texts[message_idx]
-                    + trigger_str
-                    + self.after_texts[message_idx]
-                )
-                inputs[-1].append(curr_text)
-
-        # Expand the target entries accordingly
-        targets: TargetsDictPlus = self.targets.copy()
-        targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-
-        # If specified, select only the chosen message's inputs and targets
-        if chosen_message_idx is not None:
-            inputs = inputs[chosen_message_idx]
-            targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
-                targets, chosen_message_idx
+        input_texts: List[str] = []
+        for trigger_str in trigger_strs:
+            curr_text = (
+                self.before_texts[chosen_message_idx]
+                + trigger_str
+                + self.after_texts[chosen_message_idx]
             )
+            input_texts.append(curr_text)
+
+        # select only the chosen message's targets
+        targets = TargetsDictPlus.select_message(
+            self.targets, chosen_message_idx
+        )
 
         return ModelInput(
-            input_texts=inputs,
+            input_texts=input_texts,
+            input_trigger_strs=trigger_strs,
             targets=targets
         )
 

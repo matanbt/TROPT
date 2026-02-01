@@ -89,7 +89,7 @@ class ModelOutput(BaseModel):
     """
 
     generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]]] = None
-    """Logits for generated tokens from language model generation.
+    """Logits for generated tokens from language model generation. Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response.
     Response lengths may vary across samples.
     """
 

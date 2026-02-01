@@ -185,7 +185,7 @@ class EncoderHFModel(
     def token_forward_pass(
         self,
         model_input: ModelInput,
-        reference_loss_func: BaseLoss,
+        reference_loss_func: BaseLoss=None,
     ) -> ModelOutput:
         """
         Perform a white-box forward pass through the model given the ModelInput. This method uses input_embeds.
@@ -197,7 +197,7 @@ class EncoderHFModel(
             ModelOutput: The output from the model.
         """
 
-        assert model_input.inputs_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+        assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
 
         outputs = self.model(
             dict(

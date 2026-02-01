@@ -15,8 +15,7 @@ from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss.base import AttentionBasedLoss, BaseLoss
 from tropt.loss.resolution import compute_loss_from_model_data
 from tropt.models import (
-    BatchedTargetsDict,
-    MessageBatchedTargetsDict,
+    MessageTargetsDict,
     TargetsDict,
     TargetsDictPlus,
     TokenInputsManager,
@@ -182,6 +181,8 @@ class _HFTokenInputsManager(TokenInputsManager):
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
 
         Returns: A ModelInput object containing:
+                - input_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
+                    the token ids of the trigger(s) inserted (detached, for reference)
                 - inputs_embeds: Tensor, shape = (n_candidates, seq_len, embd_dim)
                     the input embeddings with the trigger merged in;
                     if the provided input_embds required grad, then this tensor will also require grad.
@@ -241,7 +242,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
         before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
 
-        msg_slices = {
+        input_slices = {
             SliceKey.INPUT_BEFORE: slice(
                 0,
                 before_offset,
@@ -264,18 +265,13 @@ class _HFTokenInputsManager(TokenInputsManager):
             ) if curr_append is not None else None,
         }
 
-        # Expand slices for all candidates (same slices for each candidate)
-        slices = [msg_slices] * n_candidates
-
         ## Prepare the targets repeated for each candidate
         targets: TargetsDictPlus = self.targets.copy()
-        targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-        targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
-            targets, chosen_message_idx
-        )
-
-        # add the slices info for loss computation (also stored separately in ModelInput)
-        targets['slices'] = slices
+        # targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
+        # targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
+        #     targets, chosen_message_idx
+        # )
+        targets: MessageTargetsDict = TargetsDictPlus.select_message(targets, chosen_message_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
@@ -286,13 +282,13 @@ class _HFTokenInputsManager(TokenInputsManager):
             )
 
         return ModelInput(
+            # TODO return input texts?
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
             input_attention_mask=attention_mask.to(self.device, torch.int64),
-            input_slices=slices,
+            input_slices=input_slices,
             targets=targets,
             input_prefix_cache_kwargs=prefix_cache_kwargs,
-            # TODO return input texts?
         )
 
     def _get_prefix_cache_kwargs(
