@@ -1,15 +1,14 @@
 import torch
 from jaxtyping import Float
 
+from tropt.common import DEFAULT_INIT_TRIGGER, TargetKey
 from tropt.loss.base import SimilarityLoss
 from tropt.models import TextAccessMixin, TokenAccessMixin
 from tropt.models.huggingface.encoder import EncoderHFModel
 from tropt.models.huggingface.lm import LMHFModel
-from tropt.models.inputs import TargetKey
 from tropt.optimizer.base import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.common import DEFAULT_INIT_TRIGGER
 
 
 def run_rasliteplus(

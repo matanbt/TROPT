@@ -8,14 +8,13 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER, TargetsDict
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
-    TargetsDict,
     TokenAccessMixin,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult

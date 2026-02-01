@@ -4,8 +4,9 @@ from typing import Any, List, Optional
 
 import torch
 
+from tropt.common import TargetsDict, TokenTrigger
 from tropt.loss.base import BaseLoss
-from tropt.models import BaseModel, TargetsDict, TokenTrigger
+from tropt.models import BaseModel
 from tropt.tracker.base import BaseTracker, DummyTracker
 
 

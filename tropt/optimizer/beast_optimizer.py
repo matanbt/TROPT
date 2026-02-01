@@ -7,13 +7,13 @@ from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
+from tropt.common import TargetsDict
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
     LossTokenAccessMixin,
-    TargetsDict,
 )
 from tropt.models.model_mixins import LossTextAccessMixin
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult

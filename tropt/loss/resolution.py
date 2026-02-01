@@ -8,9 +8,8 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from tropt.common import ModelInput, ModelOutput, SliceKey, TargetKey
 from tropt.loss.base import BaseLoss, CombinedLoss
-from tropt.models.inputs import ModelInput
-from tropt.models.outputs import ModelOutput
 
 
 class LossResolutionError(Exception):
@@ -77,7 +76,7 @@ def compute_loss_from_model_data(
         >>> output = ModelOutput(response_logits=torch.randn(2, 50, 32000))
         >>> input_data = ModelInput(
         ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
-        ...     targets={"target_outputs_toks": target_ids}
+        ...     targets={TargetKey.TARGET_RESPONSE_TOKS: target_ids}
         ... )
         >>> loss = compute_loss_from_model_data(output, input_data, PrefillCELoss())
 

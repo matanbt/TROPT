@@ -4,8 +4,8 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
+from tropt.common import ModelOutput
 from tropt.models import EncoderBaseModel, LossTextAccessMixin
-from tropt.models.outputs import ModelOutput
 
 
 class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
@@ -89,7 +89,6 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         )
 
         if return_full_output:
-            from tropt.models.outputs import ModelOutput
             return ModelOutput(
                 output_embeddings=result,
             )

@@ -10,15 +10,21 @@ from torch import Tensor
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    ModelInput,
+    ModelOutput,
+    SliceKey,
+    TargetKey,
+    TargetsDict,
+    TargetsDictPlus,
+)
 from tropt.loss.base import (
     AttentionBasedLoss,
     BaseLoss,
-    CombinedLoss,
     HiddenStateBased,
     LogitBasedLoss,
-    SteeringActivationLoss,
-    TriggerLogitBasedLoss,
 )
 from tropt.models import (
     GradientTokenAccessMixin,
@@ -26,13 +32,8 @@ from tropt.models import (
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
-from tropt.models.inputs import ModelInput, SliceKey
-from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,12 @@ class LMHFTokenInputsManager(_HFTokenInputsManager):
 
     @property
     def _do_prefill_targets(self) -> bool:
-        return "target_outputs_toks" in self.targets
+        return TargetKey.TARGET_RESPONSE_TOKS in self.targets
 
     @cached_property
     def _prefill_embeds(self) -> List[Float[Tensor, "target_seq_len embd_dim"]]:
         if self._do_prefill_targets:
-            return [self.embed_func(target_output) for target_output in self.targets["target_outputs_toks"]]
+            return [self.embed_func(target_output) for target_output in self.targets[TargetKey.TARGET_RESPONSE_TOKS]]
         return None
 
     def get_triggered_inputs(self, *args, **kwargs):
@@ -200,12 +201,12 @@ class LMHFModel(
         ]
 
         # Encode target outputs, if provided
-        if "target_outputs" in targets:
+        if TargetKey.TARGET_RESPONSE_STRS in targets:
             tokenized_lists = self.tokenizer(
-                targets["target_outputs"], add_special_tokens=False
+                targets[TargetKey.TARGET_RESPONSE_STRS], add_special_tokens=False
             )["input_ids"]
             # convert to list of tensors
-            targets["target_outputs_toks"] = [
+            targets[TargetKey.TARGET_RESPONSE_TOKS] = [
                 torch.tensor(ids, device=self.model.device) for ids in tokenized_lists
                 # each of shape (target_seq_len,)
             ]
@@ -466,7 +467,6 @@ class LMHFModel(
                 skip_special_tokens=False
             )
 
-            from tropt.models.outputs import ModelOutput
             return ModelOutput(
                 generated_response_strs=generation_strs,
                 generated_response_ids=generated_toks,

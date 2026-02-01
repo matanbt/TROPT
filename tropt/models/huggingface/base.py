@@ -11,16 +11,20 @@ from accelerate.utils.memory import clear_device_cache, find_executable_batch_si
 from jaxtyping import Float, Int
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import AttentionBasedLoss, BaseLoss
-from tropt.loss.resolution import compute_loss_from_model_data
-from tropt.models import (
+from tropt.common import (
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
     MessageTargetsDict,
+    ModelInput,
+    ModelOutput,
+    SliceKey,
     TargetsDict,
     TargetsDictPlus,
+)
+from tropt.loss.base import BaseLoss
+from tropt.loss.resolution import compute_loss_from_model_data
+from tropt.models import (
     TokenInputsManager,
 )
-from tropt.models.inputs import ModelInput, SliceKey
 
 logger = logging.getLogger(__name__)
 
