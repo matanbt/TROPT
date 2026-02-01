@@ -1,24 +1,28 @@
 """Standardized output containers for model forward passes.
 
-This module defines dataclass containers that provide a uniform interface for
+This module defines Pydantic models that provide a uniform interface for
 accessing model outputs across different model types and implementations.
+Runtime validation ensures type and shape correctness.
 """
 
-from dataclasses import dataclass
 from typing import List, Optional
 
 import torch
 from jaxtyping import Float, Int
+from pydantic import BaseModel, ConfigDict, field_validator
 from torch import Tensor
 
 
-@dataclass
-class ModelOutput:
+class ModelOutput(BaseModel):
     """Standardized output container for all model types in TROPT.
 
     Models populate only the fields they can provide. Loss resolution logic
     uses this standardized interface to extract required data without knowing
     the specific model type.
+
+    This class uses Pydantic for runtime type and shape validation, ensuring
+    that model outputs are correctly formatted before being passed to loss
+    functions.
 
     Field Naming Convention:
         All fields are prefixed with `output_` for clarity and to distinguish
@@ -52,6 +56,8 @@ class ModelOutput:
         ...     generated_response_strs=responses
         ... )
     """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # === Embedding outputs (Encoder models) ===
     output_embeddings: Optional[Float[Tensor, "bsz d_model"]] = None
@@ -144,3 +150,137 @@ class ModelOutput:
 
     Useful for debugging and logging the complete prompt-response sequence.
     """
+
+    # === Validators ===
+
+    @field_validator('output_embeddings')
+    @classmethod
+    def validate_embeddings_shape(cls, v):
+        """Validate that embeddings are 2D tensors."""
+        if v is not None:
+            if not isinstance(v, Tensor):
+                raise TypeError(f"output_embeddings must be a Tensor, got {type(v)}")
+            if v.ndim != 2:
+                raise ValueError(
+                    f"output_embeddings must be 2D (bsz, d_model), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('output_logits')
+    @classmethod
+    def validate_logits_shape(cls, v):
+        """Validate that logits are 3D tensors."""
+        if v is not None:
+            if not isinstance(v, Tensor):
+                raise TypeError(f"output_logits must be a Tensor, got {type(v)}")
+            if v.ndim != 3:
+                raise ValueError(
+                    f"output_logits must be 3D (bsz, seq_len, vocab_size), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('output_hidden_states')
+    @classmethod
+    def validate_hidden_states_shape(cls, v):
+        """Validate that hidden states are 4D tensors."""
+        if v is not None:
+            if not isinstance(v, Tensor):
+                raise TypeError(f"output_hidden_states must be a Tensor, got {type(v)}")
+            if v.ndim != 4:
+                raise ValueError(
+                    f"output_hidden_states must be 4D (bsz, n_layers, seq_len, d_model), "
+                    f"got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('output_attentions')
+    @classmethod
+    def validate_attentions_shape(cls, v):
+        """Validate that attentions are 5D tensors."""
+        if v is not None:
+            if not isinstance(v, Tensor):
+                raise TypeError(f"output_attentions must be a Tensor, got {type(v)}")
+            if v.ndim != 5:
+                raise ValueError(
+                    f"output_attentions must be 5D (bsz, n_layers, n_heads, seq_len, seq_len), "
+                    f"got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('full_template_ids')
+    @classmethod
+    def validate_template_ids_shape(cls, v):
+        """Validate that template IDs are 2D tensors."""
+        if v is not None:
+            if not isinstance(v, Tensor):
+                raise TypeError(f"full_template_ids must be a Tensor, got {type(v)}")
+            if v.ndim != 2:
+                raise ValueError(
+                    f"full_template_ids must be 2D (bsz, full_seq_len), got shape {v.shape}"
+                )
+        return v
+
+    @field_validator('generated_response_ids')
+    @classmethod
+    def validate_response_ids(cls, v):
+        """Validate that response IDs are a list of 1D tensors."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"generated_response_ids must be a list, got {type(v)}")
+            for i, tensor in enumerate(v):
+                if not isinstance(tensor, Tensor):
+                    raise TypeError(
+                        f"generated_response_ids[{i}] must be a Tensor, got {type(tensor)}"
+                    )
+                if tensor.ndim != 1:
+                    raise ValueError(
+                        f"generated_response_ids[{i}] must be 1D, got shape {tensor.shape}"
+                    )
+        return v
+
+    @field_validator('generated_response_logits')
+    @classmethod
+    def validate_response_logits(cls, v):
+        """Validate that response logits are a list of 2D tensors."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"generated_response_logits must be a list, got {type(v)}")
+            for i, tensor in enumerate(v):
+                if not isinstance(tensor, Tensor):
+                    raise TypeError(
+                        f"generated_response_logits[{i}] must be a Tensor, got {type(tensor)}"
+                    )
+                if tensor.ndim != 2:
+                    raise ValueError(
+                        f"generated_response_logits[{i}] must be 2D (response_len, vocab_size), "
+                        f"got shape {tensor.shape}"
+                    )
+        return v
+
+    @field_validator('generated_response_strs')
+    @classmethod
+    def validate_response_strs(cls, v):
+        """Validate that response strings are a list of strings."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"generated_response_strs must be a list, got {type(v)}")
+            for i, s in enumerate(v):
+                if not isinstance(s, str):
+                    raise TypeError(
+                        f"generated_response_strs[{i}] must be a string, got {type(s)}"
+                    )
+        return v
+
+    @field_validator('full_template_strs')
+    @classmethod
+    def validate_template_strs(cls, v):
+        """Validate that template strings are a list of strings."""
+        if v is not None:
+            if not isinstance(v, list):
+                raise TypeError(f"full_template_strs must be a list, got {type(v)}")
+            for i, s in enumerate(v):
+                if not isinstance(s, str):
+                    raise TypeError(
+                        f"full_template_strs[{i}] must be a string, got {type(s)}"
+                    )
+        return v
