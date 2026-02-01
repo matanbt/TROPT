@@ -18,6 +18,7 @@ from tropt.common import DEFAULT_INIT_TRIGGER
 from .inputs import (
     BatchedTargetsDict,
     MessageBatchedTargetsDict,
+    ModelInput,
     TargetsDict,
     TargetsDictPlus,
     TextInputsManager,
@@ -25,6 +26,7 @@ from .inputs import (
     TokenTrigger,
     TokenTriggerCandidates,
 )
+from .outputs import ModelOutput
 
 
 # ====================== Model Base Classes =======================
@@ -93,7 +95,7 @@ class LMBaseModel(BaseModel):
             self,
             texts: List[str],
             return_full_output: bool = False,
-            *args, **kwargs) -> List[str] | Dict[str, Any]:
+            *args, **kwargs) -> List[str] | ModelOutput:
         """Generates text completions for the given input texts."""
         raise NotImplementedError
 
@@ -105,7 +107,7 @@ class EncoderBaseModel(BaseModel):
         self, texts: List[str],
         return_full_output: bool = False,
         *args, **kwargs
-    ) -> Float[Tensor, "n_texts d_model"] | Dict[str, Any]:
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """Generates encoder embeddings for the given input texts."""
         raise NotImplementedError
 

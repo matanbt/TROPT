@@ -24,3 +24,8 @@ from .text_loss import (
     # Concrete text losses
     InputReadabilityLoss,
 )
+
+from .resolution import (
+    compute_loss_from_model_data,
+    LossResolutionError,
+)

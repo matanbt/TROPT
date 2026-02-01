@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import itertools
 import logging
 from functools import cached_property
@@ -284,14 +286,16 @@ class LMHFModel(
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 # Get inputs for this specific message
-                inputs_dict = inputs.get_triggered_inputs(
+                model_input = inputs.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
                     chosen_message_idx=message_idx,
                 )
 
                 # Forward pass
                 logits_batch = self.model(
-                    **inputs_dict
+                    inputs_embeds=model_input.input_embeds,
+                    attention_mask=model_input.input_attention_mask,
+                    **(model_input.input_prefix_cache_kwargs or {})
                 ).logits  # (n_cand_batch, seq_len, vocab_size)
 
                 all_logits[message_idx].append(logits_batch)
@@ -364,103 +368,25 @@ class LMHFModel(
             **prefix_cache_kwargs,
         )
 
-        def _calc_loss_from_outputs(_outputs, _targets, _trigger_ids, _loss_func):
-            if isinstance(_loss_func, LogitBasedLoss):
-                logits = _outputs.logits
-                response_target_ids = _targets["target_outputs_toks"]  # (bsz, target_seq_len)
-                response_slcs = [slices[SliceKey.APPENDED] for slices in _targets["slices"]]  # bsz of `slice`
+        # Create ModelOutput from HuggingFace forward pass
+        from tropt.models.outputs import ModelOutput
+        from tropt.models.inputs import ModelInput
+        from tropt.loss.resolution import compute_loss_from_model_data
 
-                # Check if slices are aligned across the batch
-                first_slc = response_slcs[0]
-                are_slcs_aligned = all(
-                    s.start == first_slc.start and s.stop == first_slc.stop
-                    for s in response_slcs
-                )
+        model_output = ModelOutput(
+            output_logits=outputs.logits,
+            output_attentions=torch.stack(outputs.attentions, dim=1) if outputs.attentions else None,
+            output_hidden_states=torch.stack(outputs.hidden_states, dim=1) if outputs.hidden_states else None,
+        )
 
-                assert isinstance(response_target_ids, torch.Tensor) and response_target_ids.dim() == 2 and response_target_ids.shape[0] == logits.shape[0], \
-                    "response_target_ids must be a tensor of shape (bsz, target_seq_len) matching the batch size of logits."
-                assert first_slc.stop - first_slc.start == response_target_ids.shape[1], \
-                    "Length of target sequences must match the length of the response slices."
-                assert are_slcs_aligned, "Response slices are not aligned across the batch. Variable-length target sequences are not supported yet."
+        model_input = ModelInput(
+            input_trigger_ids=trigger_ids,
+            input_slices=targets["slices"] if "slices" in targets else None,
+            targets=targets,
+        )
 
-                # If slices are aligned, we can simply stack them
-                start_idx = first_slc.start - 1
-                end_idx = first_slc.stop - 1
-                response_logits = logits[:, start_idx:end_idx, :]
-
-                # Compute loss
-                loss = _loss_func(
-                    response_logits,
-                    response_target_ids,
-                )  # shape: (bsz,)
-
-            elif isinstance(_loss_func, TriggerLogitBasedLoss):
-                assert _trigger_ids is not None, "trigger_ids must be provided for TriggerLogitBasedLoss losses."
-                logits = _outputs.logits
-                trigger_slcs = [slices[SliceKey.TRIGGER] for slices in _targets['slices']]  # bsz of `slice`
-
-                # Check if slices are aligned across the batch
-                first_slc = trigger_slcs[0]
-                are_slcs_aligned = all(
-                    s.start == first_slc.start and s.stop == first_slc.stop
-                    for s in trigger_slcs
-                )
-                assert are_slcs_aligned, "Trigger slices are not aligned across the batch. Variable-length trigger sequences are not supported yet."
-                assert first_slc.start >= 1, "Trigger slices should start at least one position (for feasible logits). It could be that prefix-caching is enabled and causing this; if so, disable prefix caching."
-
-                # If slices are aligned, we can simply stack them
-                start_idx = first_slc.start - 1
-                end_idx = first_slc.stop - 1
-                trigger_logits = logits[:, start_idx:end_idx, :]
-                assert _trigger_ids.shape[1] == trigger_logits.shape[1], "Trigger ids length must match the length of the trigger slices."
-
-                # Compute loss
-                loss = _loss_func(
-                    trigger_logits,
-                    _trigger_ids,
-                )  # shape: (bsz,)
-
-            elif isinstance(_loss_func, AttentionBasedLoss):
-                attentions = torch.stack(
-                    _outputs.attentions, dim=1
-                )  # (bsz, n_layers, n_heads, seq_len[dst], seq_len[src])
-                loss = _loss_func(
-                    attentions,
-                    slices=_targets["slices"],
-                )  # shape: (bsz,)
-
-            elif isinstance(_loss_func, SteeringActivationLoss):
-                hidden_states = torch.stack(
-                    _outputs.hidden_states, dim=1
-                )  # (bsz, n_layers, seq_len, embd_dim)
-
-                target_directions = _targets["target_directions"]  # (bsz, d_model)
-
-                loss = _loss_func(
-                    hidden_states,
-                    target_directions=target_directions,
-                    slices=_targets["slices"],
-                )  # shape: (bsz,)
-
-            elif isinstance(_loss_func, CombinedLoss):
-                losses = []
-                for _nested_loss_func in _loss_func:
-                    # Recursive call to compute each loss
-                    losses.append(
-                        _calc_loss_from_outputs(_outputs, _targets, _trigger_ids, _nested_loss_func)
-                    ) # shape: (bsz,)
-
-                # combine the losses (by calling the loss function on them)
-                losses = torch.stack(losses, dim=0)  # (n_losses, bsz)
-                loss = _loss_func(losses)  # shape: (bsz,)
-
-            else:
-                raise NotImplementedError(
-                    f"Loss function {loss_func} not supported for HuggingFace models yet."
-                )
-            return loss
-
-        return _calc_loss_from_outputs(outputs, targets, trigger_ids, loss_func)
+        # Use unified loss resolution
+        return compute_loss_from_model_data(model_output, model_input, loss_func)
 
     @torch.no_grad()
     def __call__(
@@ -469,7 +395,7 @@ class LMHFModel(
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
         return_full_output: bool = False,
-    ) -> List[str]:
+    ) -> List[str] | "ModelOutput":
         """
         Generate text completions for the given input texts.
         """
@@ -545,7 +471,8 @@ class LMHFModel(
                 skip_special_tokens=False
             )
 
-            return dict(  # TODO make a dataclass
+            from tropt.models.outputs import ModelOutput
+            return ModelOutput(
                 generated_response_strs=generation_strs,
                 generated_response_ids=generated_toks,
                 generated_response_logits=generation_logits,

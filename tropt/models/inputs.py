@@ -180,6 +180,129 @@ class TargetsDictPlus(dict):
 
     #----------------------------------------------------------------------------
 
+
+# ======================= Model Input Wrapper =======================
+
+from dataclasses import dataclass
+
+
+@dataclass
+class ModelInput:
+    """Standardized input container returned by InputsManager.get_triggered_inputs().
+
+    Contains all prepared inputs for model forward passes, supporting both
+    token-level and text-level access patterns. Provides a unified interface
+    for different input types across all model implementations.
+
+    Field Naming Convention:
+        All fields are prefixed with `input_` for clarity and to distinguish
+        them from output fields in ModelOutput.
+
+    Shape Notation:
+        - bsz: batch size (typically n_candidates for a single message)
+        - seq_len: total sequence length
+        - trigger_seq_len: number of trigger tokens
+        - d_model: embedding dimension
+
+    Examples:
+        >>> # Token-level input
+        >>> token_input = ModelInput(
+        ...     input_trigger_ids=torch.randint(0, 1000, (4, 20)),
+        ...     input_embeds=torch.randn(4, 100, 768),
+        ...     input_attention_mask=torch.ones(4, 100),
+        ...     targets={"target_outputs_toks": target_ids}
+        ... )
+
+        >>> # Text-level input
+        >>> text_input = ModelInput(
+        ...     input_texts=["Text with trigger 1", "Text with trigger 2"],
+        ...     targets={"target_outputs": ["Response 1", "Response 2"]}
+        ... )
+    """
+
+    # === Text-level inputs (TextInputsManager) ===
+    input_texts: Optional[List[str]] = None
+    """List of text strings with triggers inserted.
+
+    Used by text-level models (e.g., LiteLLM, API-based models). Each string
+    is a complete input text with the trigger already substituted into the template.
+    Length: batch_size.
+    """
+
+    # === Token-level inputs (TokenInputsManager) ===
+    input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
+    """Token IDs of the trigger candidates.
+
+    Reference tensor containing the token IDs that were inserted into the input.
+    Used by some losses (e.g., TriggerLogitBasedLoss) to compute objectives
+    over the trigger tokens. Shape: (batch_size, trigger_sequence_length).
+    """
+
+    input_embeds: Optional[Float[Tensor, "bsz seq_len d_model"]] = None
+    """Full input embeddings with trigger embeddings inserted.
+
+    Combined embeddings representing [before_template] + [trigger] + [after_template]
+    (and optionally appended target tokens for prefilling). Shape: (batch_size,
+    total_sequence_length, embedding_dimension).
+
+    Used as input to HuggingFace model forward passes via `inputs_embeds` parameter.
+    """
+
+    input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None
+    """Attention mask for the input sequence.
+
+    Binary mask indicating which positions should be attended to (1) and which
+    should be ignored (0). Matches the shape of input_embeds. Shape: (batch_size,
+    total_sequence_length).
+    """
+
+    input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None
+    """Keyword arguments for prefix caching (KV cache optimization).
+
+    Contains `past_key_values` and related kwargs for reusing computed attention
+    keys/values from the prefix. Enables faster inference by avoiding recomputation
+    of static prompt portions.
+
+    Format: Dict with keys like 'past_key_values', 'cache_position', etc.
+    """
+
+    # === Position information (slicing) ===
+    input_slices: Optional[List[Dict[str, slice]]] = None
+    """Position slices marking different regions in the input sequence.
+
+    List of length batch_size, where each element is a dictionary mapping SliceKey
+    to slice objects. Used to extract specific regions (trigger, input_before,
+    input_after, appended) from model outputs like logits or hidden states.
+
+    Example:
+        [{
+            SliceKey.TRIGGER: slice(10, 30),
+            SliceKey.INPUT_BEFORE: slice(0, 10),
+            SliceKey.INPUT_AFTER: slice(30, 50),
+            SliceKey.APPENDED: slice(50, 60)
+        }, ...]
+
+    Critical for loss functions that need to identify specific token positions
+    in the output (e.g., target output region for cross-entropy loss).
+    """
+
+    # === Targets (used by loss functions) ===
+    targets: Optional[TargetsDict | TargetsDictPlus] = None
+    """Target data required by loss functions.
+
+    Dictionary mapping target keys (e.g., "target_outputs", "target_vectors",
+    "target_directions") to their corresponding target values. The specific
+    keys and values depend on which loss function is being used.
+
+    Common keys:
+        - "target_outputs": List[str] - Target text strings
+        - "target_outputs_toks": Tensor - Tokenized target sequences
+        - "target_vectors": Tensor - Target embeddings for similarity losses
+        - "target_directions": Tensor - Steering directions for activation losses
+        - "slices": List[Dict] - Same as input_slices (often included for convenience)
+    """
+
+
 # TODO-CLAUDE-CODE: add enum for target entry keys (e.g., "target_outputs", "target_output_tokens", etc); so we don't hardcode strings everywhere! we should also explain what each naming means and what is the expected format, typing and shape
 
 # ======================= Triggered Input Managers =======================
@@ -243,7 +366,7 @@ class TextInputsManager(InputsManager):
         self,
         trigger_strs: List[str],
         chosen_message_idx: Optional[int] = None,
-    ) -> Dict[str, List[str] | BatchedTargetsDict | MessageBatchedTargetsDict]:
+    ) -> ModelInput:
         """
         Returns a list of inputs with the given trigger strings merged in.
         The list is two-dimensional: outer list over messages, inner list over trigger variations; also, returns the corresponding targets.
@@ -277,8 +400,9 @@ class TextInputsManager(InputsManager):
                 targets, chosen_message_idx
             )
 
-        return dict(
-            inputs_texts=inputs, targets=targets
+        return ModelInput(
+            input_texts=inputs,
+            targets=targets
         )
 
 ## Token inputs manager ##
