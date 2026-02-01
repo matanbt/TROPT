@@ -126,7 +126,7 @@ class GBDAOptimizer(BaseOptimizer):
         for i in range(trigger_seq_len):
             trigger_probs[i, trigger_ids_init[i]] = self.initial_coeff
 
-        # trigger_probs.requires_grad_(True)
+        trigger_probs.requires_grad_(True)  # TODO ??
 
         # Initialize Adam optimizer on the logits
         optimizer = torch.optim.Adam([trigger_probs], lr=self.learning_rate)
