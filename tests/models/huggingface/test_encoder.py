@@ -70,7 +70,7 @@ def test_encoder_compute_grad(encoder_model):
     candidate_ids = torch.randint(0, encoder_model.tokenizer.vocab_size, (n_candidates, trigger_ids.shape[1]))
     loss_fn = SimilarityLoss()
 
-    grads = encoder_model.compute_grad_from_tokens(candidate_ids, inputs, loss_fn)
+    grads = encoder_model.compute_grad_from_tokens(inputs=inputs, loss_func=loss_fn, candidate_trigger_ids=candidate_ids)
 
     assert isinstance(grads, torch.Tensor)
     assert grads.shape == (n_candidates, trigger_ids.shape[1], encoder_model.tokenizer.vocab_size)
