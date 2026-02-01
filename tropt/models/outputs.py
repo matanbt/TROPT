@@ -153,7 +153,7 @@ class ModelOutput(BaseModel):
 
     # === Validators ===
 
-    @field_validator('output_embeddings')
+    @field_validator('output_embeddings', mode='before')
     @classmethod
     def validate_embeddings_shape(cls, v):
         """Validate that embeddings are 2D tensors."""
@@ -166,7 +166,7 @@ class ModelOutput(BaseModel):
                 )
         return v
 
-    @field_validator('output_logits')
+    @field_validator('output_logits', mode='before')
     @classmethod
     def validate_logits_shape(cls, v):
         """Validate that logits are 3D tensors."""
@@ -179,7 +179,7 @@ class ModelOutput(BaseModel):
                 )
         return v
 
-    @field_validator('output_hidden_states')
+    @field_validator('output_hidden_states', mode='before')
     @classmethod
     def validate_hidden_states_shape(cls, v):
         """Validate that hidden states are 4D tensors."""
@@ -193,7 +193,7 @@ class ModelOutput(BaseModel):
                 )
         return v
 
-    @field_validator('output_attentions')
+    @field_validator('output_attentions', mode='before')
     @classmethod
     def validate_attentions_shape(cls, v):
         """Validate that attentions are 5D tensors."""
@@ -207,7 +207,7 @@ class ModelOutput(BaseModel):
                 )
         return v
 
-    @field_validator('full_template_ids')
+    @field_validator('full_template_ids', mode='before')
     @classmethod
     def validate_template_ids_shape(cls, v):
         """Validate that template IDs are 2D tensors."""
@@ -220,7 +220,7 @@ class ModelOutput(BaseModel):
                 )
         return v
 
-    @field_validator('generated_response_ids')
+    @field_validator('generated_response_ids', mode='before')
     @classmethod
     def validate_response_ids(cls, v):
         """Validate that response IDs are a list of 1D tensors."""
@@ -238,7 +238,7 @@ class ModelOutput(BaseModel):
                     )
         return v
 
-    @field_validator('generated_response_logits')
+    @field_validator('generated_response_logits', mode='before')
     @classmethod
     def validate_response_logits(cls, v):
         """Validate that response logits are a list of 2D tensors."""
@@ -257,7 +257,7 @@ class ModelOutput(BaseModel):
                     )
         return v
 
-    @field_validator('generated_response_strs')
+    @field_validator('generated_response_strs', mode='before')
     @classmethod
     def validate_response_strs(cls, v):
         """Validate that response strings are a list of strings."""
@@ -271,7 +271,7 @@ class ModelOutput(BaseModel):
                     )
         return v
 
-    @field_validator('full_template_strs')
+    @field_validator('full_template_strs', mode='before')
     @classmethod
     def validate_template_strs(cls, v):
         """Validate that template strings are a list of strings."""

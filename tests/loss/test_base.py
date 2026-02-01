@@ -86,7 +86,7 @@ def test_steering_activation_loss_with_slices():
         {"adv": slice(3, 7)},  # positions 3-6 for second element
     ]
 
-    loss = loss_fn(hidden_states, target_directions, slices=slices)
+    loss = loss_fn(hidden_states, target_directions, input_slices=slices)
 
     assert loss.shape == (bsz,)
     assert not torch.isnan(loss).any()
@@ -279,13 +279,19 @@ def test_trigger_perplexity_loss_shape():
 
     loss_fn = TriggerPerplexityLoss()
 
-    # Trigger logits: (bsz, trigger_len, vocab_size)
-    # Trigger IDs: (bsz, trigger_len) - must match first two dims
-    bsz, trigger_len, vocab_size = 2, 5, 500
-    trigger_logits = torch.randn(bsz, trigger_len, vocab_size)
-    trigger_ids = torch.randint(0, vocab_size, (bsz, trigger_len))
+    # Full sequence logits: (bsz, seq_len, vocab_size)
+    # Trigger IDs: (bsz, trigger_len)
+    bsz, seq_len, trigger_len, vocab_size = 2, 20, 5, 500
+    output_logits = torch.randn(bsz, seq_len, vocab_size)
+    input_trigger_ids = torch.randint(0, vocab_size, (bsz, trigger_len))
 
-    loss = loss_fn(trigger_logits, trigger_ids)
+    # Define slices where trigger is located
+    input_slices = [
+        {"adv": slice(5, 10)},  # Trigger at positions 5-9 for first sample
+        {"adv": slice(3, 8)},   # Trigger at positions 3-7 for second sample
+    ]
+
+    loss = loss_fn(output_logits, input_trigger_ids, input_slices)
 
     assert loss.shape == (bsz,)
     assert not torch.isnan(loss).any()
@@ -315,7 +321,7 @@ def test_attention_enh_loss_shape():
         {"adv": slice(3, 8)},
     ]
 
-    loss = loss_fn(attn_weights, slices=slices)
+    loss = loss_fn(attn_weights, input_slices=slices)
 
     assert loss.shape == (bsz,)
     assert not torch.isnan(loss).any()
@@ -345,7 +351,7 @@ def test_attention_enh_loss_properties():
     attn_weights = attn_weights / (attn_weights.sum(dim=-1, keepdim=True) + 1e-10)
 
     slices = [{"trigger": trigger_slice}]
-    loss = loss_fn(attn_weights, slices=slices)
+    loss = loss_fn(attn_weights, input_slices=slices)
 
     # High attention to trigger should give negative loss
     assert loss < 0, f"Expected negative loss with high trigger attention, got {loss.item()}"

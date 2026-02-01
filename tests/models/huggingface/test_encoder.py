@@ -106,23 +106,25 @@ def test_inputs_manager_get_triggered_inputs(encoder_model):
     for message_idx in range(n_messages):
         res = inputs.get_triggered_inputs(trigger_ids=candidate_trigger_ids, chosen_message_idx=message_idx)
 
-        assert {"inputs_embeds", "attention_mask", "targets"}.issubset(res.keys())
+        # Check that key attributes are present
+        assert res.input_embeds is not None
+        assert res.input_attention_mask is not None
+        assert res.targets is not None
 
         # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed
-        assert res["inputs_embeds"].dim() == 3
-        assert res["inputs_embeds"].shape[0] == n_candidates
+        assert res.input_embeds.dim() == 3
+        assert res.input_embeds.shape[0] == n_candidates
 
         # attention mask: (n_candidates, seq_len)
-        assert res["attention_mask"].dim() == 2
-        assert res["attention_mask"].shape[0] == n_candidates
+        assert res.input_attention_mask.dim() == 2
+        assert res.input_attention_mask.shape[0] == n_candidates
 
         # Check targets expansion
-        assert "targets" in res
-        assert "target_vectors" in res["targets"]
+        assert "target_vectors" in res.targets
 
         from tropt.models.inputs import SliceKey
 
-        tgt_slices_0 = res["targets"]["slices"][0]  # candidate 0
+        tgt_slices_0 = res.targets["slices"][0]  # candidate 0
         assert isinstance(tgt_slices_0, dict)
         assert isinstance(tgt_slices_0[SliceKey.TRIGGER], slice)
         # Trigger slice length should match the actual trigger length (default is 20 tokens)
@@ -140,11 +142,11 @@ def test_inputs_manager_chosen_message(encoder_model):
     res = inputs.get_triggered_inputs(trigger_ids=candidate_trigger_ids, chosen_message_idx=1)
 
     # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed
-    assert res["inputs_embeds"].dim() == 3
-    assert res["inputs_embeds"].shape[0] == n_candidates
+    assert res.input_embeds.dim() == 3
+    assert res.input_embeds.shape[0] == n_candidates
 
     # Targets should be for single message now
-    tgt_vecs = res["targets"]["target_vectors"]
+    tgt_vecs = res.targets["target_vectors"]
     # Should be (n_candidates, d_model)
     assert isinstance(tgt_vecs, torch.Tensor)
     assert tgt_vecs.shape[0] == n_candidates

@@ -39,8 +39,8 @@ class LogitBasedLoss(BaseLoss):
 
     def __call__(
         self,
-        logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_ids: Float[Tensor, "bsz target_seq_len"],
+        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
+        target_outputs_toks: Float[Tensor, "bsz target_seq_len"],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -55,25 +55,25 @@ class PrefillCELoss(LogitBasedLoss):
 
     def __call__(
         self,
-        logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_ids: Int[Tensor, "bsz target_seq_len"],
+        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        logits = logits / self.temperature
+        output_logits = output_logits / self.temperature
         assert (
-            logits.ndim == 3
-            and target_ids.ndim == 2
-            and logits.shape[:2] == target_ids.shape[:2]
-        ), f"Shape mismatch: logits {logits.shape}, target_ids {target_ids.shape}"
+            output_logits.ndim == 3
+            and target_outputs_toks.ndim == 2
+            and output_logits.shape[:2] == target_outputs_toks.shape[:2]
+        ), f"Shape mismatch: output_logits {output_logits.shape}, target_outputs_toks {target_outputs_toks.shape}"
 
         loss = torch.nn.functional.cross_entropy(
-            logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
-            target_ids,
+            output_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
+            target_outputs_toks,
             reduction="none",
             ignore_index=ignore_index,
         )  # (bsz, seq_len)
 
-        return masked_mean(loss, (target_ids != ignore_index).float())
+        return masked_mean(loss, (target_outputs_toks != ignore_index).float())
 
 
 @dataclass
@@ -88,20 +88,20 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_ids: Int[Tensor, "bsz target_seq_len"],
+        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        logits = logits / self.temperature
-        assert logits.shape[:-1] == target_ids.shape, "Shape mismatch"
+        output_logits = output_logits / self.temperature
+        assert output_logits.shape[:-1] == target_outputs_toks.shape, "Shape mismatch"
 
         # 1. Create mask
-        mask = target_ids != ignore_index
+        mask = target_outputs_toks != ignore_index
         # replace ignore index with 0 to avoid index error (will be masked later anyway)
-        target_ids = target_ids.masked_fill(~mask, 0)
+        target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)
 
         # 2. Gather the logits corresponding to the target IDs
-        target_logits = logits.gather(-1, target_ids.unsqueeze(-1)).squeeze(-1)
+        target_logits = output_logits.gather(-1, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
         # Mellowmax maximizes its input, so to maximize the target_logits,
         # we minimize the negative of the target_logits.
         target_logits = -target_logits
@@ -139,23 +139,23 @@ class PrefillCWLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_ids: Int[Tensor, "bsz target_seq_len"],
+        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        assert logits.shape[:2] == target_ids.shape, (logits.shape, target_ids.shape)
+        assert output_logits.shape[:2] == target_outputs_toks.shape, (output_logits.shape, target_outputs_toks.shape)
         vocab_dim: int = -1  # dimension of vocab size
 
         # Create mask and safe indices
-        mask = target_ids != ignore_index
-        target_ids = target_ids.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
+        mask = target_outputs_toks != ignore_index
+        target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
-        tgt_logits = logits.gather(vocab_dim, target_ids.unsqueeze(-1)).squeeze(-1)
+        tgt_logits = output_logits.gather(vocab_dim, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
 
         # Set logits of target tok to -inf so it cannot be the largest
-        tmp_logits = logits.clone()
-        tmp_logits.scatter_(vocab_dim, target_ids.unsqueeze(-1), -torch.inf)
+        tmp_logits = output_logits.clone()
+        tmp_logits.scatter_(vocab_dim, target_outputs_toks.unsqueeze(-1), -torch.inf)
 
         # pick the largest logit among the non-target tokens
         largest_non_tgt_logits = tmp_logits.max(vocab_dim).values
@@ -176,12 +176,16 @@ class TriggerLogitBasedLoss(BaseLoss):
     """
     Loss is computed based on model output logits *on the trigger tokens*.
     Useful for optimizing properties of the triggers directly.
+
+    Note: Loss functions inheriting from this class receive full output_logits
+    and must slice them using input_slices to extract trigger-specific logits.
     """
 
     def __call__(
         self,
-        trigger_logits: Float[Tensor, "bsz trigger_seq_len vocab_size"],
-        trigger_ids: Float[Tensor, "bsz trigger_seq_len"],
+        output_logits: Float[Tensor, "bsz seq_len vocab_size"],
+        input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
+        input_slices: List[dict[str, slice]],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -194,24 +198,36 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
     """
 
     temperature: float = 1.0
+    slc_name: str = "adv"  # Which slice contains the trigger tokens
 
     def __call__(
         self,
-        trigger_logits: Float[Tensor, "bsz seq_len vocab_size"],
-        trigger_ids: Int[Tensor, "bsz seq_len"],
+        output_logits: Float[Tensor, "bsz seq_len vocab_size"],
+        input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
+        input_slices: List[dict[str, slice]],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
+        # Extract trigger logits from full output_logits using slices
+        bsz = output_logits.shape[0]
+        trigger_logits_list = []
+
+        for i in range(bsz):
+            slc = input_slices[i].get(self.slc_name, slice(None))
+            trigger_logits_list.append(output_logits[i, slc, :])
+
+        # Stack into tensor (all should have same length as input_trigger_ids)
+        trigger_logits = torch.stack(trigger_logits_list, dim=0)  # (bsz, trigger_seq_len, vocab_size)
         trigger_logits = trigger_logits / self.temperature
 
         assert (
-            trigger_logits.ndim == 3 and trigger_logits.shape[:2] == trigger_ids.shape[:2]
-        ), "Shape mismatch"
+            trigger_logits.ndim == 3 and trigger_logits.shape[:2] == input_trigger_ids.shape[:2]
+        ), f"Shape mismatch: trigger_logits {trigger_logits.shape}, input_trigger_ids {input_trigger_ids.shape}"
 
         # Reuse the exact logic from PrefillCELoss
         ce_loss_fn = PrefillCELoss(temperature=self.temperature)
         ce_loss = ce_loss_fn(
             trigger_logits,
-            trigger_ids,
+            input_trigger_ids,
             ignore_index=ignore_index
         )  # (bsz,)
 
@@ -224,8 +240,8 @@ class AttentionBasedLoss(BaseLoss):
 
     def __call__(
         self,
-        attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        slices: List[dict[str, slice]] = {},  # of length bsz
+        output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
+        input_slices: List[dict[str, slice]],  # of length bsz
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -246,24 +262,24 @@ class AttentionEnhLoss(AttentionBasedLoss):
 
     def __call__(
         self,
-        attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        slices: List[dict[str, slice]] = {},  # of length bsz
+        output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
+        input_slices: List[dict[str, slice]],  # of length bsz
     ) -> Float[Tensor, "bsz"]:
         if "chat_template_after" in (self.src_slc_name, self.dst_slc_name):
             logger.debug("Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
         slc_src = [
             message_slices.get(self.src_slc_name, slice(None))
-            for message_slices in slices
+            for message_slices in input_slices
         ]
         slc_dst = [
             message_slices.get(self.dst_slc_name, slice(None))
-            for message_slices in slices
+            for message_slices in input_slices
         ]
 
         # TODO vectorize this process
-        loss = torch.zeros(attentions.shape[0], device=attentions.device)  # (bsz,)
+        loss = torch.zeros(output_attentions.shape[0], device=output_attentions.device)  # (bsz,)
         for i, (curr_slc_src, curr_slc_dst) in enumerate(zip(slc_src, slc_dst)):
-            loss[i] = attentions[
+            loss[i] = output_attentions[
                 i, self.targeted_layers, :, curr_slc_dst, curr_slc_src
             ].mean()
 
@@ -291,18 +307,18 @@ class SimilarityLoss(EmbeddingBasedLoss):
 
     def __call__(
         self,
-        vectors: Float[Tensor, "bsz d_model"],
+        output_embeddings: Float[Tensor, "bsz d_model"],
         target_vectors: Float[Tensor, "bsz d_model"],
     ) -> Float[Tensor, "bsz"]:
-        assert vectors.ndim == target_vectors.ndim == 2, "Shape mismatch"
-        target_vectors = target_vectors.to(vectors.device)
+        assert output_embeddings.ndim == target_vectors.ndim == 2, "Shape mismatch"
+        target_vectors = target_vectors.to(output_embeddings.device)
 
         # normalize:
-        vectors = vectors / vectors.norm(dim=-1, keepdim=True)
+        output_embeddings = output_embeddings / output_embeddings.norm(dim=-1, keepdim=True)
         target_vectors = target_vectors / target_vectors.norm(dim=-1, keepdim=True)
 
         # cosine similarity via normalized dot product:
-        cos_sim = (vectors * target_vectors).sum(dim=-1, keepdim=True)
+        cos_sim = (output_embeddings * target_vectors).sum(dim=-1, keepdim=True)
         loss = -1 * cos_sim  # maximize cos-sim <=> minimize (-1 * cos-sim)
 
         return loss.squeeze(-1)
@@ -310,30 +326,25 @@ class SimilarityLoss(EmbeddingBasedLoss):
 
 ############################
 
-@dataclass  # TODO implement
+@dataclass
 class TextBasedLoss(BaseLoss):
-    """Mixin for models that can compute losses based on model outputs (embedding for encoder, text response for LMs); fits query access."""
+    """Loss computed based on text inputs (useful for black-box models)."""
 
-    pass
+    def __call__(
+        self,
+        input_texts: Annotated[List[str], "bsz"],
+    ) -> Float[Tensor, "bsz"]:
+        raise NotImplementedError()
 
 
 @dataclass
 class ResponseLMScoreLoss(TextBasedLoss):
-    """A loss based on an LM-as-a-judge score of the model's response."""
+    """A loss based on an LM-as-a-judge score of the model's response.
+
+    TODO: Implement this loss function.
+    """
 
     pass
-
-############################
-
-@dataclass
-class TextBasedLoss(BaseLoss):
-    """Mixin for models that can compute losses based on the given texts directly."""
-
-    def __call__(
-        self,
-        texts: Annotated[List[str], "bsz"],
-    ) -> Float[Tensor, "bsz"]:
-        raise NotImplementedError()
 
 
 
@@ -379,40 +390,40 @@ class SteeringActivationLoss(HiddenStateBased):
 
     def __call__(
         self,
-        hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "bsz d_model"],
-        slices: List[dict[str, slice]] = None,  # of length bsz
+        input_slices: List[dict[str, slice]] = None,  # of length bsz
     ) -> Float[Tensor, "bsz"]:
         """
         Compute steering loss by measuring cosine similarity between hidden states and target directions.
 
         Args:
-            hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
+            output_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
             target_directions: Direction vectors to align with (bsz, d_model)
-            slices: Position slices for each batch element (e.g., {"adv": slice(10, 30)})
+            input_slices: Position slices for each batch element (e.g., {"adv": slice(10, 30)})
 
         Returns:
             Loss tensor of shape (bsz,).
         """
-        target_directions = target_directions.to(hidden_states.device)
+        target_directions = target_directions.to(output_hidden_states.device)
 
         # Normalize target directions
         target_directions = target_directions / target_directions.norm(dim=-1, keepdim=True)
 
         # Extract slices for the tokens we want to steer
-        if slices is None:
-            slices = [{}] * hidden_states.shape[0]
+        if input_slices is None:
+            input_slices = [{}] * output_hidden_states.shape[0]
 
         slc_list = [
             message_slices.get(self.slc_name, slice(None))
-            for message_slices in slices
+            for message_slices in input_slices
         ]
 
         # Compute cosine similarity for each batch element
-        loss = torch.zeros(hidden_states.shape[0], device=hidden_states.device)
+        loss = torch.zeros(output_hidden_states.shape[0], device=output_hidden_states.device)
         for i, curr_slc in enumerate(slc_list):
             # Extract hidden states for targeted layers and positions
-            h = hidden_states[i, self.targeted_layers, curr_slc, :]  # (n_layers, slc_seq_len, d_model)
+            h = output_hidden_states[i, self.targeted_layers, curr_slc, :]  # (n_layers, slc_seq_len, d_model)
 
             if self.do_cosine_sim:
                 # Normalize hidden states

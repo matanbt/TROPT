@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -253,7 +253,7 @@ class ModelInput(BaseModel):
     Used as input to HuggingFace model forward passes via `inputs_embeds` parameter.
     """
 
-    input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None
+    input_attention_mask: Optional[Any] = None  # Float[Tensor, "bsz seq_len"] - using Any to bypass Pydantic validation
     """Attention mask for the input sequence.
 
     Binary mask indicating which positions should be attended to (1) and which
@@ -272,7 +272,7 @@ class ModelInput(BaseModel):
     """
 
     # === Position information (slicing) ===
-    input_slices: Optional[List[Dict[str, slice]]] = None
+    input_slices: Optional[Any] = None  # List[Dict[str, slice]] - using Any to bypass Pydantic validation
     """Position slices marking different regions in the input sequence.
 
     List of length batch_size, where each element is a dictionary mapping SliceKey
@@ -292,7 +292,7 @@ class ModelInput(BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    targets: Optional[TargetsDict | TargetsDictPlus] = None
+    targets: Optional[Any] = None  # TargetsDict | TargetsDictPlus - using Any to bypass Pydantic validation
     """Target data required by loss functions.
 
     Dictionary mapping target keys (e.g., "target_outputs", "target_vectors",
@@ -309,7 +309,7 @@ class ModelInput(BaseModel):
 
     # === Validators ===
 
-    @field_validator('input_texts')
+    @field_validator('input_texts', mode='before')
     @classmethod
     def validate_input_texts(cls, v):
         """Validate that input_texts is a list of strings."""
@@ -321,7 +321,7 @@ class ModelInput(BaseModel):
                     raise TypeError(f"input_texts[{i}] must be a string, got {type(text)}")
         return v
 
-    @field_validator('input_trigger_ids')
+    @field_validator('input_trigger_ids', mode='before')
     @classmethod
     def validate_trigger_ids_shape(cls, v):
         """Validate that trigger IDs are 2D tensors."""
@@ -334,7 +334,7 @@ class ModelInput(BaseModel):
                 )
         return v
 
-    @field_validator('input_embeds')
+    @field_validator('input_embeds', mode='before')
     @classmethod
     def validate_embeds_shape(cls, v):
         """Validate that input embeddings are 3D tensors."""
@@ -347,7 +347,7 @@ class ModelInput(BaseModel):
                 )
         return v
 
-    @field_validator('input_attention_mask')
+    @field_validator('input_attention_mask', mode='before')
     @classmethod
     def validate_attention_mask_shape(cls, v):
         """Validate that attention mask is 2D tensor."""
@@ -360,7 +360,7 @@ class ModelInput(BaseModel):
                 )
         return v
 
-    @field_validator('input_slices')
+    @field_validator('input_slices', mode='before')
     @classmethod
     def validate_input_slices(cls, v):
         """Validate that input_slices is a list of dicts."""
