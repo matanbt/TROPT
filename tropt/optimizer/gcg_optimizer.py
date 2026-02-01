@@ -171,17 +171,17 @@ class GCGOptimizer(BaseOptimizer):
             # Compute the trigger gradient
             trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
                 self.model.compute_grad_from_tokens(
-                    trigger_ids.unsqueeze(0),
-                    inputs,
+                    candidate_trigger_ids=trigger_ids.unsqueeze(0),
+                    inputs=inputs,
                     loss_func=self.loss_func,
                 ).squeeze(0)  # take the only trigger
             )  # shape: (trigger_seq_len, vocab_size)
             # Sample candidate token sequences based on the token gradient
             candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"] = (
                 self._sample_ids_from_grad(
-                    trigger_ids,
-                    trigger_grad,
-                    blacklist_ids,
+                    trigger_ids=trigger_ids,
+                    trigger_grad=trigger_grad,
+                    blacklist_ids=blacklist_ids,
                 )
             )
 

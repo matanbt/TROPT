@@ -57,7 +57,7 @@ class BaseOptimizer(ABC):
     @abstractmethod
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        texts: Annotated[List[str], "n_messages"],  # TODO-claude-code annotate all the n_messages long lists this way (as well as other lists that have predefined length)
         initial_trigger: Optional[str] | str | TokenTrigger = None,
         targets: Targets = None,
     ) -> OptimizerResult:
