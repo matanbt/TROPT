@@ -41,13 +41,13 @@ class BaseLoss(ABC):
 class LogitBasedLoss(BaseLoss):
     """
     Loss is computed based on model output (response) logits.
-    These losses required target tokens (i.e. `target_outputs_toks`); commonly automatically derived from `target_outputs` strings.
+    These losses required target tokens (i.e. `target_response_toks`); commonly automatically derived from `target_outputs` strings.
     """
 
     def __call__(
         self,
         response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
+        target_response_toks: Int[Tensor, "response_seq_len"],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -63,24 +63,27 @@ class PrefillCELoss(LogitBasedLoss):
     def __call__(
         self,
         response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
+        target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
+        target_response_toks = target_response_toks.unsqueeze(0).expand(
+            response_logits.shape[0], -1
+        )  # (bsz, response_seq_len)
         response_logits = response_logits / self.temperature
         assert (
             response_logits.ndim == 3
-            and target_outputs_toks.ndim == 2
-            and response_logits.shape[:2] == target_outputs_toks.shape[:2]
-        ), f"Shape mismatch: response_logits {response_logits.shape}, target_outputs_toks {target_outputs_toks.shape}"
+            and target_response_toks.ndim == 2
+            and response_logits.shape[1] == target_response_toks.shape[1]
+        ), f"Shape mismatch: response_logits {response_logits.shape}, target_response_toks {target_response_toks.shape}"
 
         loss = torch.nn.functional.cross_entropy(
             response_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
-            target_outputs_toks,
+            target_response_toks,
             reduction="none",
             ignore_index=ignore_index,
         )  # (bsz, seq_len)
 
-        return masked_mean(loss, (target_outputs_toks != ignore_index).float())
+        return masked_mean(loss, (target_response_toks != ignore_index).float())
 
 
 @dataclass
@@ -96,19 +99,22 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
     def __call__(
         self,
         response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
+        target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
+        target_response_toks = target_response_toks.unsqueeze(0).expand(
+            response_logits.shape[0], -1
+        )  # (bsz, response_seq_len)
         response_logits = response_logits / self.temperature
-        assert response_logits.shape[:-1] == target_outputs_toks.shape, "Shape mismatch"
+        assert response_logits.shape[:-1] == target_response_toks.shape, "Shape mismatch"
 
         # 1. Create mask
-        mask = target_outputs_toks != ignore_index
+        mask = target_response_toks != ignore_index
         # replace ignore index with 0 to avoid index error (will be masked later anyway)
-        target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)
+        target_response_toks = target_response_toks.masked_fill(~mask, 0)
 
         # 2. Gather the logits corresponding to the target IDs
-        target_logits = response_logits.gather(-1, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
+        target_logits = response_logits.gather(-1, target_response_toks.unsqueeze(-1)).squeeze(-1)
         # Mellowmax maximizes its input, so to maximize the target_logits,
         # we minimize the negative of the target_logits.
         target_logits = -target_logits
@@ -147,22 +153,25 @@ class PrefillCWLoss(LogitBasedLoss):
     def __call__(
         self,
         response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
+        target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        assert response_logits.shape[:2] == target_outputs_toks.shape, (response_logits.shape, target_outputs_toks.shape)
+        target_response_toks = target_response_toks.unsqueeze(0).expand(
+            response_logits.shape[0], -1
+        )  # (bsz, response_seq_len)
+        assert response_logits.shape[:2] == target_response_toks.shape, (response_logits.shape, target_response_toks.shape)
         vocab_dim: int = -1  # dimension of vocab size
 
         # Create mask and safe indices
-        mask = target_outputs_toks != ignore_index
-        target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
+        mask = target_response_toks != ignore_index
+        target_response_toks = target_response_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
-        tgt_logits = response_logits.gather(vocab_dim, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
+        tgt_logits = response_logits.gather(vocab_dim, target_response_toks.unsqueeze(-1)).squeeze(-1)
 
         # Set logits of target tok to -inf so it cannot be the largest
         tmp_logits = response_logits.clone()
-        tmp_logits.scatter_(vocab_dim, target_outputs_toks.unsqueeze(-1), -torch.inf)
+        tmp_logits.scatter_(vocab_dim, target_response_toks.unsqueeze(-1), -torch.inf)
 
         # pick the largest logit among the non-target tokens
         largest_non_tgt_logits = tmp_logits.max(vocab_dim).values
@@ -191,7 +200,7 @@ class TriggerLogitBasedLoss(BaseLoss):
     def __call__(
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
-        input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
+        input_trigger_ids: Int[Tensor, "trigger_seq_len"],
         input_slices: dict[str, slice],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
@@ -214,9 +223,6 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
         input_slices: dict[str, slice],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        # Extract trigger logits from full output_logits using slices
-        bsz = output_logits.shape[0]
-        trigger_logits_list = []
 
         # Extract trigger logits
         trigger_logits = output_logits[:, input_slices[self.slc_name], :]  # (bsz, trigger_seq_len, vocab_size)
@@ -244,7 +250,7 @@ class AttentionBasedLoss(BaseLoss):
     def __call__(
         self,
         output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        input_slices: List[dict[str, slice]],  # of length bsz
+        input_slices: dict[str, slice],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -301,8 +307,9 @@ class SimilarityLoss(EmbeddingBasedLoss):
     def __call__(
         self,
         output_embeddings: Float[Tensor, "bsz d_model"],
-        target_vectors: Float[Tensor, "bsz d_model"],
+        target_vectors: Float[Tensor, "d_model"],
     ) -> Float[Tensor, "bsz"]:
+        target_vectors = target_vectors.unsqueeze(0).expand(output_embeddings.shape[0], -1)  # (bsz, d_model)
         assert output_embeddings.ndim == target_vectors.ndim == 2, "Shape mismatch"
         target_vectors = target_vectors.to(output_embeddings.device)
 
@@ -382,7 +389,7 @@ class SteeringActivationLoss(HiddenStateBased):
     def __call__(
         self,
         output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
-        target_directions: Float[Tensor, "bsz d_model"],
+        target_directions: Float[Tensor, "d_model"],
         input_slices: dict[str, slice] = None,
     ) -> Float[Tensor, "bsz"]:
         """
@@ -390,13 +397,16 @@ class SteeringActivationLoss(HiddenStateBased):
 
         Args:
             output_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
-            target_directions: Direction vectors to align with (bsz, d_model)
+            target_directions: Direction vectors to align with (, d_model)
             input_slices: Position slices reflecting the input tokens (dict mapping slice names to slices)
 
         Returns:
             Loss tensor of shape (bsz,).
         """
         target_directions = target_directions.to(output_hidden_states.device)
+        target_directions = target_directions.unsqueeze(0).expand(
+            output_hidden_states.shape[0], -1
+        )  # (bsz, d_model)
 
         # Normalize target directions
         target_directions = target_directions / target_directions.norm(dim=-1, keepdim=True)

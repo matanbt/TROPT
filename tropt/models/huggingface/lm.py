@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputsManager(_HFTokenInputsManager):
     targets: TargetsDictPlus | TargetsDict
-    # includes `target_outputs_toks` (n_messages, target_seq_len) if target outputs are provided;
+    # includes `target_response_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
 
     @property

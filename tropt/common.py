@@ -25,9 +25,11 @@ TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 
 
 ## A dict of each target; where each message is mapped to its target tensor/string/etc
-TargetsDict = Dict[str,
+
+## TODO deprecate for Targets class
+TargetsDict = Dict["TargetKey",
     List[str]   # list of length n_messages
-      | Float[Tensor, "n_messages target_seq_len"]
+      | Int[Tensor, "n_messages target_seq_len"]
       | Float[Tensor, "n_messages d_model"],
 ]  # each entry has n_messages elements, each elenents has the target data.
 
@@ -52,10 +54,10 @@ TargetsDict = Dict[str,
 
 ## A dict for each target; where _a single pre-selected message_ is mapped
 #  to its target tensor/string/etc
-MessageTargetsDict = Dict[str,
+MessageTargetsDict = Dict["TargetKey",
     str
-      | Float[Tensor, "target_seq_len"]
-      | Float[Tensor, "d_model"]
+      | Int[Tensor, "target_seq_len"]
+      | Float[Tensor, "d_model"],
 ]  # each entry has a batch of targets (for the selected message)
 
 
@@ -79,6 +81,7 @@ class SliceKey(str, Enum):
     APPENDED = "appended"  # Appended tokens (if any); a.k.a. prefilled tokens
 
 
+# TODO deprecate for targets pydantic class!
 class TargetKey(str, Enum):
     """
     Enum for standardized target entry keys used in TargetsDict.
@@ -111,17 +114,17 @@ class TargetKey(str, Enum):
       Used by: Internal bookkeeping for token position tracking
     """
     # TODO make everyone use this enum instead of hardcoding strings everywhere!
-    TARGET_RESPONSE_STRS = "target_outputs"  # target_outputs
+    TARGET_RESPONSE_STRS = "target_response_strs"
     """Raw text target outputs (List[str])
       Format: List of strings, one per message
       Shape: n_messages strings
       Used by: Language models for target matching
     """
 
-    TARGET_RESPONSE_TOKS = "target_outputs_toks" # target_response_toks
+    TARGET_RESPONSE_TOKS = "target_response_toks"
     """Tokenized target outputs (List[Tensor] or Tensor)
       Format: List of token ID tensors or batched tensor
-      Shape: List of (target_seq_len,) or (n_messages, target_seq_len)
+      Shape: (n_messages, target_seq_len) or, when message is selected, (target_seq_len,)
       Used by: Language models for computing cross-entropy loss
     """
 
@@ -140,10 +143,94 @@ class TargetKey(str, Enum):
     """
 
 
+class MessageTargets(BaseModel):
+    """Targets for a single selected message."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    target_response_strs: Optional[str] = None
+    """Raw text target response for this message.
+    """
+
+    target_response_toks: Optional[Int[Tensor, "target_seq_len"]] = None
+    """Tokenized target response for this message.
+    """
+
+    target_vectors: Optional[Float[Tensor, "d_model"]] = None
+    """Target embedding vector for this message.
+    """
+
+    target_directions: Optional[Float[Tensor, "d_model"]] = None
+    """Target direction in activation space for this message.
+    Used by steering losses (e.g., representation engineering).
+    """
+
+
+class Targets(BaseModel):
+    """Targets for all messages. Each field has an an initial n_messages dimension.
+
+    Typically only one or two of these fields need to be provided depending
+    on the loss function being used.
+    For example, a standard LM jailbreak only needs `target_response_strs` (which will be
+    tokenized internally).
+    """
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    target_response_strs: Optional[Annotated[List[str], "n_messages"]] = None
+    """Raw text target outputs, one per message.
+    
+    List is of length n_messages.
+    Used by: Language models for target matching. Will be tokenized
+    internally to produce `target_response_toks` if not provided directly.
+    """
+
+    target_response_toks: Optional[Int[Tensor, "n_messages target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_messages"]] = None
+    """Tokenized target outputs, one per message.
+
+    Shape: (n_messages, target_seq_len) OR List of length n_messages, 
+    each of (potentially different) shape (target_seq_len,)
+    Used by: Language models for computing cross-entropy loss.
+    """
+
+    target_vectors: Optional[Float[Tensor, "n_messages d_model"]] = None
+    """Target embedding vectors, one per message.
+
+    Shape: (n_messages, d_model)
+    Used by: Encoder models for similarity-based losses.
+    """
+
+    target_directions: Optional[Float[Tensor, "n_messages d_model"]] = None
+    """Target directions in activation space, one per message.
+
+    Shape: (n_messages, d_model)
+    Used by: Steering losses (e.g., refusal suppression).
+    Note: if you need per-layer directions, store as (n_messages, n_layers, d_model)
+    and update this annotation accordingly.
+    """
+
+    @property
+    def n_messages(self) -> int:
+        for field_name in self.model_fields_set:
+            val = getattr(self, field_name)
+            if val is not None:
+                return len(val)
+        raise ValueError("No targets set")
+
+    def select_message(self, idx: int) -> "MessageTargets":
+        return MessageTargets(
+            **{k: v[idx] for k, v in self if v is not None}
+        )
+
+    def to_device(self, device: torch.device) -> "Targets":
+        updates = {}
+        for k, v in self:
+            if isinstance(v, Tensor):
+                updates[k] = v.to(device)
+            if isinstance(v, list) and isinstance(v[0], Tensor):
+                updates[k] = [t.to(device) for t in v]
+        return self.model_copy(update=updates)
+
 
 # ======================= Model Input Wrapper =======================
-
-
 
 class ModelInput(BaseModel):
     """Standardized input container returned by InputsManager.get_triggered_inputs().
@@ -200,7 +287,7 @@ class ModelInput(BaseModel):
     Shape: (batch_size, total_sequence_length, embedding_dimension).
     """
 
-    input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None
+    input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None
     """Binary attention mask for the input sequence.
         Passed to HuggingFace models to indicate valid token positions.
       Shape: (batch_size, total_sequence_length).
@@ -211,7 +298,7 @@ class ModelInput(BaseModel):
     """
 
     # === Position information (slicing) ===
-    input_slices: Optional[Dict[str, slice]] = None
+    input_slices: Optional[Dict[SliceKey, Optional[slice]]] = None
     """Position slices marking different regions in the input sequence.
 
     List of length batch_size, where each element is a dictionary mapping SliceKey
@@ -231,7 +318,8 @@ class ModelInput(BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    targets: Optional[MessageTargetsDict] = None
+    # targets: Optional[MessageTargetsDict] = None   # <-- deprecated 
+    targets: Optional[Targets] = None  
     """Target data required by loss functions.
 
     Dictionary mapping `TargetKey`s to their corresponding target values. The specific
@@ -242,70 +330,74 @@ class ModelInput(BaseModel):
 
     # === Validators ===
 
-    @field_validator('input_texts', mode='before')
-    @classmethod
-    def validate_input_texts(cls, v):
-        """Validate that input_texts is a list of strings."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"input_texts must be a list, got {type(v)}")
-            for i, text in enumerate(v):
-                if not isinstance(text, str):
-                    raise TypeError(f"input_texts[{i}] must be a string, got {type(text)}")
-        return v
+    # @field_validator('input_texts', mode='before')
+    # @classmethod
+    # def validate_input_texts(cls, v):
+    #     """Validate that input_texts is a list of strings."""
+    #     if v is not None:
+    #         if not isinstance(v, list):
+    #             raise TypeError(f"input_texts must be a list, got {type(v)}")
+    #         for i, text in enumerate(v):
+    #             if not isinstance(text, str):
+    #                 raise TypeError(f"input_texts[{i}] must be a string, got {type(text)}")
+    #     return v
 
-    @field_validator('input_trigger_ids', mode='before')
-    @classmethod
-    def validate_trigger_ids_shape(cls, v):
-        """Validate that trigger IDs are 2D tensors."""
-        if v is not None:
-            if not isinstance(v, torch.Tensor):
-                raise TypeError(f"input_trigger_ids must be a Tensor, got {type(v)}")
-            if v.ndim != 2:
-                raise ValueError(
-                    f"input_trigger_ids must be 2D (bsz, trigger_seq_len), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('input_trigger_ids', mode='before')
+    # @classmethod
+    # def validate_trigger_ids_shape(cls, v):
+    #     """Validate that trigger IDs are 2D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, torch.Tensor):
+    #             raise TypeError(f"input_trigger_ids must be a Tensor, got {type(v)}")
+    #         if v.ndim != 2:
+    #             raise ValueError(
+    #                 f"input_trigger_ids must be 2D (bsz, trigger_seq_len), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('input_embeds', mode='before')
-    @classmethod
-    def validate_embeds_shape(cls, v):
-        """Validate that input embeddings are 3D tensors."""
-        if v is not None:
-            if not isinstance(v, torch.Tensor):
-                raise TypeError(f"input_embeds must be a Tensor, got {type(v)}")
-            if v.ndim != 3:
-                raise ValueError(
-                    f"input_embeds must be 3D (bsz, seq_len, d_model), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('input_embeds', mode='before')
+    # @classmethod
+    # def validate_embeds_shape(cls, v):
+    #     """Validate that input embeddings are 3D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, torch.Tensor):
+    #             raise TypeError(f"input_embeds must be a Tensor, got {type(v)}")
+    #         if v.ndim != 3:
+    #             raise ValueError(
+    #                 f"input_embeds must be 3D (bsz, seq_len, d_model), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('input_attention_mask', mode='before')
-    @classmethod
-    def validate_attention_mask_shape(cls, v):
-        """Validate that attention mask is 2D tensor."""
-        if v is not None:
-            if not isinstance(v, torch.Tensor):
-                raise TypeError(f"input_attention_mask must be a Tensor, got {type(v)}")
-            if v.ndim != 2:
-                raise ValueError(
-                    f"input_attention_mask must be 2D (bsz, seq_len), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('input_attention_mask', mode='before')
+    # @classmethod
+    # def validate_attention_mask_shape(cls, v):
+    #     """Validate that attention mask is 2D tensor."""
+    #     if v is not None:
+    #         if not isinstance(v, torch.Tensor):
+    #             raise TypeError(f"input_attention_mask must be a Tensor, got {type(v)}")
+    #         if v.ndim != 2:
+    #             raise ValueError(
+    #                 f"input_attention_mask must be 2D (bsz, seq_len), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('input_slices', mode='before')
-    @classmethod
-    def validate_input_slices(cls, v):
-        """Validate that input_slices is a list of dicts."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"input_slices must be a list, got {type(v)}")
-            for i, slices_dict in enumerate(v):
-                if not isinstance(slices_dict, dict):
-                    raise TypeError(
-                        f"input_slices[{i}] must be a dict, got {type(slices_dict)}"
-                    )
-        return v
+    # @field_validator('input_slices', mode='before')
+    # @classmethod
+    # def validate_input_slices(cls, v):
+    #     """Validate that input_slices is a list of dicts."""
+    #     if v is not None:
+    #         if not isinstance(v, dict):
+    #             raise TypeError(f"input_slices must be a dict, got {type(v)}")
+    #         for k, v in v.items():
+    #             if not isinstance(k, str) and k not in SliceKey:
+    #                 raise TypeError(
+    #                     f"input_slices keys must be a SliceKey, got {k}"
+    #                 )
+    #             if not isinstance(v, slice):
+    #                 raise TypeError(
+    #                     f"input_slices[{k}] must be a slice, got {type(v)}"
+    #                 )
+    #     return v
 
 
 # ======================= Model Output Wrapper =======================
@@ -404,151 +496,151 @@ class ModelOutput(BaseModel):
 
     # === Validators ===
 
-    @field_validator('output_embeddings', mode='before')
-    @classmethod
-    def validate_embeddings_shape(cls, v):
-        """Validate that embeddings are 2D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"output_embeddings must be a Tensor, got {type(v)}")
-            if v.ndim != 2:
-                raise ValueError(
-                    f"output_embeddings must be 2D (bsz, d_model), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('output_embeddings', mode='before')
+    # @classmethod
+    # def validate_embeddings_shape(cls, v):
+    #     """Validate that embeddings are 2D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"output_embeddings must be a Tensor, got {type(v)}")
+    #         if v.ndim != 2:
+    #             raise ValueError(
+    #                 f"output_embeddings must be 2D (bsz, d_model), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('output_logits', mode='before')
-    @classmethod
-    def validate_logits_shape(cls, v):
-        """Validate that logits are 3D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"output_logits must be a Tensor, got {type(v)}")
-            if v.ndim != 3:
-                raise ValueError(
-                    f"output_logits must be 3D (bsz, seq_len, vocab_size), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('output_logits', mode='before')
+    # @classmethod
+    # def validate_logits_shape(cls, v):
+    #     """Validate that logits are 3D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"output_logits must be a Tensor, got {type(v)}")
+    #         if v.ndim != 3:
+    #             raise ValueError(
+    #                 f"output_logits must be 3D (bsz, seq_len, vocab_size), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('response_logits', mode='before')
-    @classmethod
-    def validate_response_logits_shape(cls, v):
-        """Validate that response logits are 3D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"response_logits must be a Tensor, got {type(v)}")
-            if v.ndim != 3:
-                raise ValueError(
-                    f"response_logits must be 3D (bsz, response_seq_len, vocab_size), "
-                    f"got shape {v.shape}"
-                )
-        return v
+    # @field_validator('response_logits', mode='before')
+    # @classmethod
+    # def validate_response_logits_shape(cls, v):
+    #     """Validate that response logits are 3D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"response_logits must be a Tensor, got {type(v)}")
+    #         if v.ndim != 3:
+    #             raise ValueError(
+    #                 f"response_logits must be 3D (bsz, response_seq_len, vocab_size), "
+    #                 f"got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('output_hidden_states', mode='before')
-    @classmethod
-    def validate_hidden_states_shape(cls, v):
-        """Validate that hidden states are 4D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"output_hidden_states must be a Tensor, got {type(v)}")
-            if v.ndim != 4:
-                raise ValueError(
-                    f"output_hidden_states must be 4D (bsz, n_layers, seq_len, d_model), "
-                    f"got shape {v.shape}"
-                )
-        return v
+    # @field_validator('output_hidden_states', mode='before')
+    # @classmethod
+    # def validate_hidden_states_shape(cls, v):
+    #     """Validate that hidden states are 4D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"output_hidden_states must be a Tensor, got {type(v)}")
+    #         if v.ndim != 4:
+    #             raise ValueError(
+    #                 f"output_hidden_states must be 4D (bsz, n_layers, seq_len, d_model), "
+    #                 f"got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('output_attentions', mode='before')
-    @classmethod
-    def validate_attentions_shape(cls, v):
-        """Validate that attentions are 5D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"output_attentions must be a Tensor, got {type(v)}")
-            if v.ndim != 5:
-                raise ValueError(
-                    f"output_attentions must be 5D (bsz, n_layers, n_heads, seq_len, seq_len), "
-                    f"got shape {v.shape}"
-                )
-        return v
+    # @field_validator('output_attentions', mode='before')
+    # @classmethod
+    # def validate_attentions_shape(cls, v):
+    #     """Validate that attentions are 5D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"output_attentions must be a Tensor, got {type(v)}")
+    #         if v.ndim != 5:
+    #             raise ValueError(
+    #                 f"output_attentions must be 5D (bsz, n_layers, n_heads, seq_len, seq_len), "
+    #                 f"got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('full_template_ids', mode='before')
-    @classmethod
-    def validate_template_ids_shape(cls, v):
-        """Validate that template IDs are 2D tensors."""
-        if v is not None:
-            if not isinstance(v, Tensor):
-                raise TypeError(f"full_template_ids must be a Tensor, got {type(v)}")
-            if v.ndim != 2:
-                raise ValueError(
-                    f"full_template_ids must be 2D (bsz, full_seq_len), got shape {v.shape}"
-                )
-        return v
+    # @field_validator('full_template_ids', mode='before')
+    # @classmethod
+    # def validate_template_ids_shape(cls, v):
+    #     """Validate that template IDs are 2D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, Tensor):
+    #             raise TypeError(f"full_template_ids must be a Tensor, got {type(v)}")
+    #         if v.ndim != 2:
+    #             raise ValueError(
+    #                 f"full_template_ids must be 2D (bsz, full_seq_len), got shape {v.shape}"
+    #             )
+    #     return v
 
-    @field_validator('generated_response_ids', mode='before')
-    @classmethod
-    def validate_response_ids(cls, v):
-        """Validate that response IDs are a list of 1D tensors."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"generated_response_ids must be a list, got {type(v)}")
-            for i, tensor in enumerate(v):
-                if not isinstance(tensor, Tensor):
-                    raise TypeError(
-                        f"generated_response_ids[{i}] must be a Tensor, got {type(tensor)}"
-                    )
-                if tensor.ndim != 1:
-                    raise ValueError(
-                        f"generated_response_ids[{i}] must be 1D, got shape {tensor.shape}"
-                    )
-        return v
+    # @field_validator('generated_response_ids', mode='before')
+    # @classmethod
+    # def validate_response_ids(cls, v):
+    #     """Validate that response IDs are a list of 1D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, list):
+    #             raise TypeError(f"generated_response_ids must be a list, got {type(v)}")
+    #         for i, tensor in enumerate(v):
+    #             if not isinstance(tensor, Tensor):
+    #                 raise TypeError(
+    #                     f"generated_response_ids[{i}] must be a Tensor, got {type(tensor)}"
+    #                 )
+    #             if tensor.ndim != 1:
+    #                 raise ValueError(
+    #                     f"generated_response_ids[{i}] must be 1D, got shape {tensor.shape}"
+    #                 )
+    #     return v
 
-    @field_validator('generated_response_logits', mode='before')
-    @classmethod
-    def validate_response_logits(cls, v):
-        """Validate that response logits are a list of 2D tensors."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"generated_response_logits must be a list, got {type(v)}")
-            for i, tensor in enumerate(v):
-                if not isinstance(tensor, Tensor):
-                    raise TypeError(
-                        f"generated_response_logits[{i}] must be a Tensor, got {type(tensor)}"
-                    )
-                if tensor.ndim != 2:
-                    raise ValueError(
-                        f"generated_response_logits[{i}] must be 2D (response_len, vocab_size), "
-                        f"got shape {tensor.shape}"
-                    )
-        return v
+    # @field_validator('generated_response_logits', mode='before')
+    # @classmethod
+    # def validate_response_logits(cls, v):
+    #     """Validate that response logits are a list of 2D tensors."""
+    #     if v is not None:
+    #         if not isinstance(v, list):
+    #             raise TypeError(f"generated_response_logits must be a list, got {type(v)}")
+    #         for i, tensor in enumerate(v):
+    #             if not isinstance(tensor, Tensor):
+    #                 raise TypeError(
+    #                     f"generated_response_logits[{i}] must be a Tensor, got {type(tensor)}"
+    #                 )
+    #             if tensor.ndim != 2:
+    #                 raise ValueError(
+    #                     f"generated_response_logits[{i}] must be 2D (response_len, vocab_size), "
+    #                     f"got shape {tensor.shape}"
+    #                 )
+    #     return v
 
-    @field_validator('generated_response_strs', mode='before')
-    @classmethod
-    def validate_response_strs(cls, v):
-        """Validate that response strings are a list of strings."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"generated_response_strs must be a list, got {type(v)}")
-            for i, s in enumerate(v):
-                if not isinstance(s, str):
-                    raise TypeError(
-                        f"generated_response_strs[{i}] must be a string, got {type(s)}"
-                    )
-        return v
+    # @field_validator('generated_response_strs', mode='before')
+    # @classmethod
+    # def validate_response_strs(cls, v):
+    #     """Validate that response strings are a list of strings."""
+    #     if v is not None:
+    #         if not isinstance(v, list):
+    #             raise TypeError(f"generated_response_strs must be a list, got {type(v)}")
+    #         for i, s in enumerate(v):
+    #             if not isinstance(s, str):
+    #                 raise TypeError(
+    #                     f"generated_response_strs[{i}] must be a string, got {type(s)}"
+    #                 )
+    #     return v
 
-    @field_validator('full_template_strs', mode='before')
-    @classmethod
-    def validate_template_strs(cls, v):
-        """Validate that template strings are a list of strings."""
-        if v is not None:
-            if not isinstance(v, list):
-                raise TypeError(f"full_template_strs must be a list, got {type(v)}")
-            for i, s in enumerate(v):
-                if not isinstance(s, str):
-                    raise TypeError(
-                        f"full_template_strs[{i}] must be a string, got {type(s)}"
-                    )
-        return v
+    # @field_validator('full_template_strs', mode='before')
+    # @classmethod
+    # def validate_template_strs(cls, v):
+    #     """Validate that template strings are a list of strings."""
+    #     if v is not None:
+    #         if not isinstance(v, list):
+    #             raise TypeError(f"full_template_strs must be a list, got {type(v)}")
+    #         for i, s in enumerate(v):
+    #             if not isinstance(s, str):
+    #                 raise TypeError(
+    #                     f"full_template_strs[{i}] must be a string, got {type(s)}"
+    #                 )
+    #     return v
 
 
 
@@ -556,48 +648,7 @@ class ModelOutput(BaseModel):
 
 
 class TargetsDictPlus(dict):
-    """
-    Class for extending the TargetsDict with useful utilities; this dict maps target keys to
-    their corresponding target values (used for different losses) for each input message.
-    While for most common logic it's sufficient to use a plain dict (TargetsDict), this class
-    provides some useful utils and validations, making it a good practice to use it as the
-    targets container.
-    """
-
-    def __init__(self, targets: TargetsDict = None, n_messages: int = None):
-        """
-        Initializes the TargetsManager with the given targets dictionary.
-        Optionally provide `n_messages` to validate the targets.
-
-        Each entry can be a tensor (shape: (n_messages, *)) or a list (e.g., of string, of tensors of varying lengths) of size n_messages.
-        """
-        if targets is None:
-            targets = {}
-        super().__init__(targets)
-
-        if n_messages is None:
-            # if not provided, infer from the an entry
-            n_messages = len(next(iter(self.values())))
-        self.n_messages = n_messages
-
-        assert isinstance(self, dict)
-        assert all(isinstance(k, str) for k in self.keys())
-        assert all(len(val) == n_messages for val in self.values())
-
-    def to_device(self, device: torch.device) -> "TargetsDictPlus":
-        """
-        Moves all the tensor targets to the specified device; inplace.
-        """
-        for k in self.keys():
-            if isinstance(self[k], torch.Tensor):
-                self[k] = self[k].to(device)
-            elif isinstance(self[k], list) and isinstance(self[k][0], torch.Tensor):
-                self[k] = [t.to(device) for t in self[k]]
-        return self
-
-    def __setitem__(self, key, value):
-        assert len(value) == self.n_messages, f"Length of target entry for key {key} must be {self.n_messages}, but got {len(value)}."
-        return super().__setitem__(key, value)
+    pass
 
     #----------------------------------------------------------------------------#
     # ## TODO remove
