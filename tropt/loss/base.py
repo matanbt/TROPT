@@ -1,3 +1,11 @@
+"""
+Base classes for loss functions.
+
+Imporant note: The losses arguments must match the fields in ModelOutput and ModelInput
+for unified loss resolution to work properly.
+"""
+
+
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -31,7 +39,7 @@ class BaseLoss(ABC):
 @dataclass
 class LogitBasedLoss(BaseLoss):
     """
-    Loss is computed based on model output logits.
+    Loss is computed based on model output (response) logits.
     These losses required target tokens (i.e. `target_outputs_toks`); commonly automatically derived from `target_outputs` strings.
     """
 
@@ -39,8 +47,8 @@ class LogitBasedLoss(BaseLoss):
 
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_outputs_toks: Float[Tensor, "bsz target_seq_len"],
+        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -55,19 +63,19 @@ class PrefillCELoss(LogitBasedLoss):
 
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
+        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        output_logits = output_logits / self.temperature
+        response_logits = response_logits / self.temperature
         assert (
-            output_logits.ndim == 3
+            response_logits.ndim == 3
             and target_outputs_toks.ndim == 2
-            and output_logits.shape[:2] == target_outputs_toks.shape[:2]
-        ), f"Shape mismatch: output_logits {output_logits.shape}, target_outputs_toks {target_outputs_toks.shape}"
+            and response_logits.shape[:2] == target_outputs_toks.shape[:2]
+        ), f"Shape mismatch: response_logits {response_logits.shape}, target_outputs_toks {target_outputs_toks.shape}"
 
         loss = torch.nn.functional.cross_entropy(
-            output_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
+            response_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
             target_outputs_toks,
             reduction="none",
             ignore_index=ignore_index,
@@ -88,12 +96,12 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
+        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        output_logits = output_logits / self.temperature
-        assert output_logits.shape[:-1] == target_outputs_toks.shape, "Shape mismatch"
+        response_logits = response_logits / self.temperature
+        assert response_logits.shape[:-1] == target_outputs_toks.shape, "Shape mismatch"
 
         # 1. Create mask
         mask = target_outputs_toks != ignore_index
@@ -101,7 +109,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
         target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)
 
         # 2. Gather the logits corresponding to the target IDs
-        target_logits = output_logits.gather(-1, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
+        target_logits = response_logits.gather(-1, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
         # Mellowmax maximizes its input, so to maximize the target_logits,
         # we minimize the negative of the target_logits.
         target_logits = -target_logits
@@ -139,11 +147,11 @@ class PrefillCWLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz target_seq_len vocab_size"],
-        target_outputs_toks: Int[Tensor, "bsz target_seq_len"],
+        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        target_outputs_toks: Int[Tensor, "bsz response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
-        assert output_logits.shape[:2] == target_outputs_toks.shape, (output_logits.shape, target_outputs_toks.shape)
+        assert response_logits.shape[:2] == target_outputs_toks.shape, (response_logits.shape, target_outputs_toks.shape)
         vocab_dim: int = -1  # dimension of vocab size
 
         # Create mask and safe indices
@@ -151,10 +159,10 @@ class PrefillCWLoss(LogitBasedLoss):
         target_outputs_toks = target_outputs_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
-        tgt_logits = output_logits.gather(vocab_dim, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
+        tgt_logits = response_logits.gather(vocab_dim, target_outputs_toks.unsqueeze(-1)).squeeze(-1)
 
         # Set logits of target tok to -inf so it cannot be the largest
-        tmp_logits = output_logits.clone()
+        tmp_logits = response_logits.clone()
         tmp_logits.scatter_(vocab_dim, target_outputs_toks.unsqueeze(-1), -torch.inf)
 
         # pick the largest logit among the non-target tokens

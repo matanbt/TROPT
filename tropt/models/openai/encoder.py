@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import Annotated, Any, List, Literal, Optional, Tuple
 
 import numpy as np
@@ -19,6 +17,8 @@ from tropt.models import (
     TokenAccessMixin,
     TokenInputsManager,
 )
+from tropt.models.inputs import ModelInput
+from tropt.models.outputs import ModelOutput
 
 
 # --------------------------------------------------------------------------
@@ -177,7 +177,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         chosen_message_idx: Optional[int] = None,
         **kwargs
-    ) -> "ModelInput":
+    ) -> ModelInput:
         """
         Constructs the full text inputs for the API by decoding the candidate trigger tokens
         and inserting them into the templates.
@@ -215,6 +215,8 @@ class OpenAITokenInputsManager(TokenInputsManager):
 
         from tropt.models.inputs import ModelInput
         return ModelInput(
+            trigger_ids=trigger_ids,
+            trigger_strs=trigger_strs,
             input_texts=inputs_texts,
             targets=targets
         )
@@ -290,7 +292,7 @@ class EncoderOpenAIModel(
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
         **kwargs
-    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Generates embeddings for the given texts using the OpenAI API.
 

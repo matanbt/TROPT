@@ -1,4 +1,3 @@
-from __future__ import annotations
 
 import logging
 from typing import Annotated, List, Optional, Tuple
@@ -21,6 +20,8 @@ from tropt.models import (
     TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.inputs import ModelInput
+from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
@@ -181,42 +182,66 @@ class EncoderHFModel(
 
         return inputs, trigger_tok_ids
 
-    def _loss_hook(
+    def token_forward_pass(
         self,
-        inputs_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        attention_mask: Float[Tensor, "bsz seq_len"],
-        targets: MessageBatchedTargetsDict,
-        loss_func: BaseLoss,
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
+        model_input: ModelInput,
+        reference_loss_func: BaseLoss,
+    ) -> ModelOutput:
+        """
+        Perform a white-box forward pass through the model given the ModelInput. This method uses input_embeds.
 
-        # Forward pass
+        Args:
+            model_input (ModelInput): The input data for the model.
+
+        Returns:
+            ModelOutput: The output from the model.
+        """
+
+        assert model_input.inputs_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+
+        outputs = self.model(
+            dict(
+                inputs_embeds=model_input.input_embeds,  # (bsz, seq_len, embd_dim)
+                attention_mask=model_input.attention_mask, # (bsz, seq_len
+            )
+        )
+        output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
+
+        return ModelOutput(
+            output_embeddings=output_emb,
+        )
+
+    def forward_pass(
+        self,
+        model_input: ModelInput
+    ) -> ModelOutput:
+        """
+        Perform a white-box forward pass through the model given the ModelInput.
+
+        Args:
+            model_input (ModelInput): The input data for the model.
+
+        Returns:
+            ModelOutput: The output from the model.
+        """
+        inputs_embeds = model_input.input_embeds  # (bsz, seq_len, embd_dim)
+        attention_mask = model_input.attention_mask  # (bsz, seq_len)
+
         outputs = self.model(
             dict(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
-        # Create ModelOutput and ModelInput for unified loss resolution
-        from tropt.models.outputs import ModelOutput
-        from tropt.models.inputs import ModelInput
-        from tropt.loss.resolution import compute_loss_from_model_data
-
-        model_output = ModelOutput(
+        return ModelOutput(
             output_embeddings=output_emb,
         )
 
-        model_input = ModelInput(
-            targets=targets,
-        )
-
-        # Use unified loss resolution
-        return compute_loss_from_model_data(model_output, model_input, loss_func)
     @torch.no_grad()
     def __call__(
         self,
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Get the embeddings for the given texts (n_texts elements).
         Note: we mostly assume any prompting/instruction will be applied before the call to this function.
@@ -226,7 +251,6 @@ class EncoderHFModel(
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
 
         if return_full_output:
-            from tropt.models.outputs import ModelOutput
             return ModelOutput(
                 output_embeddings=emb,
             )

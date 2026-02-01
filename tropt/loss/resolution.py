@@ -1,14 +1,4 @@
 """Unified loss resolution and computation via introspection.
-
-This module provides a centralized function for computing losses from model
-inputs and outputs using automatic argument matching. Loss functions declare
-their requirements through their __call__ signature, and this module
-automatically extracts and provides the matching data from ModelOutput and
-ModelInput.
-
-The key function `compute_loss_from_model_data()` uses Python introspection
-to inspect the loss function's signature and automatically provide the correct
-arguments from standardized containers.
 """
 
 import inspect
@@ -46,16 +36,13 @@ def compute_loss_from_model_data(
 ) -> Float[Tensor, "bsz"]:
     """Universal loss computation via automatic argument matching.
 
-    This function uses introspection to inspect the loss function's __call__
-    signature and automatically provides matching arguments from model_output
-    and model_input. Loss functions declare their requirements through parameter
-    names in their __call__ method.
+    Since loss functions in TROPT declare their required arguments following the naming 
+    convention of ModelOutput and ModelInput fields, this function can automatically
+    resolve which data to provide to the loss function by inspecting its __call__
+    signature.
 
-    **How it works:**
-    1. Inspect loss_func.__call__ to get parameter names
-    2. For each parameter, look for matching field in model_output, then model_input
-    3. Raise clear error if required parameter is not found
-    4. Call loss function with matched arguments
+    In case insufficient arguments are avaialble (e.g., becasue the model does not provide the required access),
+    a LossResolutionError is raised with details on what is missing.
 
     **Parameter Naming Convention:**
     Loss functions should name their parameters exactly as they appear in
@@ -95,11 +82,6 @@ def compute_loss_from_model_data(
         ... )
         >>> loss = compute_loss_from_model_data(output, input_data, PrefillCELoss())
 
-    Design Notes:
-        - Zero boilerplate: new losses just declare parameters in __call__
-        - Type-safe: parameter names match dataclass fields exactly
-        - Clear errors: missing parameters are reported with field names
-        - Extensible: works with any loss that follows the naming convention
     """
 
     # Special handling for CombinedLoss (recursive)
@@ -151,8 +133,9 @@ def compute_loss_from_model_data(
         # Parameter not found - raise error if it's required
         if param.default == inspect.Parameter.empty:
             raise LossResolutionError(
-                f"Loss function {type(loss_func).__name__}.__call__ requires parameter "
+                f"Loss function {type(loss_func).__name__} requires parameter "
                 f"'{param_name}' but it was not found in model_output or model_input.\n"
+                f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
                 f"Available in targets: {list(model_input.targets.keys()) if model_input.targets else []}"
