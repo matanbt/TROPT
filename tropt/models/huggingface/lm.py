@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import itertools
 import logging
 from functools import cached_property
@@ -33,7 +31,8 @@ from tropt.models import (
     TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
-from tropt.models.inputs import SliceKey, TextInputsManager
+from tropt.models.inputs import ModelInput, SliceKey, TextInputsManager
+from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 
@@ -342,51 +341,50 @@ class LMHFModel(
 
         return logits
 
-    def _loss_hook(
+    def token_forward_pass(
         self,
-        inputs_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        attention_mask: Float[Tensor, "bsz seq_len"],
-        targets: MessageBatchedTargetsDict,
-        loss_func: BaseLoss,
-        prefix_cache_kwargs: dict = {},
-        trigger_ids: Int[Tensor, "bsz trigger_seq_len"] = None,
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
+        model_input: ModelInput,
+        reference_loss_func: BaseLoss,
+    ) -> ModelOutput:
         """
-        Hook for computing the loss on the given inputs, which are for *specific message* (for the inputs to be aligned).
+        Performs a forward pass through the model given the input embeddings and attention mask from the ModelInput.
+
+        Args:
+            model_input: ModelInput
+        
+        Returns:
+            ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
+        
         """
-        if loss_func.contains_loss_type(AttentionBasedLoss) and self.model.config._attn_implementation != "eager":
+        if reference_loss_func.contains_loss_type(AttentionBasedLoss) and self.model.config._attn_implementation != "eager":
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
+        
+        assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+        
+
         outputs = self.model(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            output_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
-            output_hidden_states=loss_func.contains_loss_type(HiddenStateBased),
-            **prefix_cache_kwargs,
+            inputs_embeds=model_input.input_embeds,
+            attention_mask=model_input.input_attention_mask,
+            output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss),
+            output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBased),
+            **(model_input.input_prefix_cache_kwargs or {})
         )
 
-        # Create ModelOutput from HuggingFace forward pass
-        from tropt.models.outputs import ModelOutput
-        from tropt.models.inputs import ModelInput
-        from tropt.loss.resolution import compute_loss_from_model_data
+        # TODO return a _view_ (not a copy) of the response logits only
+        response_logits = None
+        if reference_loss_func.contains_loss_type(LogitBasedLoss) or reference_loss_func.contains_loss
+            # TODO
+            pass
 
-        model_output = ModelOutput(
+        return ModelOutput(
             output_logits=outputs.logits,
+            response_logits=None,
             output_attentions=torch.stack(outputs.attentions, dim=1) if outputs.attentions else None,
             output_hidden_states=torch.stack(outputs.hidden_states, dim=1) if outputs.hidden_states else None,
         )
-
-        model_input = ModelInput(
-            input_trigger_ids=trigger_ids,
-            input_slices=targets["slices"] if "slices" in targets else None,
-            targets=targets,
-        )
-
-        # Use unified loss resolution
-        return compute_loss_from_model_data(model_output, model_input, loss_func)
 
     @torch.no_grad()
     def __call__(
@@ -395,7 +393,7 @@ class LMHFModel(
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
         return_full_output: bool = False,
-    ) -> List[str] | "ModelOutput":
+    ) -> List[str] | ModelOutput:
         """
         Generate text completions for the given input texts.
         """

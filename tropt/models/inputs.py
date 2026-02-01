@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -59,8 +59,10 @@ class TargetKey(str, Enum):
       Shape: n_messages lists dicts
       Used by: Internal bookkeeping for token position tracking
     """
-    TARGET_OUTPUTS = "target_outputs"
-    TARGET_OUTPUTS_TOKS = "target_outputs_toks"
+    # TODO make everyone use this enum instead of hardcoding strings everywhere!
+    TARGET_RESPONSE_STRS = "target_outputs"  # target_outputs
+
+    TARGET_RESPONSE_TOKS = "target_outputs_toks" # target_response_toks
     TARGET_VECTORS = "target_vectors"
     TARGET_DIRECTIONS = "target_directions"
     SLICES = "slices"
@@ -189,17 +191,8 @@ from pydantic import BaseModel, ConfigDict, field_validator
 class ModelInput(BaseModel):
     """Standardized input container returned by InputsManager.get_triggered_inputs().
 
-    Contains all prepared inputs for model forward passes, supporting both
-    token-level and text-level access patterns. Provides a unified interface
-    for different input types across all model implementations.
-
-    This class uses Pydantic for runtime type and shape validation, ensuring
-    that inputs are correctly formatted before being passed to model forward
-    passes and loss functions.
-
-    Field Naming Convention:
-        All fields are prefixed with `input_` for clarity and to distinguish
-        them from output fields in ModelOutput.
+    This renders a uniform interface for model outputs, that can then be used
+    to compute different losses agnostic of the underlying model type/implementation.
 
     Shape Notation:
         - bsz: batch size (typically n_candidates for a single message)
@@ -226,53 +219,35 @@ class ModelInput(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     # === Text-level inputs (TextInputsManager) ===
-    input_texts: Optional[List[str]] = None
-    """List of text strings with triggers inserted.
-
-    Used by text-level models (e.g., LiteLLM, API-based models). Each string
-    is a complete input text with the trigger already substituted into the template.
-    Length: batch_size.
+    input_texts: Optional[Annotated[List[str], "bsz"]] = None
+    """List of complete text strings with triggers inserted, of length batch_size.
     """
 
     # === Token-level inputs (TokenInputsManager) ===
     input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
-    """Token IDs of the trigger candidates.
+    """Token IDs of the trigger candidates. Shape: (batch_size, trigger_sequence_length).
 
-    Reference tensor containing the token IDs that were inserted into the input.
-    Used by some losses (e.g., TriggerLogitBasedLoss) to compute objectives
-    over the trigger tokens. Shape: (batch_size, trigger_sequence_length).
+    Used by some losses to compute trigger-specific metrics (e.g., perplexity of trigger).
     """
 
     input_embeds: Optional[Float[Tensor, "bsz seq_len d_model"]] = None
-    """Full input embeddings with trigger embeddings inserted.
-
-    Combined embeddings representing [before_template] + [trigger] + [after_template]
-    (and optionally appended target tokens for prefilling). Shape: (batch_size,
-    total_sequence_length, embedding_dimension).
-
-    Used as input to HuggingFace model forward passes via `inputs_embeds` parameter.
+    """Full input embeddings with trigger embeddings inserted, and potentially prefilled target tokens.
+    Could be passed to model as inputs.
+    Shape: (batch_size, total_sequence_length, embedding_dimension).
     """
 
-    input_attention_mask: Optional[Any] = None  # Float[Tensor, "bsz seq_len"] - using Any to bypass Pydantic validation
-    """Attention mask for the input sequence.
-
-    Binary mask indicating which positions should be attended to (1) and which
-    should be ignored (0). Matches the shape of input_embeds. Shape: (batch_size,
-    total_sequence_length).
+    input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None
+    """Binary attention mask for the input sequence.
+        Passed to HuggingFace models to indicate valid token positions.
+      Shape: (batch_size, total_sequence_length).
     """
 
     input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None
-    """Keyword arguments for prefix caching (KV cache optimization).
-
-    Contains `past_key_values` and related kwargs for reusing computed attention
-    keys/values from the prefix. Enables faster inference by avoiding recomputation
-    of static prompt portions.
-
-    Format: Dict with keys like 'past_key_values', 'cache_position', etc.
+    """Keyword arguments for HuggingFace's prefix caching (KV cache optimization).
     """
 
     # === Position information (slicing) ===
-    input_slices: Optional[Any] = None  # List[Dict[str, slice]] - using Any to bypass Pydantic validation
+    input_slices: Optional[List[Dict[str, slice]]] = None
     """Position slices marking different regions in the input sequence.
 
     List of length batch_size, where each element is a dictionary mapping SliceKey
@@ -292,19 +267,11 @@ class ModelInput(BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    targets: Optional[Any] = None  # TargetsDict | TargetsDictPlus - using Any to bypass Pydantic validation
+    targets: Optional[TargetsDict | TargetsDictPlus] = None
     """Target data required by loss functions.
 
-    Dictionary mapping target keys (e.g., "target_outputs", "target_vectors",
-    "target_directions") to their corresponding target values. The specific
+    Dictionary mapping `TargetKey`s to their corresponding target values. The specific
     keys and values depend on which loss function is being used.
-
-    Common keys:
-        - "target_outputs": List[str] - Target text strings
-        - "target_outputs_toks": Tensor - Tokenized target sequences
-        - "target_vectors": Tensor - Target embeddings for similarity losses
-        - "target_directions": Tensor - Steering directions for activation losses
-        - "slices": List[Dict] - Same as input_slices (often included for convenience)
     """
 
     # === Validators ===
@@ -375,8 +342,6 @@ class ModelInput(BaseModel):
         return v
 
 
-# TODO-CLAUDE-CODE: add enum for target entry keys (e.g., "target_outputs", "target_output_tokens", etc); so we don't hardcode strings everywhere! we should also explain what each naming means and what is the expected format, typing and shape
-
 # ======================= Triggered Input Managers =======================
 
 
@@ -396,7 +361,7 @@ class InputsManager(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_triggered_inputs(self, *args, **kwargs):
+    def get_triggered_inputs(self, *args, **kwargs) -> ModelInput:
         raise NotImplementedError
 
 ## Text inputs manager ##

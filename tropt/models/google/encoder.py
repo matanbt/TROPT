@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from typing import List
 
 import torch
@@ -7,6 +5,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from tropt.models import EncoderBaseModel, LossTextAccessMixin
+from tropt.models.outputs import ModelOutput
 
 
 class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
@@ -24,11 +23,13 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         Args:
             model_name: The name of the Gemini embedding model to use.
             d_model: The dimensionality of the embeddings (e.g., 768, 3072).
+
+        Note:
+        Requires `os.environ["GOOGLE_API_KEY"]` to be set externally.
+
         """
         # Import google.genai only when instantiating (optional dependency)
         from google import genai
-
-        # os.environ["GOOGLE_API_KEY"] = ...  # required to be set externally
 
         self.client = genai.Client()
         self.model_name = model_name
@@ -43,7 +44,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         texts: List[str],
         text_type: str = None,
         return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"] | "ModelOutput":
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Generates embeddings for the given texts using the Gemini API.
 

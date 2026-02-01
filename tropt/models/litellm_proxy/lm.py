@@ -1,15 +1,15 @@
-from __future__ import annotations
-
 import logging
 from typing import Dict, List, Optional
 
 import litellm
 
 from tropt.models import LMBaseModel, LossTextAccessMixin
+from tropt.models.outputs import ModelOutput
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_LITELLM_URL = "http://localhost:4000"
+
 
 class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
     """
@@ -63,7 +63,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         temperature: float = 0.0,
         return_full_output: bool = False,
         **kwargs,
-    ) -> List[str] | "ModelOutput":
+    ) -> List[str] | ModelOutput:
         """
         Generates text completions for the given input texts using parallel execution.
         """
@@ -99,7 +99,6 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             logger.warning(f"LiteLLM batch completion failed: {e}")
             responses = ["" for _ in texts]
 
-
         # Track usage
         total_tokens = sum(
             (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0)
@@ -112,7 +111,6 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         )
 
         if return_full_output:
-            from tropt.models.outputs import ModelOutput
             return ModelOutput(
                 generated_response_strs=responses,
             )
