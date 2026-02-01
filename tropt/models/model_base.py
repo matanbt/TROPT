@@ -3,29 +3,19 @@ Base definitions, classes, and mixins for targeted text models.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Tuple
-from typing import Union, Literal
-import numpy as np
-from transformers import BatchEncoding, PreTrainedTokenizer
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
+from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
-from tropt.common import DEFAULT_INIT_TRIGGER
-
-from .inputs import (
-    BatchedTargetsDict,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
+from tropt.common import DEFAULT_INIT_TRIGGER, ModelOutput, Targets
+from tropt.models.inputs import (
     TextInputsManager,
     TokenInputsManager,
-    TokenTrigger,
-    TokenTriggerCandidates,
 )
-
 
 # ====================== Model Base Classes =======================
 
@@ -93,7 +83,7 @@ class LMBaseModel(BaseModel):
             self,
             texts: List[str],
             return_full_output: bool = False,
-            *args, **kwargs) -> List[str] | Dict[str, Any]:
+            *args, **kwargs) -> List[str] | ModelOutput:
         """Generates text completions for the given input texts."""
         raise NotImplementedError
 
@@ -105,7 +95,7 @@ class EncoderBaseModel(BaseModel):
         self, texts: List[str],
         return_full_output: bool = False,
         *args, **kwargs
-    ) -> Float[Tensor, "n_texts d_model"] | Dict[str, Any]:
+    ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
         """Generates encoder embeddings for the given input texts."""
         raise NotImplementedError
 

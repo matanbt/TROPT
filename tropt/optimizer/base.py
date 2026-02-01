@@ -4,8 +4,9 @@ from typing import Annotated, Any, List, Optional
 
 import torch
 
+from tropt.common import Targets, TokenTrigger
 from tropt.loss.base import BaseLoss
-from tropt.models import BaseModel, TargetsDict, TokenTrigger
+from tropt.models import BaseModel
 from tropt.tracker.base import BaseTracker, DummyTracker
 
 
@@ -58,7 +59,7 @@ class BaseOptimizer(ABC):
         self,
         texts: Annotated[List[str], "n_messages"],  # TODO-claude-code annotate all the n_messages long lists this way (as well as other lists that have predefined length)
         initial_trigger: Optional[str] | str | TokenTrigger = None,
-        targets: TargetsDict = None,
+        targets: Targets = None,
     ) -> OptimizerResult:
         """Optimize the trigger to minimize the loss on the given inputs.
 

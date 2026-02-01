@@ -7,13 +7,17 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from torch import Tensor
 from transformers import BatchEncoding
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    ModelInput,
+    ModelOutput,
+    Targets
+)
 from tropt.models import (
     BaseTokenizer,
     EncoderBaseModel,
     LossTextAccessMixin,
-    TargetsDict,
-    TargetsDictPlus,
     TokenAccessMixin,
     TokenInputsManager,
 )
@@ -140,7 +144,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         tokenizer: Any, # The OpenAITokenizer wrapper
         tok_ids: List[List[int]],
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
         **kwargs,
     ):
         self.tokenizer = tokenizer
@@ -163,8 +167,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
         self.n_messages = len(raw_texts)
 
         # 2. Prepare Targets
-        # We use TargetsDictPlus to handle target expansion/broadcasting later
-        self.targets = TargetsDictPlus(targets, n_messages=self.n_messages)
+        self.targets = targets
 
     @property
     def vocab_size(self):
@@ -173,9 +176,9 @@ class OpenAITokenInputsManager(TokenInputsManager):
     def get_triggered_inputs(
         self,
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        chosen_message_idx: Optional[int] = None,
+        chosen_message_idx: Optional[int],
         **kwargs
-    ) -> dict[str, Any]:
+    ) -> ModelInput:
         """
         Constructs the full text inputs for the API by decoding the candidate trigger tokens
         and inserting them into the templates.
@@ -184,35 +187,24 @@ class OpenAITokenInputsManager(TokenInputsManager):
         # trigger_ids shape: (n_candidates, trigger_len)
         trigger_strs = self.tokenizer.batch_decode(trigger_ids, skip_special_tokens=True)
         n_candidates = len(trigger_strs)
-
-        # 2. Determine which messages to process
-        msg_indices = [chosen_message_idx] if chosen_message_idx is not None else range(self.n_messages)
         
-        # 3. Construct the full texts
-        # Structure: List[List[str]] -> [n_messages, n_candidates]
-        inputs_texts = []
+        # 2. Construct the full texts
+        bef = self.before_texts[chosen_message_idx]
+        aft = self.after_texts[chosen_message_idx]
         
-        for msg_idx in msg_indices:
-            bef = self.before_texts[msg_idx]
-            aft = self.after_texts[msg_idx]
-            
-            # Create list of strings for this message across all candidates
-            curr_message_candidates = [
-                f"{bef}{trig}{aft}" for trig in trigger_strs
-            ]
-            inputs_texts.append(curr_message_candidates)
+        # Create list of strings for this message across all candidates
+        curr_message_candidates = [
+            f"{bef}{trig}{aft}" for trig in trigger_strs
+        ]
 
-        # 4. Handle Targets (Expand for candidates)
-        targets = self.targets.copy()
-        targets = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
+        # 3. Handle Targets (select chosen message)
+        targets = self.targets.select_message(chosen_message_idx)
         
-        if chosen_message_idx is not None:
-            # Flatten inputs_texts if only one message (List[str] instead of List[List[str]])
-            inputs_texts = inputs_texts[0] 
-            targets = TargetsDictPlus.get_message_from_batched_targets(targets, chosen_message_idx)
-
-        return dict(
-            inputs_texts=inputs_texts,
+        # 4. Build ModelInput
+        return ModelInput(
+            trigger_ids=trigger_ids,
+            trigger_strs=trigger_strs,
+            input_texts=curr_message_candidates,
             targets=targets
         )
 
@@ -287,7 +279,7 @@ class EncoderOpenAIModel(
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
         **kwargs
-    ) -> Float[Tensor, "n_texts d_model"]:
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Generates embeddings for the given texts using the OpenAI API.
 
@@ -315,7 +307,7 @@ class EncoderOpenAIModel(
         )
 
         if return_full_output:
-            return dict(
+            return ModelOutput(
                 output_embeddings=result,
             )
 
@@ -324,7 +316,7 @@ class EncoderOpenAIModel(
     def prepare_token_inputs(
         self,
         texts: List[str],  # n_messages texts
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[OpenAITokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
         """

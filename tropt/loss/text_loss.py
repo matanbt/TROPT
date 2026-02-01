@@ -131,12 +131,12 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 
     def __call__(
         self,
-        texts: Annotated[List[str], "bsz"],
+        input_texts: Annotated[List[str], "bsz"],
     ) -> Float[torch.Tensor, "bsz"]:
         """
         Compute loss for a batch of texts with dynamic batching.
         """
-        n_texts = len(texts)
+        n_texts = len(input_texts)
 
         @find_executable_batch_size(starting_batch_size=self.judge_batch_size)
         def _compute_scores_batched(batch_size: int) -> Float[torch.Tensor, "n_texts"]:
@@ -151,7 +151,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 
             for idx in range(0, n_texts, batch_size):
                 end_idx = min(idx + batch_size, n_texts)
-                batch_texts = texts[idx:end_idx]
+                batch_texts = input_texts[idx:end_idx]
 
                 batch_scores = self._compute_batch_scores(batch_texts)
                 all_scores.append(batch_scores)

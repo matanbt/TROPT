@@ -11,16 +11,19 @@ from accelerate.utils.memory import clear_device_cache, find_executable_batch_si
 from jaxtyping import Float, Int
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import (
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    MessageTargets,
+    ModelInput,
+    ModelOutput,
+    SliceKey,
+    Targets,
+)
 from tropt.loss.base import BaseLoss
+from tropt.loss.resolution import compute_loss_from_model_data
 from tropt.models import (
-    BatchedTargetsDict,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
     TokenInputsManager,
 )
-from tropt.models.inputs import SliceKey
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,7 @@ class _HFTokenInputsManager(TokenInputsManager):
     before_ids: List[Float[Tensor, "bef_len"]]
     after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
     embed_func: torch.nn.Embedding
-    targets: TargetsDictPlus
+    targets: Targets
     padding_side: str
     pad_token_id: int
     tokenizer: transformers.PreTrainedTokenizer
@@ -48,7 +51,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         embed_func: torch.nn.Embedding,
         optimized_trigger_placeholder: Optional[str] = OPTIMIZED_TRIGGER_PLACEHOLDER,
         use_prefix_cache: Optional[bool] = False,
-        targets: TargetsDict | TargetsDictPlus = None,
+        targets: Targets = None,
     ):
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
@@ -81,10 +84,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         self.tokenizer = tokenizer
 
         # Prepare targets
-        # make sure it's a TargetsDictPlus, we use its utils later
-        targets = TargetsDictPlus(targets, n_messages=self.n_messages)
-        targets = targets.to_device(model.device)
-        self.targets = targets
+        self.targets = targets.to_device(model.device)
 
         # Compute the KV Cache for tokens that appear before the optimized tokens
         prefix_cache: List[ # per message
@@ -157,11 +157,11 @@ class _HFTokenInputsManager(TokenInputsManager):
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
         append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_messages
         chosen_message_idx: Optional[int] = None,
-    ) -> dict[str, Tensor | MessageBatchedTargetsDict]:
+    ) -> ModelInput:
         """
         Returns the input embeddings with the given trigger merged in for a specific message.
 
-        Notes: 
+        Notes:
         - We do not support varying trigger lengths in the same candidate batch
         (they must share `trigger_seq_len`).
         - for specific use cases, the following method can be optimized; however,
@@ -180,13 +180,15 @@ class _HFTokenInputsManager(TokenInputsManager):
             chosen_message_idx: int (required)
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
 
-        Returns:
-            dict with keys:
+        Returns: A ModelInput object containing:
+                - input_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
+                    the token ids of the trigger(s) inserted (detached, for reference)
                 - inputs_embeds: Tensor, shape = (n_candidates, seq_len, embd_dim)
-                    the input embeddings with the trigger merged in
+                    the input embeddings with the trigger merged in;
+                    if the provided input_embds required grad, then this tensor will also require grad.
                 - attention_mask: Tensor, shape = (n_candidates, seq_len)
                     the attention mask matching the input embeddings
-                - targets: MessageBatchedTargetsDict
+                - targets: MessageTargets
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
         assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
@@ -240,7 +242,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
         before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
 
-        msg_slices = {
+        input_slices = {
             SliceKey.INPUT_BEFORE: slice(
                 0,
                 before_offset,
@@ -263,18 +265,8 @@ class _HFTokenInputsManager(TokenInputsManager):
             ) if curr_append is not None else None,
         }
 
-        # Expand slices for all candidates (same slices for each candidate)
-        slices = [msg_slices] * n_candidates
-
         ## Prepare the targets repeated for each candidate
-        targets: TargetsDictPlus = self.targets.copy()
-        targets: BatchedTargetsDict = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
-        targets: MessageBatchedTargetsDict = TargetsDictPlus.get_message_from_batched_targets(
-            targets, chosen_message_idx
-        )
-
-        # add the slices info for loss computation
-        targets['slices'] = slices
+        targets: MessageTargets = self.targets.select_message(chosen_message_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
@@ -284,12 +276,14 @@ class _HFTokenInputsManager(TokenInputsManager):
                 message_idx=chosen_message_idx,
             )
 
-        return dict(
-            trigger_ids=trigger_ids,  # detached triggers for reference
-            inputs_embeds=inputs_embeds.to(self.device, self.float_dtype),
-            attention_mask=attention_mask.to(self.device, torch.int64),
+        return ModelInput(
+            # TODO return input texts?
+            input_trigger_ids=trigger_ids,  # detached triggers for reference
+            input_embeds=inputs_embeds.to(self.device, self.float_dtype),
+            input_attention_mask=attention_mask.to(self.device, torch.int64),
+            input_slices=input_slices,
             targets=targets,
-            prefix_cache_kwargs=prefix_cache_kwargs,
+            input_prefix_cache_kwargs=prefix_cache_kwargs,
         )
 
     def _get_prefix_cache_kwargs(
@@ -477,7 +471,7 @@ class _HuggingFaceModelMixins:
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
-
+                    
                     # Get trigger IDs for reference (if using discrete tokens)
                     # For soft triggers, compute argmax from probabilities
                     if candidate_trigger_ids is not None:
@@ -486,16 +480,18 @@ class _HuggingFaceModelMixins:
                         # Compute discrete tokens from soft probabilities (before Gumbel-softmax)
                         ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
 
-                    loss = self._loss_hook(
-                        **inputs.get_triggered_inputs(
-                            trigger_embeds=candidate_embeds,
-                            chosen_message_idx=message_idx,
+                    model_input = inputs.get_triggered_inputs(
+                        trigger_embeds=candidate_embeds,
+                        chosen_message_idx=message_idx,
 
-                            # Also pass trigger ids as a reference
-                            trigger_ids=ref_trigger_ids,
-                        ),
-                        loss_func=loss_func,
+                        # Also pass trigger ids as a reference
+                        trigger_ids=ref_trigger_ids,
                     )
+                    model_output = self.token_forward_pass(
+                        model_input=model_input,
+                        reference_loss_func=loss_func,
+                    )
+                    loss = compute_loss_from_model_data(model_output, model_input, loss_func)
                     batch_losses.append(loss)
 
                 # collect losses for the batch & take avg over messages
@@ -528,6 +524,7 @@ class _HuggingFaceModelMixins:
         all_grads = _compute_grad__batched()
 
         # normalize each token's gradient vector (over the vocab_size dim)
+        # TODO if norm?
         all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         return all_grads
@@ -582,13 +579,15 @@ class _HuggingFaceModelMixins:
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 logger.debug(f"from loss [msg={message_idx}]: {(cand_idx_end - cand_idx)}")
-                loss = self._loss_hook(
-                    **inputs.get_triggered_inputs(
-                        trigger_ids=batch_candidate_trigger_ids,
-                        chosen_message_idx=message_idx,
-                    ),
-                    loss_func=loss_func,
-                )  # shape: (bsz,)
+                model_input = inputs.get_triggered_inputs(
+                    trigger_ids=batch_candidate_trigger_ids,
+                    chosen_message_idx=message_idx,
+                )
+                model_output = self.token_forward_pass(
+                        model_input=model_input,
+                        reference_loss_func=loss_func,
+                    )
+                loss = compute_loss_from_model_data(model_output, model_input, loss_func)
                 all_loss[message_idx].append(loss)
 
                 self._update_usage_stats(
@@ -606,21 +605,24 @@ class _HuggingFaceModelMixins:
         return losses
 
     @abstractmethod
-    def _loss_hook(
+    def token_forward_pass(
         self,
-        inputs_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        attention_mask: Optional[Float[Tensor, "bsz seq_len"]],
-        targets: MessageBatchedTargetsDict,
-        loss_func: BaseLoss,
-        prefix_cache_kwargs: dict = {},
-        loss_kwargs: dict = {},
-        **kwargs,
+        model_input: ModelInput,
+        reference_loss_func: BaseLoss,
     ) -> Float[Tensor, "bsz"]:
+        """Performs a forward pass with the given token-based model input. Forward pass is expected to be done on `input_embeds` from `model_input`.
+
+        Args:
+            model_input: ModelInput
+                the model input containing the triggered input_embeds and other info
+            reference_loss_func: BaseLoss
+                the loss function to use for reference (some models may need it for special handling)
+
+        Returns:
+            Tensor, shape = (bsz,)
+                the loss for each input in the batch
         """
-        Hook for computing the loss on the given inputs, which are for *specific message* (for the input to be aligned).
-        Must be implemented in subclasses.
-        """
-        raise NotImplementedError("_loss_hook must be implemented in subclasses.")
+        raise NotImplementedError("`token_forward_pass` must be implemented in subclasses of `_HuggingFaceModelMixins`.")
 
     @staticmethod
     def cast_to_model_tokenizer(

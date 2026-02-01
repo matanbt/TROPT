@@ -97,9 +97,39 @@ Also note that some models may have token input access, despite having limited l
 
 The aforementioned two generic methods (*prepare input*, *compute loss*), interact with the two following pillars: **input managers** and **loss classes** accordingly.
 
+
+### Standardized Input/Output Interfaces
+
+**Design Motivation**: Prior to this refactoring, model inputs and outputs were passed as dictionaries with string keys, leading to inconsistent interfaces and requiring each model to implement its own loss resolution logic. This resulted in ~180 lines of duplicated code across 3 locations, making maintenance difficult and new model implementation error-prone.
+
+**ModelOutput** (`tropt/models/outputs.py`): A dataclass that standardizes all model outputs. All fields are optional to accommodate diverse model capabilities (embeddings, logits, hidden states, attention weights, generated text, etc.). Models populate only the fields they can provide.
+
+**ModelInput** (`tropt/models/inputs.py`): A dataclass that standardizes inputs from `InputsManager.get_triggered_inputs()`. Contains text-level inputs, token-level inputs (embeddings, attention masks, prefix cache kwargs), position slices, and target artifacts.
+
+**Benefits**:
+- **Type Safety**: Strong typing eliminates runtime errors from missing/misnamed keys
+- **Self-Documenting**: Field names and type annotations with shapes (via jaxtyping) make interfaces clear
+- **Maintainability**: Changes to interfaces are compiler-checked across the codebase
+- **Consistency**: All models use identical input/output contracts
+
+**Usage Pattern**:
+```python
+# Model __call__ returns ModelOutput when return_full_output=True
+output = model(texts, return_full_output=True)  # Returns ModelOutput
+embeddings = output.output_embeddings  # Type-safe attribute access
+
+# InputsManager returns ModelInput
+model_input = inputs_manager.get_triggered_inputs(trigger_ids)
+texts = model_input.input_texts  # Type-safe attribute access
+```
+
+This standardization enabled the unified loss resolution system described in Pillar 3.
+
+
 <!-- TODO fully document access levels (e.g., token level also assume prefilling; text-level only assume query, and sometime generated logits [different from prefilled logits]) -->
 
 <!-- TODO make sure it's clear that __call__ is part of the query level (thus for example doesn't support prefill) -->
+
 
 ## Pillar 2: Input and target manager
 
@@ -173,6 +203,46 @@ All optimizers iteratively advance the text trigger towards a specific goal. As 
 We divide the losses according to the type of input that the loss accepts (which is, in turn, mostly the type of output of the model). For instance, Cross-Entropy-based losses utilize the logit outputs, and thus they will inherit from `LogitsBasedLoss`.
 
 In this way, the model is able to call and compute only losses compatible with the models' output. For example, an embedding model is expected to raise an error if we were to require its calculation of a loss of type `LogitsBasedLoss`.
+
+### Unified Loss Resolution
+
+**Problem**: Previously, loss computation logic was duplicated across three model implementations:
+1. `LMHFModel._loss_hook()` (~100 lines of isinstance checks for 5 loss types)
+2. `EncoderHFModel._loss_hook()` (~45 lines for 2 loss types)
+3. `LossTextAccessMixin.compute_loss_from_texts()` (~80 lines for 4 loss types)
+
+This duplication made it difficult to add new loss types and easy to introduce bugs when updating loss computation logic.
+
+**Solution** (`tropt/loss/resolution.py`): A single function `compute_loss_from_model_data(model_output, model_input, loss_func)` that:
+1. Accepts standardized `ModelOutput` and `ModelInput` dataclasses
+2. Performs type-based dispatch to specialized helper functions based on loss type
+3. Validates required data is present in model_output (raises `LossResolutionError` with clear messages if missing)
+4. Returns computed loss tensor
+
+**Helper functions** (one per loss category):
+- `_compute_logit_based_loss()` - Cross-entropy, mellowmax, Carlini-Wagner losses
+- `_compute_trigger_logit_based_loss()` - Trigger-specific logit losses
+- `_compute_attention_based_loss()` - Attention-based objectives
+- `_compute_steering_loss()` - Activation steering losses
+- `_compute_embedding_based_loss()` - Similarity and embedding losses
+- `_compute_text_based_loss()` - Text-based evaluation (LM-as-judge)
+- `_compute_combined_loss()` - Recursive handling of multi-objective losses
+
+**Impact on Model Implementation**: Model `_loss_hook` methods are now ~10 lines instead of ~100:
+```python
+# Create standardized wrappers from model-specific outputs
+model_output = ModelOutput(output_logits=outputs.logits, ...)
+model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets, ...)
+
+# Single line replaces all duplicated loss resolution logic
+return compute_loss_from_model_data(model_output, model_input, loss_func)
+```
+
+**Benefits**:
+- **Single Source of Truth**: Loss computation logic exists in one location
+- **Easy Extension**: Adding a new loss type requires < 20 lines in one file
+- **Clear Error Messages**: Missing data raises exceptions with specific field names
+- **Reduced Model Complexity**: New models provide data, not loss implementation
 
 ## Pillar 4: Optimizers
 

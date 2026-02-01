@@ -1,3 +1,4 @@
+
 import logging
 from typing import Annotated, List, Optional, Tuple
 
@@ -7,16 +8,19 @@ from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    ModelInput,
+    ModelOutput,
+    Targets,
+)
+from tropt.loss.base import BaseLoss
 from tropt.models import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
 )
 from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
 
@@ -25,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class EncoderHFTokenInputsManager(_HFTokenInputsManager):
-    targets: TargetsDict | TargetsDictPlus
+    targets: Targets
     # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
     # to optimize towards an vector per message
 
@@ -147,7 +151,7 @@ class EncoderHFModel(
     def prepare_token_inputs(
         self,
         texts: List[str],  # n_messages texts
-        targets: TargetsDict | TargetsDictPlus,
+        targets: Targets,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
 
@@ -179,56 +183,66 @@ class EncoderHFModel(
 
         return inputs, trigger_tok_ids
 
-    def _loss_hook(
+    def token_forward_pass(
         self,
-        inputs_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        attention_mask: Float[Tensor, "bsz seq_len"],
-        targets: MessageBatchedTargetsDict,
-        loss_func: BaseLoss,
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
+        model_input: ModelInput,
+        reference_loss_func: BaseLoss=None,
+    ) -> ModelOutput:
+        """
+        Perform a white-box forward pass through the model given the ModelInput. This method uses input_embeds.
 
-        # Forward pass
+        Args:
+            model_input (ModelInput): The input data for the model.
+
+        Returns:
+            ModelOutput: The output from the model.
+        """
+
+        assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+
+        outputs = self.model(
+            dict(
+                inputs_embeds=model_input.input_embeds,  # (bsz, seq_len, embd_dim)
+                attention_mask=model_input.attention_mask, # (bsz, seq_len
+            )
+        )
+        output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
+
+        return ModelOutput(
+            output_embeddings=output_emb,
+        )
+
+    def forward_pass(
+        self,
+        model_input: ModelInput
+    ) -> ModelOutput:
+        """
+        Perform a white-box forward pass through the model given the ModelInput.
+
+        Args:
+            model_input (ModelInput): The input data for the model.
+
+        Returns:
+            ModelOutput: The output from the model.
+        """
+        inputs_embeds = model_input.input_embeds  # (bsz, seq_len, embd_dim)
+        attention_mask = model_input.attention_mask  # (bsz, seq_len)
+
         outputs = self.model(
             dict(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
-        # Recursive loss calculation helper
-        def _calc_loss_from_outputs(_output_emb, _targets, _loss_func):
-            if isinstance(_loss_func, EmbeddingBasedLoss):
-                # Base case: Compute embedding loss
-                return _loss_func(
-                    _output_emb,
-                    _targets["target_vectors"]
-                    )  # shape: (bsz,)
+        return ModelOutput(
+            output_embeddings=output_emb,
+        )
 
-            elif isinstance(_loss_func, CombinedLoss):
-                # Recursive case: Compute all child losses
-                losses = []
-                for _nested_loss_func in _loss_func.loss_funcs:
-                    losses.append(
-                        _calc_loss_from_outputs(_output_emb, _targets, _nested_loss_func)
-                    )
-
-                # Stack results: (n_losses, bsz)
-                losses = torch.stack(losses, dim=0)
-
-                # Apply combination logic (e.g. weighted sum) -> (bsz,)
-                return _loss_func(losses)
-
-            else:
-                raise NotImplementedError(
-                    f"Loss function {_loss_func} not supported for HuggingFace models yet."
-                )
-
-        return _calc_loss_from_outputs(output_emb, targets, loss_func)
     @torch.no_grad()
     def __call__(
         self,
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"]:
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Get the embeddings for the given texts (n_texts elements).
         Note: we mostly assume any prompting/instruction will be applied before the call to this function.
@@ -238,7 +252,7 @@ class EncoderHFModel(
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
 
         if return_full_output:
-            return dict(
+            return ModelOutput(
                 output_embeddings=emb,
             )
 

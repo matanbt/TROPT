@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Annotated
 
 import numpy as np
 import torch
@@ -7,19 +7,18 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.common import DEFAULT_INIT_TRIGGER
-from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss, LogitBasedLoss
-from tropt.loss.text_loss import InputReadabilityLoss
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    ModelInput,
+    Targets,
+    TokenTriggerCandidates,
+)
+from tropt.loss.base import BaseLoss
+from tropt.loss.resolution import compute_loss_from_model_data
 
 from .inputs import (
-    BatchedTargetsDict,
-    MessageBatchedTargetsDict,
-    TargetsDict,
-    TargetsDictPlus,
     TextInputsManager,
     TokenInputsManager,
-    TokenTrigger,
-    TokenTriggerCandidates,
 )
 from .model_base import BaseTokenizer
 
@@ -32,10 +31,10 @@ class TokenAccessMixin(ABC):
     @abstractmethod
     def prepare_token_inputs(
         self,
-        text_templates: List[str],  # n_messages texts
+        text_templates: Annotated[List[str], "n_messages"],
         initial_trigger: str,  # initial trigger string
-        targets: TargetsDict = None,  # also n_messages, depends on the objective
-    ) -> tuple[TokenInputsManager, TokenTrigger | str]:
+        targets: Targets = None,  # also n_messages, depends on the objective
+    ) -> tuple[TokenInputsManager, Float[Tensor, "1 trigger_len"] | str]:
         """Prepare the model's inputs object and initial trigger from raw texts.
 
         Args:
@@ -98,8 +97,8 @@ class GradientTokenAccessMixin(TokenAccessMixin):
 class TextAccessMixin(ABC):
     def prepare_text_inputs(
         self,
-        texts: List[str],  # n_messages texts
-        targets: TargetsDict = None,
+        texts: Annotated[List[str], "n_messages"],
+        targets: Targets = None,
         initial_trigger: str = DEFAULT_INIT_TRIGGER,
     ) -> Tuple[TextInputsManager, List[str]]:
         """
@@ -134,55 +133,31 @@ class LossTextAccessMixin(TextAccessMixin):
         n_messages = inputs.n_messages
         n_candidates = len(candidate_trigger_strs)
 
-        # Helper function to calculate loss from outputs
-        def _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _loss_func):
-            if isinstance(_loss_func, EmbeddingBasedLoss):
-                return _loss_func(
-                    _outputs["output_embeddings"], # TODO support in hf/encoder.py
-                    _curr_targets[_loss_func.TARGET_KEY]
-                )  # shape: (n_candidates,)
-
-            elif isinstance(_loss_func, InputReadabilityLoss):  # TODO more general super class here
-                return _loss_func(
-                    _inputs,
-                )  # shape: (n_candidates,)
-
-            elif isinstance(_loss_func, CombinedLoss):
-                child_losses = []
-                for _nested_loss_func in _loss_func.loss_funcs:
-                    # Recursive call
-                    child_losses.append(
-                        _calc_loss_from_outputs(_inputs, _outputs, _curr_targets, _nested_loss_func)
-                    )
-
-                # Stack child losses: (n_candidates, n_losses)
-                child_losses = torch.stack(child_losses, dim=1)
-
-                # Apply the combinator (e.g. weighted sum) -> (n_candidates,)
-                return _loss_func(child_losses)
-
-            else:
-                raise NotImplementedError(f"Loss function {_loss_func} not supported.")
-
         # Main Loop: for each message, we compute the loss for all candidates
         losses = []
         for message_idx in range(n_messages):
-            curr_inputs_dict = inputs.get_triggered_inputs(
+            curr_model_input = inputs.get_triggered_inputs(
                 candidate_trigger_strs, chosen_message_idx=message_idx
             )
             curr_texts, curr_targets = (
-                curr_inputs_dict["inputs_texts"],
-                curr_inputs_dict["targets"],
+                curr_model_input.input_texts,
+                curr_model_input.targets,
             )
 
             # Forward pass once per message bulk
-            outputs = self(
+            model_output = self(
                 curr_texts,
                 return_full_output=True,
-            )  # could be a list of n_candidate strings, a tensor of (n_candidates, d_model), etc.
+            )  # Returns ModelOutput with available data
 
-            # Calculate loss
-            loss = _calc_loss_from_outputs(curr_texts, outputs, curr_targets, loss_func)  # shape: (n_candidates,)
+            # Create ModelInput wrapper
+            model_input = ModelInput(
+                input_texts=curr_texts,
+                targets=curr_targets,
+            )
+
+            # Use unified loss resolution
+            loss = compute_loss_from_model_data(model_output, model_input, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)

@@ -1,7 +1,7 @@
 import logging
 import math
 import time
-from typing import Any, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import numpy as np
 import torch
@@ -9,13 +9,16 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    Targets,
+)
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TargetsDict,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
@@ -171,9 +174,9 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Annotated[List[str], "n_messages"],
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: TargetsDict = None,
+        targets: Targets = None,
     ) -> OptimizerResult:
         # Initialization:
         inputs, trigger_ids = self.model.prepare_token_inputs(

@@ -2,6 +2,7 @@ import math
 
 import torch
 
+from tropt.common import SliceKey, Targets
 from tropt.loss.base import AttentionEnhLoss, CombinedLoss, PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.optimizer.base import OptimizerResult
@@ -30,15 +31,15 @@ def run_gcghij(
             PrefillCELoss(),
             AttentionEnhLoss(  # attn[adv->chat] on the middle layers
                 targeted_layers=slice(math.floor(0.1 * n_layers), math.ceil(0.9 * n_layers)),
-                src_slc_name="adv",
-                dst_slc_name="chat_template_after",
+                src_slc_name=SliceKey.TRIGGER,
+                dst_slc_name=SliceKey.INPUT_AFTER,
                 )
 
             ## For the loss of the `AttnGCG` paper, use only this term instead of `AttentionEnhLoss`:
             # AttentionEnhLoss( # attn[adv->affirm] on the last layer
             #     targeted_layers=slice(n_layers-1, n_layers),  #
-            #     src_slc_name="adv",
-            #     dst_slc_name="appended",
+            #     src_slc_name=SliceKey.TRIGGER,
+            #     dst_slc_name=SliceKey.APPENDED,
             #     )
             ],
         weights=[1.0, -100],
@@ -61,7 +62,9 @@ def run_gcghij(
 
     result = optimizer.optimize_trigger(
         texts=[instruction],
-        targets=dict(target_outputs=[target_output]),
+        targets=Targets(
+            target_response_strs=[target_output]
+        ),
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
     )
 
