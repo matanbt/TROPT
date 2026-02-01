@@ -9,11 +9,13 @@ from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import DEFAULT_INIT_TRIGGER
 from tropt.loss.base import BaseLoss, CombinedLoss, EmbeddingBasedLoss, LogitBasedLoss
+from tropt.loss.resolution import compute_loss_from_model_data
 from tropt.loss.text_loss import InputReadabilityLoss
 
 from .inputs import (
     BatchedTargetsDict,
     MessageBatchedTargetsDict,
+    ModelInput,
     TargetsDict,
     TargetsDictPlus,
     TextInputsManager,
@@ -133,11 +135,6 @@ class LossTextAccessMixin(TextAccessMixin):
 
         n_messages = inputs.n_messages
         n_candidates = len(candidate_trigger_strs)
-
-        # Import unified loss resolution
-        from tropt.models.outputs import ModelOutput
-        from tropt.models.inputs import ModelInput
-        from tropt.loss.resolution import compute_loss_from_model_data
 
         # Main Loop: for each message, we compute the loss for all candidates
         losses = []

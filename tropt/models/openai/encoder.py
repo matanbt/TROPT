@@ -175,7 +175,7 @@ class OpenAITokenInputsManager(TokenInputsManager):
     def get_triggered_inputs(
         self,
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        chosen_message_idx: Optional[int] = None,
+        chosen_message_idx: Optional[int],
         **kwargs
     ) -> ModelInput:
         """
@@ -186,38 +186,27 @@ class OpenAITokenInputsManager(TokenInputsManager):
         # trigger_ids shape: (n_candidates, trigger_len)
         trigger_strs = self.tokenizer.batch_decode(trigger_ids, skip_special_tokens=True)
         n_candidates = len(trigger_strs)
-
-        # 2. Determine which messages to process
-        msg_indices = [chosen_message_idx] if chosen_message_idx is not None else range(self.n_messages)
         
-        # 3. Construct the full texts
-        # Structure: List[List[str]] -> [n_messages, n_candidates]
-        inputs_texts = []
+        # 2. Construct the full texts
+        bef = self.before_texts[chosen_message_idx]
+        aft = self.after_texts[chosen_message_idx]
         
-        for msg_idx in msg_indices:
-            bef = self.before_texts[msg_idx]
-            aft = self.after_texts[msg_idx]
-            
-            # Create list of strings for this message across all candidates
-            curr_message_candidates = [
-                f"{bef}{trig}{aft}" for trig in trigger_strs
-            ]
-            inputs_texts.append(curr_message_candidates)
+        # Create list of strings for this message across all candidates
+        curr_message_candidates = [
+            f"{bef}{trig}{aft}" for trig in trigger_strs
+        ]
 
-        # 4. Handle Targets (Expand for candidates)
-        targets = self.targets.copy()
-        targets = TargetsDictPlus.get_expanded_with_candidates(targets, n_candidates)
+        # 3. Handle Targets (select chosen message)
+        targets = TargetsDictPlus.select_message(
+            self.targets, chosen_message_idx
+        )
         
-        if chosen_message_idx is not None:
-            # Flatten inputs_texts if only one message (List[str] instead of List[List[str]])
-            inputs_texts = inputs_texts[0]
-            targets = TargetsDictPlus.get_message_from_batched_targets(targets, chosen_message_idx)
-
+        # 4. Build ModelInput
         from tropt.models.inputs import ModelInput
         return ModelInput(
             trigger_ids=trigger_ids,
             trigger_strs=trigger_strs,
-            input_texts=inputs_texts,
+            input_texts=curr_message_candidates,
             targets=targets
         )
 

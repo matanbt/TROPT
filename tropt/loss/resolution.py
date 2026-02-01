@@ -49,7 +49,6 @@ def compute_loss_from_model_data(
     ModelOutput and ModelInput:
     - output_logits: From ModelOutput
     - output_embeddings: From ModelOutput
-    - output_hidden_states: From ModelOutput
     - output_attentions: From ModelOutput
     - input_trigger_ids: From ModelInput
     - input_slices: From ModelInput
@@ -74,8 +73,8 @@ def compute_loss_from_model_data(
         >>> input_data = ModelInput(targets={"target_embeddings": target_vecs})
         >>> loss = compute_loss_from_model_data(output, input_data, SimilarityLoss())
 
-        >>> # Language model with PrefillCELoss(output_logits, input_slices, targets)
-        >>> output = ModelOutput(output_logits=torch.randn(2, 50, 32000))
+        >>> # Language model with PrefillCELoss(response_logits, input_slices, targets)
+        >>> output = ModelOutput(response_logits=torch.randn(2, 50, 32000))
         >>> input_data = ModelInput(
         ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
         ...     targets={"target_outputs_toks": target_ids}

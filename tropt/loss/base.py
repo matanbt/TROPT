@@ -16,6 +16,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.loss.utils import masked_mean
+from tropt.models.inputs import SliceKey
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +43,6 @@ class LogitBasedLoss(BaseLoss):
     Loss is computed based on model output (response) logits.
     These losses required target tokens (i.e. `target_outputs_toks`); commonly automatically derived from `target_outputs` strings.
     """
-
-    TARGET_KEY: str = "target_outputs_toks"
 
     def __call__(
         self,
@@ -193,7 +192,7 @@ class TriggerLogitBasedLoss(BaseLoss):
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
-        input_slices: List[dict[str, slice]],
+        input_slices: dict[str, slice],
     ) -> Float[Tensor, "bsz"]:
         raise NotImplementedError()
 
@@ -206,25 +205,21 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
     """
 
     temperature: float = 1.0
-    slc_name: str = "adv"  # Which slice contains the trigger tokens
+    slc_name: str = SliceKey.TRIGGER  # Which slice contains the trigger tokens
 
     def __call__(
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
-        input_slices: List[dict[str, slice]],
+        input_slices: dict[str, slice],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         # Extract trigger logits from full output_logits using slices
         bsz = output_logits.shape[0]
         trigger_logits_list = []
 
-        for i in range(bsz):
-            slc = input_slices[i].get(self.slc_name, slice(None))
-            trigger_logits_list.append(output_logits[i, slc, :])
-
-        # Stack into tensor (all should have same length as input_trigger_ids)
-        trigger_logits = torch.stack(trigger_logits_list, dim=0)  # (bsz, trigger_seq_len, vocab_size)
+        # Extract trigger logits
+        trigger_logits = output_logits[:, input_slices[self.slc_name], :]  # (bsz, trigger_seq_len, vocab_size)
         trigger_logits = trigger_logits / self.temperature
 
         assert (
@@ -265,32 +260,23 @@ class AttentionEnhLoss(AttentionBasedLoss):
     """
 
     targeted_layers: slice = slice(None)
-    src_slc_name: str = "adv"
-    dst_slc_name: str = "chat_template_after"
+    src_slc_name: str = SliceKey.TRIGGER
+    dst_slc_name: str = SliceKey.INPUT_AFTER
 
     def __call__(
         self,
         output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        input_slices: List[dict[str, slice]],  # of length bsz
+        input_slices: dict[str, slice],
     ) -> Float[Tensor, "bsz"]:
-        if "chat_template_after" in (self.src_slc_name, self.dst_slc_name):
+        if SliceKey.INPUT_AFTER in (self.src_slc_name, self.dst_slc_name):
             logger.debug("Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
-        slc_src = [
-            message_slices.get(self.src_slc_name, slice(None))
-            for message_slices in input_slices
-        ]
-        slc_dst = [
-            message_slices.get(self.dst_slc_name, slice(None))
-            for message_slices in input_slices
-        ]
+        slc_src = input_slices.get(self.src_slc_name, slice(None))
+        slc_dst = input_slices.get(self.dst_slc_name, slice(None))
 
-        # TODO vectorize this process
         loss = torch.zeros(output_attentions.shape[0], device=output_attentions.device)  # (bsz,)
-        for i, (curr_slc_src, curr_slc_dst) in enumerate(zip(slc_src, slc_dst)):
-            loss[i] = output_attentions[
-                i, self.targeted_layers, :, curr_slc_dst, curr_slc_src
-            ].mean()
-
+        loss = output_attentions[
+            :, self.targeted_layers, :, slc_dst, slc_src
+        ].mean(dim=(-1, -2, -3))  # mean over heads, dst, src -> (bsz,)
         loss *= -1  # maximize attention
 
         return loss
@@ -304,8 +290,7 @@ class EmbeddingBasedLoss(BaseLoss):
     Requires the target vectors (shape: (n_messages, d_model)) to be provided in the targets dict.
     """
 
-    TARGET_KEY = "target_vectors"  # shape: (n_messages, d_model)
-
+    pass
 
 @dataclass
 class SimilarityLoss(EmbeddingBasedLoss):
@@ -389,18 +374,16 @@ class SteeringActivationLoss(HiddenStateBased):
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
     """
 
-    TARGET_KEY = "target_directions"  # shape: (n_messages, d_model)
-
     targeted_layers: slice = slice(None)
     steer_away: bool = False
-    slc_name: str = "last_input_token"
+    slc_name: str = SliceKey.INPUT_LAST_TOKEN
     do_cosine_sim: bool = False
 
     def __call__(
         self,
         output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "bsz d_model"],
-        input_slices: List[dict[str, slice]] = None,  # of length bsz
+        input_slices: dict[str, slice] = None,
     ) -> Float[Tensor, "bsz"]:
         """
         Compute steering loss by measuring cosine similarity between hidden states and target directions.
@@ -408,7 +391,7 @@ class SteeringActivationLoss(HiddenStateBased):
         Args:
             output_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
             target_directions: Direction vectors to align with (bsz, d_model)
-            input_slices: Position slices for each batch element (e.g., {"adv": slice(10, 30)})
+            input_slices: Position slices reflecting the input tokens (dict mapping slice names to slices)
 
         Returns:
             Loss tensor of shape (bsz,).
@@ -419,32 +402,19 @@ class SteeringActivationLoss(HiddenStateBased):
         target_directions = target_directions / target_directions.norm(dim=-1, keepdim=True)
 
         # Extract slices for the tokens we want to steer
-        if input_slices is None:
-            input_slices = [{}] * output_hidden_states.shape[0]
+        slc = input_slices.get(self.slc_name, slice(None))
 
-        slc_list = [
-            message_slices.get(self.slc_name, slice(None))
-            for message_slices in input_slices
-        ]
+        # (bsz, n_targeted_layers, slc_seq_len, d_model)
+        h = output_hidden_states[:, self.targeted_layers, slc, :]
 
-        # Compute cosine similarity for each batch element
-        loss = torch.zeros(output_hidden_states.shape[0], device=output_hidden_states.device)
-        for i, curr_slc in enumerate(slc_list):
-            # Extract hidden states for targeted layers and positions
-            h = output_hidden_states[i, self.targeted_layers, curr_slc, :]  # (n_layers, slc_seq_len, d_model)
+        if self.do_cosine_sim:
+            h = h / h.norm(dim=-1, keepdim=True)
 
-            if self.do_cosine_sim:
-                # Normalize hidden states
-                h = h / h.norm(dim=-1, keepdim=True)
+        # (bsz, 1, 1, d_model) -> broadcast dot product -> (bsz, n_targeted_layers, slc_seq_len)
+        res = (h * target_directions[:, None, None, :]).sum(dim=-1)
 
-            # Compute dot product with target direction
-            # (n_layers, slc_seq_len, d_model) * (1, 1, d_model)
-            #  mult -> (n_layers, slc_seq_len, d_model)
-            #  sum  -> (n_layers, slc_seq_len)
-            res = (h * target_directions[i].unsqueeze(0).unsqueeze(0)).sum(dim=-1)
-
-            # Average over layers and positions
-            loss[i] = res.mean()
+        # Average over layers and positions -> (bsz,)
+        loss = res.mean(dim=(-1, -2))
 
         # Apply sign based on steering direction
         if not self.steer_away:
