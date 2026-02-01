@@ -34,25 +34,29 @@ def compute_loss_from_model_data(
     loss_func: BaseLoss,
 ) -> Float[Tensor, "bsz"]:
     """Universal loss computation via automatic argument matching.
+      
+    This function invokes `loss_func` with the model input (which includes the targets and slices), 
+    and output; it returns the computed loss tensor (size `bsz`).
 
-    Since loss functions in TROPT declare their required arguments following the naming 
-    convention of ModelOutput and ModelInput fields, this function can automatically
-    resolve which data to provide to the loss function by inspecting its __call__
-    signature.
+    Notes:
+        - Since loss functions in TROPT declare their required arguments following the naming 
+        convention of ModelOutput and ModelInput fields, this function can automatically
+        resolve which data to provide to the loss function by inspecting its __call__
+        signature.
 
-    In case insufficient arguments are avaialble (e.g., becasue the model does not provide the required access),
-    a LossResolutionError is raised with details on what is missing.
+        - In case insufficient arguments are avaialble (e.g., becasue the model does not provide the required access),
+        a LossResolutionError is raised with details on what is missing.
 
-    **Parameter Naming Convention:**
-    Loss functions should name their parameters exactly as they appear in
-    ModelOutput and ModelInput:
-    - output_logits: From ModelOutput
-    - output_embeddings: From ModelOutput
-    - output_attentions: From ModelOutput
-    - input_trigger_ids: From ModelInput
-    - input_slices: From ModelInput
-    - targets: From ModelInput
-    - etc.
+        - **Parameter Naming Convention:**
+            Loss functions should name their parameters exactly as they appear in
+            ModelOutput and ModelInput:
+            - output_logits: From ModelOutput
+            - output_embeddings: From ModelOutput
+            - output_attentions: From ModelOutput
+            - input_trigger_ids: From ModelInput
+            - input_slices: From ModelInput
+            - targets: From ModelInput
+            - etc.
 
     Args:
         model_output: Standardized model output containing available data

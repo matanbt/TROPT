@@ -266,7 +266,7 @@ class _HFTokenInputsManager(TokenInputsManager):
         }
 
         ## Prepare the targets repeated for each candidate
-        targets: MessageTargets = Targets.select_message(targets, chosen_message_idx)
+        targets: MessageTargets = self.targets.select_message(chosen_message_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
