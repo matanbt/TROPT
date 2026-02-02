@@ -7,7 +7,12 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    Targets,
+    Texts,
+)
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -21,12 +26,13 @@ logger = logging.getLogger(__name__)
 
 # TODO re-read, test and validate the implementation below
 
+
 class SoftPromptOptimizer(BaseOptimizer):
     """
     Optimizing soft prompts
     """
 
-    model_requirements = (GradientEmbedAccessMixin,)  # TODO huggingfacemodel
+    model_requirements = (GradientEmbedAccessMixin,)
 
     def __init__(
         self,
@@ -36,8 +42,8 @@ class SoftPromptOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # Soft prompt optimization parameters:
         num_steps: int = 100,
-        batch_size: int = 10,
-        learning_rate: float = 2e-3,
+        learning_rate: float = 0.001,
+        gd_optimizer: Optional[torch.optim.Optimizer] = torch.optim.Adam,
     ):
         """
 
@@ -48,20 +54,24 @@ class SoftPromptOptimizer(BaseOptimizer):
             seed: Random seed for reproducibility
 
             num_steps: Number of optimization iterations
+            learning_rate: Learning rate for the gradient descent optimizer
+            gd_optimizer: The gradient descent optimizer Torch class to use (e.g., Adam, SGD).
 
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
         self.num_steps = num_steps
-        self.batch_size = batch_size
         self.learning_rate = learning_rate
+        self.GDOptimizer = gd_optimizer
 
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Texts,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+
         # Initialization
         inputs: TokenInputsManager
         trigger_ids: Int[Tensor, "1 trigger_seq_len"]
@@ -71,12 +81,11 @@ class SoftPromptOptimizer(BaseOptimizer):
             targets=targets,
         )
 
-        # TODO can also init with random trigger_ids / trigger_embeds?
         trigger_embeds = inputs.embed_func(trigger_ids)  # (1, trigger_seq_len, embd_dim)
-        trigger_embeds.requires_grad_(True)  # TODO ??
+        # trigger_embeds.requires_grad_(True)  # TODO ??
 
         # Initialize Adam optimizer on the logits
-        optimizer = torch.optim.Adam([trigger_embeds], lr=self.learning_rate)
+        optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
 
         # Tracking
         loss_per_step = []
@@ -117,6 +126,7 @@ class SoftPromptOptimizer(BaseOptimizer):
             best_trigger=trigger_embeds.detach().tolist(),
             losses=loss_per_step,
         )
+        # TODO save to result to pt file?
 
         self.tracker.log({
             "best_loss": result.best_loss,

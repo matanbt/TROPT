@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from typing import Annotated, Any, List, Optional
 
 import torch
+from pydantic import ConfigDict, validate_call
 
-from tropt.common import Targets, TokenTrigger
+from tropt.common import Targets, Texts, TokenTrigger
 from tropt.loss.base import BaseLoss
 from tropt.models import BaseModel
 from tropt.tracker.base import BaseTracker, DummyTracker
@@ -55,22 +56,24 @@ class BaseOptimizer(ABC):
 
 
     @abstractmethod
+    @validate_call(config=ConfigDict(arbitrary_types_allowed=True))
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],  # TODO-claude-code annotate all the n_messages long lists this way (as well as other lists that have predefined length)
-        initial_trigger: Optional[str] | str | TokenTrigger = None,
-        targets: Targets = None,
+        texts: Texts,
+        initial_trigger: Optional[str | TokenTrigger] = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
         """Optimize the trigger to minimize the loss on the given inputs.
 
         Args:
             texts: Can be a single string or a list of (n_messages) strings.
-            initial_trigger: Initial trigger to start optimization from.
+            initial_trigger: Initial trigger to start optimization from, if used by the optimizer.
+            targets: Target outputs for the given inputs, if applicable.
 
         Returns:
             Optimized trigger.
         """
-        raise NotImplementedError
+        pass
 
     def set_tracker(self, tracker: BaseTracker):
         """

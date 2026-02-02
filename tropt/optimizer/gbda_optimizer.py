@@ -7,13 +7,17 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import DEFAULT_INIT_TRIGGER, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    Targets,
+    Texts,
+)
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TargetsDict,
     TokenInputsManager,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
@@ -93,10 +97,12 @@ class GBDAOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: List[str],
+        texts: Texts,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: TargetsDict = None,
+        targets: Targets = None,
     ) -> OptimizerResult:
+        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+
         # Initialization
         inputs: TokenInputsManager
         trigger_ids: Int[Tensor, "1 trigger_seq_len"]

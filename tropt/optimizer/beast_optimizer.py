@@ -7,7 +7,7 @@ from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import Targets
+from tropt.common import Targets, Texts
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -90,19 +90,17 @@ class BEASTOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],
-        targets: Targets = None,
-        initial_trigger: str = "",
-        util_lm_texts: Optional[List[str]] = None,
+        texts: Texts,
+        targets: Optional[Targets] = None,
+        util_lm_texts: Optional[Texts] = None,
     ) -> OptimizerResult:
         """
         Optimize the trigger using BEAST algorithm.
 
         Args:
-            texts (List[str]): List of input texts to prepend the trigger to.
-            targets (Targets, optional): Target values for the loss function.
-            initial_trigger (str, optional): Initial trigger string (not used in BEAST).
-            util_lm_texts (List[str], optional): Texts for the util LM to compute logits.
+            texts (Texts): List of input texts to prepend the trigger to.
+            targets (Optional[Targets], optional): Target values for the loss function.
+            util_lm_texts (Optional[Texts], optional): Texts for the util LM to compute logits.
                 If None, defaults to `texts`.
 
         Implementation notes:
@@ -110,10 +108,6 @@ class BEASTOptimizer(BaseOptimizer):
         - Then, we evaluate the candidate triggers on the targeted model (`model`) to compute the losses.
         - This loss evaluation against the target model is done in a black-box manner using text-level access (i.e., we query the model with the full text including the decoded candidate triggers).
         """
-
-        if initial_trigger != "":
-            logger.warning("BEAST optimizer does not support non-empty initial triggers; ignoring it.")
-        initial_trigger = ""
 
         # Prepare inputs for both target model and util LM
         inputs, _ = self.model.prepare_token_inputs(

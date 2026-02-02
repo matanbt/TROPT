@@ -1,14 +1,11 @@
 from abc import ABC, abstractmethod
-
-
 from enum import Enum
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Dict, List, Optional
 
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from torch import Tensor
-
 
 # TODO arrange the comments and structure here
 
@@ -19,7 +16,17 @@ OPTIMIZED_TRIGGER_PLACEHOLDER = "{{OPTIMIZED_TRIGGER}}"
 # Default initial trigger
 DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
 
+
+
 # ======================= Common input types =======================
+Texts = Annotated[
+    List[str],
+    Field(min_length=1),
+    "n_messages"
+]
+"""List of input text strings, one per message. Are expected to contain the trigger placeholder (`{{OPTIMIZED_TRIGGER}}`).
+Length: n_messages.
+"""
 TokenTrigger = Float[Tensor, "1 trigger_seq_len"]
 TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 
@@ -112,7 +119,14 @@ class Targets(BaseModel):
             val = getattr(self, field_name)
             if val is not None:
                 return len(val)
-        raise ValueError("No targets set")
+        return 0
+
+    @model_validator(mode="after")
+    def check_field_lengths(self) -> "Targets":
+        lengths = {len(v) for k, v in self if v is not None}
+        if len(lengths) > 1:
+            raise ValueError("All target fields must have the same length")
+        return self
 
     def select_message(self, idx: int) -> "MessageTargets":
         return MessageTargets(

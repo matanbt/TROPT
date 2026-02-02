@@ -10,6 +10,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
+    Texts,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -131,11 +132,13 @@ class GCGOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        texts: Texts,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
-        targets: Targets = None,  # depends on the objective
+        targets: Optional[Targets] = None,  # depends on the objective
     ) -> OptimizerResult:
+        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+
         # Initialization:
         inputs: TokenInputsManager
         trigger_ids: Int[Tensor, "1 trigger_seq_len"]

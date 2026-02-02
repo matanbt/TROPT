@@ -13,6 +13,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
+    Texts,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -174,10 +175,12 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        texts: Texts,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+
         # Initialization:
         inputs, trigger_ids = self.model.prepare_token_inputs(
             texts=texts,

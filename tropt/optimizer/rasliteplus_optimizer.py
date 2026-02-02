@@ -12,6 +12,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
+    Texts,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -161,10 +162,12 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        texts: Texts,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+
         # Initialization:
         # We prepare inputs for both models.
         # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).

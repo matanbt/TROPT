@@ -12,7 +12,7 @@ from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
-    Targets
+    Targets,
 )
 from tropt.models import (
     BaseTokenizer,
