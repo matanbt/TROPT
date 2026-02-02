@@ -5,22 +5,22 @@ from tropt.loss.base import SimilarityLoss, SteeringActivationLoss
 
 def test_similarity_loss():
     loss_fn = SimilarityLoss()
-    # vectors: (bsz, d_model)
-    # target: (bsz, d_model)
+    # output_embeddings: (bsz, d_model)
+    # target_vectors: (d_model,) - UNBATCHED!
 
     v1 = torch.tensor([[1.0, 0.0]])
-    t1 = torch.tensor([[1.0, 0.0]])
+    t1 = torch.tensor([1.0, 0.0])  # Unbatched
     # Cosine sim is 1. Loss is -1.
     loss = loss_fn(v1, t1)
     assert loss.shape == (1,)
     assert torch.allclose(loss, torch.tensor([-1.0]), atol=1e-6)
 
-    # Test batch
+    # Test batch - same target for all samples
     v4 = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
-    t4 = torch.tensor([[1.0, 0.0], [1.0, 0.0]])
+    t4 = torch.tensor([1.0, 0.0])  # Unbatched - same target for both samples
     loss = loss_fn(v4, t4)
     assert loss.shape == (2,)
-    # First pair: cos sim 1 -> loss -1; second pair: cos sim 0 -> loss 0
+    # First: cos sim 1 -> loss -1; second: cos sim 0 -> loss 0
     assert torch.allclose(loss, torch.tensor([-1.0, 0.0]), atol=1e-6)
 
 
@@ -30,7 +30,7 @@ def test_steering_loss_shape():
 
     bsz, n_layers, seq_len, d_model = 2, 4, 10, 128
     hidden_states = torch.randn(bsz, n_layers, seq_len, d_model)
-    target_directions = torch.randn(bsz, d_model)
+    target_directions = torch.randn(d_model)  # Unbatched
 
     loss = loss_fn(hidden_states, target_directions)
 
@@ -49,7 +49,7 @@ def test_steering_activation_loss_known_values():
     # Case 1: Perfect alignment (hidden states = target direction)
     direction = torch.tensor([1.0, 0.0])
     hidden_states = direction.view(1, 1, 1, 2).expand(bsz, n_layers, seq_len, d_model)
-    target_directions = direction.view(1, 2)
+    target_directions = direction
 
     loss = loss_fn(hidden_states, target_directions)
     # Perfect alignment: cos_sim = 1, loss = -1
@@ -57,7 +57,7 @@ def test_steering_activation_loss_known_values():
 
     # Case 2: Orthogonal (cos_sim = 0)
     hidden_states = torch.tensor([0.0, 1.0]).view(1, 1, 1, 2).expand(bsz, n_layers, seq_len, d_model)
-    target_directions = torch.tensor([[1.0, 0.0]])
+    target_directions = torch.tensor([1.0, 0.0])
 
     loss = loss_fn(hidden_states, target_directions)
     # Orthogonal: cos_sim = 0, loss = 0
@@ -65,7 +65,7 @@ def test_steering_activation_loss_known_values():
 
     # Case 3: Opposite direction (cos_sim = -1)
     hidden_states = torch.tensor([-1.0, 0.0]).view(1, 1, 1, 2).expand(bsz, n_layers, seq_len, d_model)
-    target_directions = torch.tensor([[1.0, 0.0]])
+    target_directions = torch.tensor([1.0, 0.0])
 
     loss = loss_fn(hidden_states, target_directions)
     # Opposite: cos_sim = -1, loss = 1
@@ -78,13 +78,10 @@ def test_steering_activation_loss_with_slices():
 
     bsz, n_layers, seq_len, d_model = 2, 3, 10, 4
     hidden_states = torch.randn(bsz, n_layers, seq_len, d_model)
-    target_directions = torch.randn(bsz, d_model)
+    target_directions = torch.randn(d_model)
 
     # Define slices for each batch element
-    slices = [
-        {"adv": slice(2, 5)},  # positions 2-4 for first element
-        {"adv": slice(3, 7)},  # positions 3-6 for second element
-    ]
+    slices = {"adv": slice(2, 5)}
 
     loss = loss_fn(hidden_states, target_directions, input_slices=slices)
 
@@ -101,7 +98,7 @@ def test_steering_enh_loss_targeted_layers():
 
     # Create hidden states with different values in different layers
     # Layers 0,3 are orthogonal to target, layers 1,2 are aligned
-    target_direction = torch.tensor([[1.0, 0.0]])
+    target_direction = torch.tensor([1.0, 0.0])
 
     hidden_states = torch.zeros(bsz, n_layers, seq_len, d_model)
     hidden_states[:, 0, :, :] = torch.tensor([0.0, 1.0])  # Layer 0: orthogonal
@@ -121,7 +118,7 @@ def test_steering_activation_loss_batch():
 
     bsz, n_layers, seq_len, d_model = 3, 2, 4, 8
     hidden_states = torch.randn(bsz, n_layers, seq_len, d_model)
-    target_directions = torch.randn(bsz, d_model)
+    target_directions = torch.randn(d_model)
 
     loss = loss_fn(hidden_states, target_directions)
 
@@ -145,7 +142,7 @@ def test_prefill_ce_loss_shape():
     # NOTE: logits and target_ids must have same first TWO dimensions
     bsz, target_seq_len, vocab_size = 2, 5, 1000
     logits = torch.randn(bsz, target_seq_len, vocab_size)
-    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+    target_ids = torch.randint(0, vocab_size, (target_seq_len,))
 
     loss = loss_fn(logits, target_ids)
 
@@ -164,7 +161,7 @@ def test_prefill_ce_loss_known_values():
     # Case 1: Perfect prediction (high logit for correct token)
     vocab_size = 10
     logits = torch.zeros(1, 3, vocab_size)  # (bsz=1, seq_len=3, vocab_size=10)
-    target_ids = torch.tensor([[2, 5, 7]])  # (bsz=1, target_len=3)
+    target_ids = torch.tensor([2, 5, 7])  # (target_len=3,)
 
     # Set very high logits for the correct tokens
     logits[0, 0, 2] = 100.0  # Position 0, token 2
@@ -174,7 +171,7 @@ def test_prefill_ce_loss_known_values():
     loss = loss_fn(logits, target_ids)
 
     # With perfect prediction, CE loss should be very close to 0
-    assert loss < 0.1, f"Expected loss near 0 for perfect prediction, got {loss.item()}"
+    assert loss.item() < 0.1, f"Expected loss near 0 for perfect prediction, got {loss.item()}"
 
 
 def test_prefill_mellowmax_loss_shape():
@@ -186,7 +183,7 @@ def test_prefill_mellowmax_loss_shape():
 
     bsz, target_seq_len, vocab_size = 3, 4, 500
     logits = torch.randn(bsz, target_seq_len, vocab_size)
-    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+    target_ids = torch.randint(0, vocab_size, (target_seq_len,))
 
     loss = loss_fn(logits, target_ids)
 
@@ -201,7 +198,7 @@ def test_prefill_mellowmax_different_alpha():
 
     bsz, target_seq_len, vocab_size = 2, 3, 100
     logits = torch.randn(bsz, target_seq_len, vocab_size)
-    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+    target_ids = torch.randint(0, vocab_size, (target_seq_len,))
 
     # Test with different alpha values
     for alpha in [0.5, 1.0, 2.0]:
@@ -222,7 +219,7 @@ def test_prefill_cw_loss_shape():
 
     bsz, target_seq_len, vocab_size = 2, 4, 200
     logits = torch.randn(bsz, target_seq_len, vocab_size)
-    target_ids = torch.randint(0, vocab_size, (bsz, target_seq_len))
+    target_ids = torch.randint(0, vocab_size, (target_seq_len,))
 
     loss = loss_fn(logits, target_ids)
 
@@ -240,7 +237,7 @@ def test_prefill_cw_loss_known_values():
 
     vocab_size = 10
     logits = torch.zeros(1, 2, vocab_size)
-    target_ids = torch.tensor([[3, 7]])
+    target_ids = torch.tensor([3, 7])
 
     # Case 1: Target token has highest logit (good) - loss should be low
     logits[0, 0, :] = -1.0
@@ -253,11 +250,11 @@ def test_prefill_cw_loss_known_values():
 
     # CW loss: (max_non_target - target).clamp_min(-margin)
     # When target has max logit: (non_target - target) is negative, clamped to -margin
-    assert loss <= 0.001, f"Expected very low loss when target has max logit, got {loss.item()}"
+    assert loss.item() <= 0.001, f"Expected very low loss when target has max logit, got {loss.item()}"
 
     # Case 2: Non-target token has highest logit (bad) - loss should be positive
     logits2 = torch.zeros(1, 2, vocab_size)
-    target_ids2 = torch.tensor([[3, 7]])
+    target_ids2 = torch.tensor([3, 7])
 
     logits2[0, 0, :] = -1.0
     logits2[0, 0, 3] = 0.0  # Target token (low)
@@ -270,14 +267,14 @@ def test_prefill_cw_loss_known_values():
     loss2 = loss_fn(logits2, target_ids2)
 
     # Should have positive loss when non-target is higher
-    assert loss2 > 1.0, f"Expected high loss when non-target has max logit, got {loss2.item()}"
+    assert loss2.item() > 1.0, f"Expected high loss when non-target has max logit, got {loss2.item()}"
 
 
 def test_trigger_perplexity_loss_shape():
     """Test TriggerPerplexityLoss returns correct output shape."""
     from tropt.loss.base import TriggerPerplexityLoss
 
-    loss_fn = TriggerPerplexityLoss()
+    loss_fn = TriggerPerplexityLoss(slc_name="adv")
 
     # Full sequence logits: (bsz, seq_len, vocab_size)
     # Trigger IDs: (bsz, trigger_len)
@@ -286,10 +283,7 @@ def test_trigger_perplexity_loss_shape():
     input_trigger_ids = torch.randint(0, vocab_size, (bsz, trigger_len))
 
     # Define slices where trigger is located
-    input_slices = [
-        {"adv": slice(5, 10)},  # Trigger at positions 5-9 for first sample
-        {"adv": slice(3, 8)},   # Trigger at positions 3-7 for second sample
-    ]
+    input_slices = {"adv": slice(5, 10)}
 
     loss = loss_fn(output_logits, input_trigger_ids, input_slices)
 
@@ -316,10 +310,7 @@ def test_attention_enh_loss_shape():
     attn_weights = torch.softmax(attn_weights, dim=-1)  # Ensure valid attention
 
     # Slices indicating trigger position
-    slices = [
-        {"adv": slice(5, 10)},
-        {"adv": slice(3, 8)},
-    ]
+    slices = {"adv": slice(5, 10)}
 
     loss = loss_fn(attn_weights, input_slices=slices)
 
@@ -350,11 +341,11 @@ def test_attention_enh_loss_properties():
     # Normalize
     attn_weights = attn_weights / (attn_weights.sum(dim=-1, keepdim=True) + 1e-10)
 
-    slices = [{"trigger": trigger_slice}]
+    slices = {"trigger": trigger_slice}
     loss = loss_fn(attn_weights, input_slices=slices)
 
     # High attention to trigger should give negative loss
-    assert loss < 0, f"Expected negative loss with high trigger attention, got {loss.item()}"
+    assert loss.item() < 0, f"Expected negative loss with high trigger attention, got {loss.item()}"
 
 
 # ==============================================================================
@@ -403,7 +394,7 @@ def test_loss_functions_handle_zero_gradients():
 
     # Use non-zero vectors (zero vectors cause NaN in cosine similarity, which is expected)
     vectors = torch.randn(2, 128) + 1.0  # Add offset to avoid zeros
-    targets = torch.randn(2, 128) + 1.0
+    targets = torch.randn(128) + 1.0
 
     loss = loss_fn(vectors, targets)
 
@@ -419,14 +410,14 @@ def test_loss_functions_batch_size_one():
     # SimilarityLoss
     sim_loss = SimilarityLoss()
     vectors = torch.randn(1, 64)
-    targets = torch.randn(1, 64)
+    targets = torch.randn(64)
     loss = sim_loss(vectors, targets)
     assert loss.shape == (1,)
 
     # SteeringActivationLoss
     steer_loss = SteeringActivationLoss()
     hidden_states = torch.randn(1, 4, 10, 64)
-    target_dirs = torch.randn(1, 64)
+    target_dirs = torch.randn(64)
     loss = steer_loss(hidden_states, target_dirs)
     assert loss.shape == (1,)
 
@@ -439,7 +430,7 @@ def test_loss_functions_large_batch():
 
     bsz = 128  # Large batch
     vectors = torch.randn(bsz, 64)
-    targets = torch.randn(bsz, 64)
+    targets = torch.randn(64)
 
     loss = loss_fn(vectors, targets)
 

@@ -43,7 +43,7 @@ def test_lm_prepare_token_multi_inputs(lm_model):
     assert trigger_ids.ndim == 2 and trigger_ids.shape[0] == 1
     assert inputs.n_messages == 2
 
-    targets = Targets(target_response_strs=["Target output"])
+    targets = Targets(target_response_strs=["Target output", "Another target output"])
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
     
     # sample 2 cand triggers
@@ -59,7 +59,7 @@ def test_lm_prepare_token_multi_inputs(lm_model):
 
 def test_lm_compute_grad(lm_model):
     texts = [f"Hello {OPTIMIZED_TRIGGER_PLACEHOLDER} World"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["Target output"]}
+    targets = Targets(target_response_strs=["Target output"])
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     n_candidates = 2
@@ -77,7 +77,7 @@ def test_lm_compute_grad(lm_model):
 
 def test_inputs_manager_initialization(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2"]}
+    targets = Targets(target_response_strs=["T1", "T2"])
     inputs, _ = lm_model.prepare_token_inputs(texts, targets)
 
     n_messages = len(texts)
@@ -89,7 +89,7 @@ def test_inputs_manager_initialization(lm_model):
 
 def test_inputs_manager_get_triggered_inputs(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D", f"E {OPTIMIZED_TRIGGER_PLACEHOLDER} F"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2", "T3"]}
+    targets = Targets(target_response_strs=["T1", "T2", "T3"])
     n_messages = len(texts)
 
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
@@ -101,34 +101,33 @@ def test_inputs_manager_get_triggered_inputs(lm_model):
     for message_idx in range(n_messages):
         res = inputs.get_triggered_inputs(trigger_ids=trigger_ids, chosen_message_idx=message_idx)
 
-        assert {"inputs_embeds", "attention_mask", "targets"}.issubset(res.keys())
+        assert res.input_embeds is not None
+        assert res.input_attention_mask is not None
+        assert res.targets is not None
 
         # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed
-        assert res["inputs_embeds"].dim() == 3
-        assert res["inputs_embeds"].shape[0] == n_candidates
+        assert res.input_embeds.dim() == 3
+        assert res.input_embeds.shape[0] == n_candidates
 
         # attention mask: (n_candidates, seq_len)
-        assert res["attention_mask"].dim() == 2
-        assert res["attention_mask"].shape[0] == n_candidates
+        assert res.input_attention_mask.dim() == 2
+        assert res.input_attention_mask.shape[0] == n_candidates
 
         # Check targets expansion
-        assert "targets" in res
-        assert res["targets"].target_response_toks is not None
+        assert res.targets is not None
+        assert res.targets.target_response_toks is not None
 
-        tgt = res["targets"].target_response_toks
+        tgt = res.targets.target_response_toks
         assert isinstance(tgt, torch.Tensor)
-        assert tgt.shape[0] == n_candidates
 
-        tgt_slices = res["targets"]["slices"]
-        assert isinstance(tgt_slices, list) and len(tgt_slices) == n_candidates
-        tgt_slices_0 = tgt_slices[0]
-        assert isinstance(tgt_slices_0, dict)
-        assert isinstance(tgt_slices_0[SliceKey.TRIGGER], slice)
-        assert tgt_slices_0[SliceKey.TRIGGER].stop - tgt_slices_0[SliceKey.TRIGGER].start == trigger_len
+        tgt_slices = res.input_slices
+        assert isinstance(tgt_slices, dict)
+        assert isinstance(tgt_slices[SliceKey.TRIGGER], slice)
+        assert tgt_slices[SliceKey.TRIGGER].stop - tgt_slices[SliceKey.TRIGGER].start == trigger_len
 
 def test_inputs_manager_chosen_message(lm_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
-    targets = {TargetKey.TARGET_RESPONSE_STRS: ["T1", "T2"]}
+    targets = Targets(target_response_strs=["T1", "T2"])
     inputs, _ = lm_model.prepare_token_inputs(texts, targets)
 
     n_candidates, trigger_len = 2, 3
@@ -138,14 +137,13 @@ def test_inputs_manager_chosen_message(lm_model):
     res = inputs.get_triggered_inputs(trigger_ids=trigger_ids, chosen_message_idx=1)
 
     # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed?
-    assert res["inputs_embeds"].dim() == 3
-    assert res["inputs_embeds"].shape[0] == n_candidates
+    assert res.input_embeds.dim() == 3
+    assert res.input_embeds.shape[0] == n_candidates
 
     # Targets should be for single message now
     # get_message_from_batched_targets selects the item at chosen_message_idx
-    tgt = res["targets"][TargetKey.TARGET_RESPONSE_TOKS]
+    tgt = res.targets.target_response_toks
     assert isinstance(tgt, torch.Tensor)
-    assert tgt.shape[0] == n_candidates
 
 def test_lm_steering_loss(lm_model):
     """Test SteeringEnhLoss integration with LM model."""
@@ -184,7 +182,7 @@ def test_lm_steering_loss_multi_message(lm_model):
     d_model = lm_model.model.config.hidden_size
     target_directions = torch.randn(2, d_model)
 
-    targets = {TargetKey.TARGET_DIRECTIONS: target_directions}
+    targets = Targets(target_directions=target_directions)
     inputs, trigger_ids = lm_model.prepare_token_inputs(texts, targets)
 
     # Sample candidates

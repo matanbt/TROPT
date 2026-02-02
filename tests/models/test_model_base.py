@@ -17,8 +17,15 @@ class MockModel(BaseModel):
     """Mock model for testing base functionality."""
 
     def __init__(self, device="cpu"):
-        self.device = torch.device(device)
+        self._device = torch.device(device)
         self._usage_stats = {"forward_calls": 0, "forward_samples": 0}
+
+    def __call__(self, *args, **kwargs):
+        pass
+
+    @property
+    def device(self):
+        return self._device
 
 
 def test_base_model_usage_stats():
@@ -68,11 +75,18 @@ class MockLMModel(LMBaseModel):
     """Mock language model for testing."""
 
     def __init__(self, device="cpu"):
-        self.device = torch.device(device)
+        self._device = torch.device(device)
         self._usage_stats = {"forward_calls": 0, "forward_samples": 0}
+
+    def __call__(self, *args, **kwargs):
+        pass
 
     def generate(self, *args, **kwargs):
         return ["Generated text"]
+    
+    @property
+    def device(self):
+        return self._device
 
 
 def test_lm_base_model_is_base_model():
@@ -100,12 +114,16 @@ class MockEncoderModel(EncoderBaseModel):
 
     def __init__(self, d_model=128, device="cpu"):
         self.d_model = d_model
-        self.device = torch.device(device)
+        self._device = torch.device(device)
         self._usage_stats = {"forward_calls": 0, "forward_samples": 0}
 
     def __call__(self, texts):
         # Return random embeddings
         return torch.randn(len(texts), self.d_model)
+
+    @property
+    def device(self):
+        return self._device
 
 
 def test_encoder_base_model_is_base_model():
@@ -147,12 +165,47 @@ def test_model_requirements_validation():
         GradientTokenAccessMixin,
         LossTokenAccessMixin,
     )
+    from tropt.models.model_base import BaseTokenizer
+
+    class MockTokenizer(BaseTokenizer):
+        @property
+        def vocab_size(self) -> int:
+            return 100
+        def __call__(self, text, return_tensors="list", **kwargs):
+            return {"input_ids": [[0,1,2]]}
+        def decode(self, ids, **kwargs):
+            return ""
+        def encode(self, text, **kwargs):
+            return [0,1,2]
+        def batch_decode(self, ids, **kwargs):
+            return [""]
 
     # Create a model that implements required mixins
     class ValidModel(LMBaseModel, GradientTokenAccessMixin, LossTokenAccessMixin):
         def __init__(self):
-            self.device = torch.device("cpu")
+            self._device = torch.device("cpu")
             self._usage_stats = {}
+            self._tokenizer = MockTokenizer()
+
+        def __call__(self, *args, **kwargs):
+            pass
+
+        def compute_grad_from_tokens(self, *args, **kwargs):
+            pass
+
+        def compute_loss_from_tokens(self, *args, **kwargs):
+            pass
+
+        def prepare_token_inputs(self, *args, **kwargs):
+            pass
+
+        @property
+        def tokenizer(self):
+            return self._tokenizer
+        
+        @property
+        def device(self):
+            return self._device
 
     # This should not raise an error
     model = ValidModel()
