@@ -15,10 +15,10 @@ from tropt.tracker.base import BaseTracker, DummyTracker
 @dataclass
 class OptimizerResult:
     best_trigger: TokenTrigger
-    best_trigger_str: str
     best_loss: float
-    trigger_strs: List[str]
     losses: Optional[List[float]] = None
+    best_trigger_str: Optional[str] = None
+    trigger_strs: Optional[List[str]] = None
     full_prompt: Optional[str | List[str]] = None
 
 ## ------- Base Optimizer ------- ##

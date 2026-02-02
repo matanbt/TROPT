@@ -8,6 +8,7 @@ import livelossplot
 import wandb
 
 # TODO set default exp name to support quick init
+DEFAULT_EXPERIMENT_NAME = "tropt_experiment"
 
 class BaseTracker(ABC):
     """
@@ -16,7 +17,7 @@ class BaseTracker(ABC):
     """
     def __init__(
         self,
-        experiment_name: str,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         config_dump: dict = None,
     ):
         self.experiment_name = experiment_name
@@ -46,7 +47,7 @@ class BaseTracker(ABC):
 class DummyTracker(BaseTracker):
     def __init__(
         self,
-        experiment_name: str = "dummy",
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         config_dump: dict = None,
     ):
         super().__init__(experiment_name, config_dump)
@@ -63,7 +64,7 @@ class DummyTracker(BaseTracker):
 class JSONTracker(BaseTracker):
     def __init__(
         self,
-        experiment_name: str,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         config_dump: dict = None,
         log_file_path: str = "./logs/{experiment_name}.json",
     ):
@@ -86,8 +87,8 @@ class JSONTracker(BaseTracker):
 class WandbTracker(BaseTracker):
     def __init__(
         self,
-        experiment_name: str,
-        project_name: str,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+        project_name: str = DEFAULT_EXPERIMENT_NAME,
         config_dump: dict = None,
         **wandb_kwargs
     ):
@@ -122,7 +123,7 @@ class WandbTracker(BaseTracker):
 class LiveLossPlotTracker(BaseTracker):
     def __init__(
         self,
-        experiment_name: str,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         config_dump: dict = None,
         focus_on_metrics: tuple = ("loss",),
         **llp_kwargs

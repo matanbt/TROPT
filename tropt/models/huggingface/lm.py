@@ -389,8 +389,17 @@ class LMHFModel(
             output_hidden_states=torch.stack(outputs.hidden_states, dim=1) if outputs.hidden_states else None,
         )
 
-    @torch.no_grad()
     def __call__(
+        self,
+        texts: List[str],
+        **kwargs
+    ) -> List[str] | ModelOutput:
+        """
+        Generate text completions for the given input texts.
+        """
+        return self.generate(texts=texts, **kwargs)
+
+    def generate(
         self,
         texts: List[str],
         greedy_decode: bool = True,
@@ -401,6 +410,7 @@ class LMHFModel(
         Generate text completions for the given input texts.
         """
         assert isinstance(texts, list), "texts must be a string or a list of strings."
+        # TODO support input embeds, to evaluate soft prompts
 
         # Add chat template and tokenize
         # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template

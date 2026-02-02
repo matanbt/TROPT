@@ -1,6 +1,8 @@
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+import pytest
+import torch
+
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, ModelInput, Targets
 from tropt.models.inputs import TextInputsManager
-from tropt.common import ModelInput
 
 # --- TargetsDictPlus Tests (old and commented out) ---
 

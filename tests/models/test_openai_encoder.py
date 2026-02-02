@@ -8,7 +8,7 @@ import pytest
 import torch
 from unittest.mock import Mock, patch, MagicMock
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss.base import SimilarityLoss
 
 
@@ -40,6 +40,8 @@ def mock_tiktoken():
         mock_encoding = MagicMock()
         mock_encoding.encode.return_value = [1, 2, 3, 4, 5]
         mock_encoding.decode.return_value = "test"
+        mock_encoding.encode_batch.return_value = [[1, 2, 3, 4, 5]]
+        mock_encoding.decode_batch.return_value = ["test"]
         mock_encoding.eot_token = 0
         mock_encoding.max_token_value = 100000
         mock_encoding.name = "cl100k_base"
@@ -109,7 +111,7 @@ def test_openai_encoder_prepare_token_inputs(mock_openai_client, mock_tiktoken):
     )
 
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
-    targets = {"target_vectors": torch.randn(1, 1536)}
+    targets = Targets(target_vectors=torch.randn(1, 1536))
 
     inputs, trigger_ids = model.prepare_token_inputs(
         texts, targets, initial_trigger="test trigger"
@@ -131,7 +133,7 @@ def test_openai_encoder_compute_loss_from_tokens(mock_openai_client, mock_tiktok
     )
 
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
-    targets = {"target_vectors": torch.randn(1, 1536)}
+    targets = Targets(target_vectors=torch.randn(1, 1536))
 
     inputs, trigger_ids = model.prepare_token_inputs(texts, targets)
 
@@ -162,7 +164,7 @@ def test_openai_encoder_multi_message(mock_openai_client, mock_tiktoken):
         f"First query: {OPTIMIZED_TRIGGER_PLACEHOLDER}",
         f"Second query: {OPTIMIZED_TRIGGER_PLACEHOLDER}",
     ]
-    targets = {"target_vectors": torch.randn(2, 1536)}
+    targets = Targets(target_vectors=torch.randn(2, 1536))
 
     inputs, trigger_ids = model.prepare_token_inputs(texts, targets)
 

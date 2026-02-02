@@ -18,7 +18,7 @@ class MockModel(BaseModel):
 
     def __init__(self, device="cpu"):
         self._device = torch.device(device)
-        self._usage_stats = {"forward_calls": 0, "forward_samples": 0}
+        self._usage_stats = {"total_tokens": 0, "forward_calls": 0, "forward_samples": 0, "grad_calls": 0, "grad_samples": 0}
 
     def __call__(self, *args, **kwargs):
         pass
@@ -32,7 +32,8 @@ def test_base_model_usage_stats():
     """Test that BaseModel tracks usage statistics correctly."""
     model = MockModel()
 
-    assert model.get_usage_stats() == {"forward_calls": 0, "forward_samples": 0}
+    expected_initial_stats = {"total_tokens": 0, "forward_calls": 0, "forward_samples": 0, "grad_calls": 0, "grad_samples": 0}
+    assert model.get_usage_stats() == expected_initial_stats
 
     # Update stats
     model._update_usage_stats(forward_calls=1, forward_samples=10)
@@ -76,7 +77,7 @@ class MockLMModel(LMBaseModel):
 
     def __init__(self, device="cpu"):
         self._device = torch.device(device)
-        self._usage_stats = {"forward_calls": 0, "forward_samples": 0}
+        self._usage_stats = {"total_tokens": 0, "forward_calls": 0, "forward_samples": 0, "grad_calls": 0, "grad_samples": 0}
 
     def __call__(self, *args, **kwargs):
         pass
