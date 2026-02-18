@@ -10,7 +10,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
-    Texts,
+    TextTemplates,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -131,15 +131,15 @@ class GCGOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Texts,
+        templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
         targets: Optional[Targets] = None,  # depends on the objective
     ) -> OptimizerResult:
-        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization:
-        self.model.set_token_inputs(texts=texts, targets=targets)
+        self.model.set_token_inputs(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
         trigger_ids = (
             tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -188,7 +188,7 @@ class GCGOptimizer(BaseOptimizer):
             # Compute loss on all candidate sequences
             losses = self.model.compute_loss_from_tokens(
                 candidate_trigger_ids, loss_func=self.loss_func
-            )  # shape: (n_messages, n_candidates)
+            )  # shape: (n_templates, n_candidates)
             current_loss = losses.min().item()
             self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
             trigger_ids = candidate_trigger_ids[losses.argmin()]
@@ -205,7 +205,7 @@ class GCGOptimizer(BaseOptimizer):
         min_loss_index = loss_per_step.index(min(loss_per_step))
         best_trigger_str = trigger_strings[min_loss_index]
 
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
 
         result = OptimizerResult(
             best_loss=loss_per_step[min_loss_index],

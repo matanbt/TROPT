@@ -32,16 +32,20 @@ class TokenAccessMixin(ABC):
     @abstractmethod
     def set_token_inputs(
         self,
-        text_templates: Annotated[List[str], "n_messages"],
-        targets: Targets = None,  # also n_messages, depends on the objective
+        templates: TextTemplates,
+        targets: Targets = None,  # also n_templates, depends on the objective
     ) -> None:
-        """Prepare and store the inputs manager as self.token_input_manager.
+        """Prepare and store the inputs manager as self._token_input_manager.
 
         Args:
-            text_templates: List of text templates containing the trigger placeholder.
+            templates: List of text templates containing the trigger placeholder.
             targets: Optional targets for the loss function.
         """
         raise NotImplementedError
+
+    def reset_token_inputs(self) -> None:
+        """Clear self._token_input_manager."""
+        self._token_input_manager = None
 
     @property
     def token_input_manager(self) -> TokenInputManager:
@@ -56,10 +60,6 @@ class TokenAccessMixin(ABC):
     def text_input_manager(self, value: Optional[TextInputManager]) -> None:
         """Setter for the text input manager"""
         self._text_input_manager = value
-
-    def reset_text_inputs(self) -> None:
-        """Clears the stored token input manager."""
-        self.text_input_manager = None
 
     @property
     def vocab_size(self) -> int:
@@ -82,7 +82,7 @@ class LossTokenAccessMixin(TokenAccessMixin):
     @abstractmethod
     def compute_loss_from_tokens(
         self, candidate_trigger_ids: TokenTriggerCandidates, **kwargs
-    ) -> Float[Tensor, "n_messages n_candidates"]:
+    ) -> Float[Tensor, "n_templates n_candidates"]:
         """Compute the loss on the stored token inputs with the given trigger merged in."""
         raise NotImplementedError
 
@@ -145,12 +145,12 @@ class TextAccessMixin(ABC):
 
     def set_text_inputs(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        templates: TextTemplates,
         targets: Targets = None,
     ) -> None:
         """Prepare and store the text-based inputs manager."""
         self.text_input_manager = TextInputManager(
-            texts=texts,
+            templates=templates,
             targets=targets,
         )
 
@@ -174,21 +174,21 @@ class LossTextAccessMixin(TextAccessMixin):
         This computation is based on the __call__() method of the model, and the information it provides.
         """
         input_manager = self.text_input_manager
-        n_messages = input_manager.n_messages
+        n_templates = input_manager.n_templates
         n_candidates = len(candidate_trigger_strs)
 
-        # Main Loop: for each message, we compute the loss for all candidates
+        # Main Loop: for each template, we compute the loss for all candidates
         losses = []
-        for message_idx in range(n_messages):
+        for template_idx in range(n_templates):
             curr_model_input = input_manager.get_triggered_inputs(
-                candidate_trigger_strs, chosen_message_idx=message_idx
+                candidate_trigger_strs, chosen_template_idx=template_idx
             )
             curr_texts, curr_targets = (
                 curr_model_input.input_texts,
                 curr_model_input.targets,
             )
 
-            # Forward pass once per message bulk
+            # Forward pass once per template bulk
             model_output = self(
                 curr_texts,
                 return_full_output=True,
@@ -204,7 +204,7 @@ class LossTextAccessMixin(TextAccessMixin):
             loss = compute_loss_from_model_data(model_output, model_input, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
-        losses = torch.stack(losses, dim=0)  # shape: (n_messages, n_candidates)
+        losses = torch.stack(losses, dim=0)  # shape: (n_templates, n_candidates)
 
         if not keep_message_dim:
             losses = losses.mean(dim=0)  # shape: (n_candidates,)

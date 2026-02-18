@@ -70,10 +70,10 @@ def run_gaslite_plus(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[prefix_info],
+        templates=[prefix_info],
         targets=Targets(
             target_vectors=target_vector
-        )
+        ),
         initial_trigger=initial_trigger,
     )
 

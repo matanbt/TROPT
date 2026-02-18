@@ -46,7 +46,7 @@ def run_gaslite(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[prefix_info],
+        templates=[prefix_info],
         targets=Targets(
             target_vectors=target_vector
         ),

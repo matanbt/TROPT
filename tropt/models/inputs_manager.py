@@ -3,7 +3,6 @@ from typing import Annotated, Any, Dict, List, Optional
 
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict
 from torch import Tensor
 
 from tropt.common import (
@@ -20,15 +19,15 @@ from tropt.common import (
 class InputsManager(ABC):
     """
     Base class for maintaining the input template, corresponding targets, and the method for injecting triggers into the inputs.
-    This class wraps `n_messages` texts and targets, and provides a unified interface for different types of inputs (e.g., text-based, token-based) used in adversarial trigger optimization.
+    This class wraps `n_templates` templates and targets, and provides a unified interface for different types of inputs (e.g., text-based, token-based) used in adversarial trigger optimization.
     """
 
     optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER
 
     def __init__(
         self,
-        text_templates: List[str],  # n_messages texts
-        targets: Targets,  # n_messages elements per target entry
+        templates: TextTemplates,
+        targets: Targets,  # n_templates elements per target entry
     ):
         raise NotImplementedError
 
@@ -40,27 +39,28 @@ class InputsManager(ABC):
 class TextInputManager(InputsManager):
     """
     Class for maintaining text-based trigger-combined inputs (fits black-box text-level query access).
+    Instances of this class store `n_templates` templates and targets, and provide the method `get_triggered_inputs` to combine them with given trigger strings.
     """
 
-    before_texts: Annotated[List[str], "n_messages"]
-    after_texts: Annotated[List[str], "n_messages"]
+    before_texts: Annotated[List[str], "n_templates"]
+    after_texts: Annotated[List[str], "n_templates"]
     targets: Targets
 
     def __init__(
         self,
-        texts: Annotated[List[str], "n_messages"],
+        templates: TextTemplates,
         targets: Targets = None,
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
     ):
-        assert isinstance(texts, list), "texts must be a string or a list of strings."
+        assert isinstance(templates, list), "templates must be a list of strings."
         if targets is None:
             targets = Targets()
 
         targets = targets.to_device("cuda" if torch.cuda.is_available() else "cpu")
 
         before_texts, after_texts = [], []
-        for text in texts:
-            bef, aft = text.split(optimized_trigger_placeholder)
+        for template in templates:
+            bef, aft = template.split(optimized_trigger_placeholder)
             before_texts.append(bef)
             after_texts.append(aft)
 
@@ -69,19 +69,19 @@ class TextInputManager(InputsManager):
         self.targets = targets
 
     @property
-    def n_messages(self):
+    def n_templates(self):
         return len(self.before_texts)
 
     def get_triggered_inputs(
         self,
         trigger_strs: Annotated[List[str], "n_candidates"],
-        chosen_message_idx: Optional[int],
+        chosen_template_idx: Optional[int],
     ) -> ModelInput:
         """
         Returns a list of inputs with the given trigger strings merged in.
-        The list is two-dimensional: outer list over messages, inner list over trigger variations; also, returns the corresponding targets.
+        The list is two-dimensional: outer list over templates, inner list over trigger variations; also, returns the corresponding targets.
 
-        Given `chosen_message_idx`, returns only the inputs for that message (1D list), and the corresponding targets.
+        Given `chosen_template_idx`, returns only the inputs for that template (1D list), and the corresponding targets.
         """
         assert isinstance(trigger_strs, list) and all(
             isinstance(s, str) for s in trigger_strs
@@ -91,14 +91,14 @@ class TextInputManager(InputsManager):
         input_texts: List[str] = []
         for trigger_str in trigger_strs:
             curr_text = (
-                self.before_texts[chosen_message_idx]
+                self.before_texts[chosen_template_idx]
                 + trigger_str
-                + self.after_texts[chosen_message_idx]
+                + self.after_texts[chosen_template_idx]
             )
             input_texts.append(curr_text)
 
-        # select only the chosen message's targets
-        targets = self.targets.select_message(chosen_message_idx)
+        # select only the chosen template's targets
+        targets = self.targets.select_message(chosen_template_idx)
 
         return ModelInput(
             input_texts=input_texts,
@@ -112,11 +112,11 @@ class TokenInputManager(InputsManager):
     Base class for maintaining token-level trigger-combined inputs (fits models with token-level access).
     """
 
-    before_ids: List[Float[Tensor, "bef_len"]]
-    after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
+    before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
+    after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
     targets: Targets
     tokenizer: Any
 
     # Properties:
     vocab_size: int
-    n_messages: int
+    n_templates: int

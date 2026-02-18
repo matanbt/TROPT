@@ -302,7 +302,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
 class EmbeddingBasedLoss(BaseLoss):
     """Loss is computed based on model embeddings, compared to given target vectors.
 
-    Requires the target vectors (shape: (n_messages, d_model)) to be provided in the targets dict.
+    Requires the target vectors (shape: (n_templates, d_model)) to be provided in the targets dict.
     """
 
     pass
@@ -371,7 +371,7 @@ class SteeringActivationLoss(HiddenStateBased):
     """
     Encourages hidden activations at specific layers/positions to align with a target direction.
     - Each message has a target direction vector (optionally its own unique one).
-        - target_directions: (n_messages, d_model)
+        - target_directions: (n_templates, d_model)
         - Note that the direction will be applied to the whole target positions and layers.
     - Default is steering *towards* a direction (maximizing alignment).
         - Here, minimizing the loss maximizes alignment (dot product) with the target direction.

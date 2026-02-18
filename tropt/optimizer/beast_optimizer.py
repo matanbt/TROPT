@@ -7,7 +7,7 @@ from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
-from tropt.common import Targets, Texts
+from tropt.common import Targets, TextTemplates
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
@@ -90,18 +90,18 @@ class BEASTOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Texts,
+        templates: TextTemplates,
         targets: Optional[Targets] = None,
-        util_lm_texts: Optional[Texts] = None,
+        util_lm_templates: Optional[TextTemplates] = None,
     ) -> OptimizerResult:
         """
         Optimize the trigger using BEAST algorithm.
 
         Args:
-            texts (Texts): List of input texts to prepend the trigger to.
+            templates (TextTemplates): List of text templates to optimize the trigger against.
             targets (Optional[Targets], optional): Target values for the loss function.
-            util_lm_texts (Optional[Texts], optional): Texts for the util LM to compute logits.
-                If None, defaults to `texts`.
+            util_lm_templates (Optional[TextTemplates], optional): Templates for the util LM to compute logits.
+                If None, defaults to `templates`.
 
         Implementation notes:
         - We use the auxiliary LM (`util_lm`) to generate candidate tokens for the trigger. Note that in the original BEAST it was the same as the attacked LM.
@@ -110,9 +110,9 @@ class BEASTOptimizer(BaseOptimizer):
         """
 
         # Prepare inputs for both target model and util LM
-        self.model.set_token_inputs(texts=texts, targets=targets)
+        self.model.set_token_inputs(templates=templates, targets=targets)
         self.util_lm.set_token_inputs(
-            texts=util_lm_texts if util_lm_texts is not None else texts,
+            templates=util_lm_templates if util_lm_templates is not None else templates,
             targets=targets,
         )
         util_tokenizer = self.util_lm.tokenizer
@@ -197,6 +197,8 @@ class BEASTOptimizer(BaseOptimizer):
                         model_to=self.model,
                     )
                 )
+            else:
+                model_candidate_triggers = candidate_triggers
             # Token-level access: use trigger IDs directly
             losses = self.model.compute_loss_from_tokens(
                 model_candidate_triggers, loss_func=self.loss_func

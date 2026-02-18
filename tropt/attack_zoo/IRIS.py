@@ -99,7 +99,7 @@ def run_iris(
 
     # Run optimization with jailbroken target
     result = optimizer.optimize_trigger(
-        texts=[instruction],
+        templates=[instruction],
         targets=Targets(
             target_response_strs=[target_output],  # Jailbroken response from refusal ablation
             target_directions=refusal_directions,  # For steering loss

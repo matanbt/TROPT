@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 
 
 class _HFTokenInputManager(TokenInputManager):
-    before_ids: List[Float[Tensor, "bef_len"]]
-    after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
+    before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
+    after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
     embed_func: torch.nn.Embedding
     targets: Targets
     padding_side: str
@@ -97,7 +97,7 @@ class _HFTokenInputManager(TokenInputManager):
         ] = []
 
         if use_prefix_cache:
-            for i in range(self.n_messages):
+            for i in range(self.n_templates):
                 # (seq, emb) -> (1, seq, emb)
                 curr_embeds = self.before_embeds[i].unsqueeze(0)
                 curr_attn_mask = torch.ones(
@@ -113,7 +113,7 @@ class _HFTokenInputManager(TokenInputManager):
                 prefix_cache.append(curr_prefix)
 
         self.prefix_cache = prefix_cache if use_prefix_cache else None
-        # Memory for formatted prefix cache kwargs, keyed by (batch_size, message_idx)
+        # Memory for formatted prefix cache kwargs, keyed by (batch_size, template_idx)
         self._prefix_cache_kwargs_mem: dict = {}
 
     @property
@@ -123,7 +123,8 @@ class _HFTokenInputManager(TokenInputManager):
         return self.tokenizer.vocab_size
 
     @property
-    def n_messages(self):
+    def n_templates(self):
+        """Number of strored templates/messages."""
         return len(self.before_ids)
 
     @property
@@ -139,11 +140,11 @@ class _HFTokenInputManager(TokenInputManager):
         return self.prefix_cache is not None
 
     @cached_property
-    def before_embeds(self) -> Float[Tensor, "n_messages bef_len embd_dim"]:
+    def before_embeds(self) -> Float[Tensor, "n_templates bef_len embd_dim"]:
         return [self.embed_func(ids) for ids in self.before_ids]
 
     @cached_property
-    def after_embeds(self) -> Float[Tensor, "n_messages aft_len embd_dim"]:
+    def after_embeds(self) -> Float[Tensor, "n_templates aft_len embd_dim"]:
         return [self.embed_func(ids) for ids in self.after_ids]
 
     @cached_property
@@ -155,8 +156,8 @@ class _HFTokenInputManager(TokenInputManager):
         # trigger options:
         trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"] = None,
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
-        append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_messages
-        chosen_message_idx: Optional[int] = None,
+        append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_templates
+        chosen_template_idx: Optional[int] = None,
     ) -> ModelInput:
         """
         Returns the input embeddings with the given trigger merged in for a specific message.
@@ -175,9 +176,9 @@ class _HFTokenInputManager(TokenInputManager):
                 an optional alternative to `trigger_ids`, where the trigger embeddings
                 are provided directly (useful for gradient computation).
                 If provided, it is used for input computation instead of `trigger_ids`.
-            append_embeds: n_messages-long List of tensors, each of shape = (n_app_ids, embd_dim)
+            append_embeds: n_templates-long List of tensors, each of shape = (n_app_ids, embd_dim)
                 optional embeddings to append at the end of each message (e.g., for planting response in LMs)
-            chosen_message_idx: int (required)
+            chosen_template_idx: int (required)
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
 
         Returns: A ModelInput object containing:
@@ -192,7 +193,7 @@ class _HFTokenInputManager(TokenInputManager):
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
         # assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
-        assert chosen_message_idx is not None, "`chosen_message_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
+        assert chosen_template_idx is not None, "`chosen_template_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
         # TODO re-read and test this critical code
 
         if trigger_embeds is None:
@@ -200,14 +201,14 @@ class _HFTokenInputManager(TokenInputManager):
             trigger_embeds = self.embed_func(trigger_ids)
 
         n_candidates = trigger_embeds.shape[0]
-        message_idx = chosen_message_idx
+        template_idx = chosen_template_idx
 
         ## Construct the parts of the input for this message:
-        curr_before = self.before_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_before = self.before_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
         curr_trigger = trigger_embeds
-        curr_after = self.after_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_after = self.after_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
         curr_append = (
-            append_embeds[message_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+            append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
             if append_embeds is not None
             else None
         )
@@ -266,14 +267,14 @@ class _HFTokenInputManager(TokenInputManager):
         }
 
         ## Prepare the targets repeated for each candidate
-        targets: MessageTargets = self.targets.select_message(chosen_message_idx)
+        targets: MessageTargets = self.targets.select_message(chosen_template_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
         if self.use_prefix_cache:
             prefix_cache_kwargs = self._get_prefix_cache_kwargs(
                 batch_size=n_candidates,
-                message_idx=chosen_message_idx,
+                template_idx=chosen_template_idx,
             )
 
         return ModelInput(
@@ -288,17 +289,17 @@ class _HFTokenInputManager(TokenInputManager):
         )
 
     def _get_prefix_cache_kwargs(
-        self, batch_size: int = 1, message_idx: int = None
+        self, batch_size: int = 1, template_idx: int = None
     ) -> List[Dict[str, transformers.DynamicCache | bool]] | Dict[str, transformers.DynamicCache | bool]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
         if not self.use_prefix_cache:
             return dict()
 
-        if message_idx is None:
-            raise ValueError("Prefix cache without specific message_idx is not supported.")
+        if template_idx is None:
+            raise ValueError("Prefix cache without specific template_idx is not supported.")
 
         # Check memory first
-        mem_key = (batch_size, message_idx)
+        mem_key = (batch_size, template_idx)
         if mem_key in self._prefix_cache_kwargs_mem:
             # Retrieve from memory (stored as legacy tuple on CPU) and convert/move to device
             saved_kv = self._prefix_cache_kwargs_mem[mem_key]
@@ -313,7 +314,7 @@ class _HFTokenInputManager(TokenInputManager):
             )
 
         # Compute if not in memory
-        past_key_values = self.prefix_cache[message_idx]
+        past_key_values = self.prefix_cache[template_idx]
         # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
 
         if batch_size != 1:
@@ -448,7 +449,7 @@ class _HuggingFaceModelMixins:
         model = self.model
         embedding_layer = self.embedding_layer
         input_manager = self.token_input_manager
-        n_messages = input_manager.n_messages
+        n_templates = input_manager.n_templates
 
         # Get shape from whichever input is provided
         if candidate_trigger_ids is not None:
@@ -459,7 +460,7 @@ class _HuggingFaceModelMixins:
         @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
-        ) -> Float[Tensor, "n_messages n_candidates"]:
+        ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update backward batch size ---
             # Automatically lower the default for future calls if this run required a downgrade
@@ -485,12 +486,12 @@ class _HuggingFaceModelMixins:
 
             for cand_idx_start in range(0, n_candidates, batch_size):
                 # for each batch we calculate its gradients, through the per-message loss
-                batch_losses = []  # of len n_messages
+                batch_losses = []  # of len n_templates
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
 
-                # we compute the loss per message in the batch
-                # (we avoid mixing messages, per a potentially different objective)
-                for message_idx in range(0, n_messages):
+                # we compute the loss per template in the batch
+                # (we avoid mixing templates, per a potentially different objective)
+                for template_idx in range(0, n_templates):
                     # 1. Enable gradients on the one-hot input
                     # (bsz_triggers, trigger_seq_len, vocab_size)
                     candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
@@ -522,7 +523,7 @@ class _HuggingFaceModelMixins:
                         "a model with non-standard embedding logic. Please report this issue!")
 
                     # 3. Get batched inputs & compute loss:
-                    logger.debug(f"from grad [msg={message_idx}]: {candidate_embeds.shape}")
+                    logger.debug(f"from grad [msg={template_idx}]: {candidate_embeds.shape}")
 
                     # Get trigger IDs for reference (if using discrete tokens)
                     # For soft triggers, compute argmax from probabilities
@@ -534,7 +535,7 @@ class _HuggingFaceModelMixins:
 
                     model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
-                        chosen_message_idx=message_idx,
+                        chosen_template_idx=template_idx,
 
                         # Also pass trigger ids as a reference
                         trigger_ids=ref_trigger_ids,
@@ -547,16 +548,16 @@ class _HuggingFaceModelMixins:
                     batch_losses.append(loss)
                     # TODO somehow ensure gradient flew throughout the last three function?
 
-                # collect losses for the batch & take avg over messages
+                # collect losses for the batch & take avg over texts
                 batch_losses = torch.stack(
                     batch_losses, dim=0
-                )  # (n_messages, bsz_triggers)
+                )  # (n_templates, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
 
                 # Update usage stats
                 self._update_usage_stats(
                     grad_calls=1,
-                    grad_samples=len(batch_losses) * n_messages
+                    grad_samples=len(batch_losses) * n_templates
                 )
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
@@ -604,13 +605,13 @@ class _HuggingFaceModelMixins:
         """
         model = self.model
         input_manager = self.token_input_manager
-        n_messages = input_manager.n_messages
+        n_templates = input_manager.n_templates
         n_candidates = candidate_trigger_embeds.shape[0]
 
         @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
-        ) -> Float[Tensor, "n_messages n_candidates"]:
+        ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update backward batch size ---
             if batch_size < self.backward_pass_batch_size:
@@ -625,7 +626,7 @@ class _HuggingFaceModelMixins:
                 batch_losses = []
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
 
-                for message_idx in range(0, n_messages):
+                for template_idx in range(0, n_templates):
                     # 1. Enable gradients on the embedding input directly
                     candidate_embeds = candidate_trigger_embeds[cand_idx_start:cand_idx_end].clone().detach()
                     candidate_embeds.requires_grad_()
@@ -633,7 +634,7 @@ class _HuggingFaceModelMixins:
                     # 2. Get batched inputs
                     model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
-                        chosen_message_idx=message_idx,
+                        chosen_template_idx=template_idx,
                     )
 
                     # 3. Forward pass
@@ -647,13 +648,13 @@ class _HuggingFaceModelMixins:
                     batch_losses.append(loss)
 
                 # Collect losses & average over messages
-                batch_losses = torch.stack(batch_losses, dim=0) # (n_messages, bsz_triggers)
+                batch_losses = torch.stack(batch_losses, dim=0) # (n_templates, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)
 
                 # Update usage stats
                 self._update_usage_stats(
                     grad_calls=1,
-                    grad_samples=len(batch_losses) * n_messages
+                    grad_samples=len(batch_losses) * n_templates
                 )
 
                 # 5. Compute gradients w.r.t. the embeddings
@@ -687,7 +688,7 @@ class _HuggingFaceModelMixins:
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
-    ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_messages n_candidates"]:
+    ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_templates n_candidates"]:
         """Computes the loss on all candidate token id sequences.
 
         Args:
@@ -696,20 +697,20 @@ class _HuggingFaceModelMixins:
             inputs_embeds : Tensor, shape = (search_width, seq_len, embd_dim)
                 the embeddings of the `search_width` candidate sequences to evaluate
             keep_message_dim : bool
-                whether to return the loss per message (shape = (n_messages, n_candidates))
+                whether to return the loss per message (shape = (n_templates, n_candidates))
         Returns:
-            Tensor, shape = (n_candidates,), or (n_messages, n_candidates) if keep_message_dim=True
+            Tensor, shape = (n_candidates,), or (n_templates, n_candidates) if keep_message_dim=True
                 the loss for each candidate sequence
         """
 
         input_manager = self.token_input_manager
-        n_messages = input_manager.n_messages
+        n_templates = input_manager.n_templates
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
         def _compute_candidates_loss__batched(
             batch_size: int,
-        ) -> Float[Tensor, "n_messages n_candidates"]:
+        ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update forward batch size ---
             # Automatically lower the default for future calls if this run required a downgrade
@@ -719,28 +720,28 @@ class _HuggingFaceModelMixins:
             # --------------------
 
             all_loss = [
-                [] for _ in range(n_messages)
+                [] for _ in range(n_templates)
             ]  # list of list of tensors, to be concatenated later
 
-            for message_idx, cand_idx in itertools.product(
+            for template_idx, cand_idx in itertools.product(
                 # we avoid mixing messages, per a potentially different objective
-                range(0, n_messages),
+                range(0, n_templates),
                 range(0, n_candidates, batch_size),
             ):
                 cand_idx_end = min(cand_idx + batch_size, n_candidates)
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
-                logger.debug(f"from loss [msg={message_idx}]: {(cand_idx_end - cand_idx)}")
+                logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
                 model_input = input_manager.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
-                    chosen_message_idx=message_idx,
+                    chosen_template_idx=template_idx,
                 )
                 model_output = self.token_forward_pass(
                         model_input=model_input,
                         reference_loss_func=loss_func,
                     )
                 loss = compute_loss_from_model_data(model_output, model_input, loss_func)
-                all_loss[message_idx].append(loss)
+                all_loss[template_idx].append(loss)
 
                 self._update_usage_stats(
                     forward_calls=1,

@@ -154,8 +154,6 @@ class OpenAITokenInputManager(TokenInputManager):
         self.after_texts = []
         
         for text in raw_texts:
-            print(f"DEBUG: Checking text: {repr(text)}")
-            print(f"DEBUG: Placeholder used: {repr(optimized_trigger_placeholder)}")
             assert text.count(optimized_trigger_placeholder) == 1, f"Text must contain exactly one placeholder '{optimized_trigger_placeholder}'"
 
             # Split only on the first occurrence
@@ -163,7 +161,7 @@ class OpenAITokenInputManager(TokenInputManager):
             self.before_texts.append(bef)
             self.after_texts.append(aft)
 
-        self.n_messages = len(raw_texts)
+        self.n_templates = len(raw_texts)
 
         # 2. Prepare Targets
         self.targets = targets
@@ -175,7 +173,7 @@ class OpenAITokenInputManager(TokenInputManager):
     def get_triggered_inputs(
         self,
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        chosen_message_idx: Optional[int],
+        chosen_template_idx: Optional[int],
         **kwargs
     ) -> ModelInput:
         """
@@ -188,8 +186,8 @@ class OpenAITokenInputManager(TokenInputManager):
         n_candidates = len(trigger_strs)
         
         # 2. Construct the full texts
-        bef = self.before_texts[chosen_message_idx]
-        aft = self.after_texts[chosen_message_idx]
+        bef = self.before_texts[chosen_template_idx]
+        aft = self.after_texts[chosen_template_idx]
         
         # Create list of strings for this message across all candidates
         curr_message_candidates = [
@@ -197,7 +195,7 @@ class OpenAITokenInputManager(TokenInputManager):
         ]
 
         # 3. Handle Targets (select chosen message)
-        targets = self.targets.select_message(chosen_message_idx)
+        targets = self.targets.select_message(chosen_template_idx)
         
         # 4. Build ModelInput
         return ModelInput(
@@ -312,16 +310,16 @@ class EncoderOpenAIModel(
 
     def set_token_inputs(
         self,
-        texts: List[str],  # n_messages texts
+        templates: TextTemplates,
         targets: Targets = None,
     ) -> None:
         """
         Prepares and stores the inputs manager from raw texts.
         """
-        assert isinstance(texts, list), "texts must be a list of strings."
+        assert isinstance(templates, list), "templates must be a list of strings."
 
         # 1. Tokenize the template texts
-        tok_results = self.tokenizer(texts, return_tensors="list")
+        tok_results = self.tokenizer(templates, return_tensors="list")
         tok_ids = tok_results["input_ids"]
 
         # 2. Build the Manager and store it

@@ -45,7 +45,7 @@ def run_gcg_embedding_variant(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[prefix_info],
+        templates=[prefix_info],
         targets=dict(target_vectors=target_vector.to(model.device)),
         initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
     )

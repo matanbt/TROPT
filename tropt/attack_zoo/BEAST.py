@@ -41,7 +41,7 @@ def run_beast(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[instruction],
+        templates=[instruction],
         targets=Targets(
             target_response_strs=[target_output]
         )

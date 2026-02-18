@@ -3,7 +3,7 @@ from typing import List, Optional
 
 import torch
 import torch.nn.functional as F
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
@@ -11,13 +11,12 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
-    Texts,
+    TextTemplates,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
     BaseModel,
     GradientEmbedAccessMixin,
-    TokenInputsManager,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker.base import BaseTracker
@@ -66,14 +65,14 @@ class SoftPromptOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Texts,
+        templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization
-        self.model.set_token_inputs(texts=texts, targets=targets)
+        self.model.set_token_inputs(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
         trigger_ids = (
             tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -125,6 +124,8 @@ class SoftPromptOptimizer(BaseOptimizer):
             losses=loss_per_step,
         )
         # TODO save to result to pt file?
+
+        # TODO allow inference with this soft prompt?
 
         self.tracker.log({
             "best_loss": result.best_loss,

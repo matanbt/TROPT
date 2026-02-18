@@ -81,7 +81,7 @@ def run_advdecoding_encoder(
 
     # Run optimization
     result = optimizer.optimize_trigger(
-        texts=[prefix_info],
+        templates=[prefix_info],
         targets=dict(target_vectors=target_vector.to(model.device)),
         util_lm_texts=[prefix_prompt],
     )

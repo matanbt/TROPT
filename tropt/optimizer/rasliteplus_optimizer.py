@@ -12,7 +12,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
-    Texts,
+    TextTemplates,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -162,19 +162,19 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Texts,
+        templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization:
         # We prepare inputs for both models.
         # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).
         # The evaluation operates on `texts` via `model` (text space of target model).
 
-        self.model.set_text_inputs(texts=texts, targets=targets)
-        self.util_model.set_token_inputs(texts=texts, targets=targets)
+        self.model.set_text_inputs(templates=templates, targets=targets)
+        self.util_model.set_token_inputs(templates=templates, targets=targets)
         util_tokenizer = self.util_model.tokenizer
         util_trigger_ids = (
             util_tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -403,7 +403,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
 
         model_stats_diff = {
             k: v - model_stats_before[k] for k, v in self.model.get_usage_stats().items()

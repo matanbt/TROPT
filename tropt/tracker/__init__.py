@@ -3,5 +3,6 @@ from .base import (
     DummyTracker,
     JSONTracker,
     LiveLossPlotTracker,
+    PrintTracker,
     WandbTracker,
 )

@@ -120,6 +120,44 @@ class WandbTracker(BaseTracker):
 
 # TODO Add HF's trackio integration
 
+class PrintTracker(BaseTracker):
+    """Prints each optimisation step to stdout and accumulates history.
+
+    Useful for Jupyter notebooks or any situation where you want live
+    step-by-step loss/trigger output without a heavyweight logging backend.
+
+    Attributes:
+        history (dict): Accumulated values keyed by metric name.
+    """
+
+    def __init__(
+        self,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+        config_dump: dict = None,
+        print_keys: tuple = ("loss", "best_trigger_str"),
+    ):
+        super().__init__(experiment_name, config_dump)
+        self.history = defaultdict(list)
+        self._step = 0
+        self.print_keys = print_keys
+
+    def log(self, data: dict):
+        self._step += 1
+        for key, val in data.items():
+            self.history[key].append(val)
+        parts = [f"step={self._step:>4}"]
+        for key in self.print_keys:
+            if key in data:
+                val = data[key]
+                parts.append(
+                    f"{key}={val:.4f}" if isinstance(val, float) else f"{key}={val!r}"
+                )
+        print(" | ".join(parts), flush=True)
+
+    def finish(self):
+        pass
+
+
 class LiveLossPlotTracker(BaseTracker):
     def __init__(
         self,

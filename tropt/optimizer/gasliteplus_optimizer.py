@@ -13,7 +13,7 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
-    Texts,
+    TextTemplates,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
@@ -175,14 +175,14 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: Texts,
+        templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
+        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization:
-        self.model.set_token_inputs(texts=texts, targets=targets)
+        self.model.set_token_inputs(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
         trigger_ids = (
             tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -386,7 +386,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[best_loss_idx]
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
+        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
 
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],

@@ -19,15 +19,16 @@ DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
 
 
 # ======================= Common input types =======================
-Texts = Annotated[
+TextTemplates = Annotated[
     List[str],
     pydantic.Field(min_length=1),
-    "n_messages"
+    "n_templates"
 ]
-"""List of input text strings, one per message. Are expected to contain the trigger placeholder (`{{OPTIMIZED_TRIGGER}}`).
-Length: n_messages.
+"""List of text templates, one per optimization target. Each must contain the trigger placeholder (`{{OPTIMIZED_TRIGGER}}`).
+Length: n_templates.
 """
 TokenTrigger = Float[Tensor, "1 trigger_seq_len"]
+TextTrigger = str
 TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 
 # ======================= Slice Keys Enum =======================
@@ -72,7 +73,7 @@ class MessageTargets(pydantic.BaseModel):
 
 
 class Targets(pydantic.BaseModel):
-    """Targets for all messages. Each field has an an initial n_messages dimension.
+    """Targets for all templates. Each field has an initial n_templates dimension.
 
     Typically only one or two of these fields need to be provided depending
     on the loss function being used.
@@ -81,40 +82,40 @@ class Targets(pydantic.BaseModel):
     """
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
-    target_response_strs: Optional[Annotated[List[str], "n_messages"]] = None
-    """Raw text target outputs, one per message.
-    
-    List is of length n_messages.
+    target_response_strs: Optional[Annotated[List[str], "n_templates"]] = None
+    """Raw text target outputs, one per template.
+
+    List is of length n_templates.
     Used by: Language models for target matching. Will be tokenized
     internally to produce `target_response_toks` if not provided directly.
     """
 
-    target_response_toks: Optional[Int[Tensor, "n_messages target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_messages"]] = None
-    """Tokenized target outputs, one per message.
+    target_response_toks: Optional[Int[Tensor, "n_templates target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_templates"]] = None
+    """Tokenized target outputs, one per template.
 
-    Shape: (n_messages, target_seq_len) OR List of length n_messages, 
+    Shape: (n_templates, target_seq_len) OR List of length n_templates,
     each of (potentially different) shape (target_seq_len,)
     Used by: Language models for computing cross-entropy loss.
     """
 
-    target_vectors: Optional[Float[Tensor, "n_messages d_model"]] = None
-    """Target embedding vectors, one per message.
+    target_vectors: Optional[Float[Tensor, "n_templates d_model"]] = None
+    """Target embedding vectors, one per template.
 
-    Shape: (n_messages, d_model)
+    Shape: (n_templates, d_model)
     Used by: Encoder models for similarity-based losses.
     """
 
-    target_directions: Optional[Float[Tensor, "n_messages d_model"]] = None
-    """Target directions in activation space, one per message.
+    target_directions: Optional[Float[Tensor, "n_templates d_model"]] = None
+    """Target directions in activation space, one per template.
 
-    Shape: (n_messages, d_model)
+    Shape: (n_templates, d_model)
     Used by: Steering losses (e.g., refusal suppression).
-    Note: if you need per-layer directions, store as (n_messages, n_layers, d_model)
+    Note: if you need per-layer directions, store as (n_templates, n_layers, d_model)
     and update this annotation accordingly.
     """
 
     @property
-    def n_messages(self) -> int:
+    def n_templates(self) -> int:
         for field_name in self.model_fields_set:
             val = getattr(self, field_name)
             if val is not None:

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 class EncoderHFTokenInputManager(_HFTokenInputManager):
     targets: Targets
-    # includes `target_vectors` (n_messages, d_model) if target outputs are provided;
+    # includes `target_vectors` (n_templates, d_model) if target outputs are provided;
     # to optimize towards an vector per message
 
 
@@ -151,14 +151,14 @@ class EncoderHFModel(
 
     def set_token_inputs(
         self,
-        texts: List[str],  # n_messages texts
+        templates: TextTemplates,  # n_templates templates
         targets: Targets = None,
     ) -> None:
-        """Prepare and store the inputs manager."""
-        assert isinstance(texts, list), "texts must be a string or a list of strings."
+        """Prepare and store the given templates in the inputs manager."""
+        assert isinstance(templates, list), "templates must be a string or a list of strings."
 
         # Build the input manager, that will allow combining with different triggers
-        tok_ids = self.tokenizer(texts, add_special_tokens=True)["input_ids"]
+        tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
         self.token_input_manager = EncoderHFTokenInputManager(
             tok_ids=tok_ids,
             model=self.model,
@@ -166,7 +166,7 @@ class EncoderHFModel(
             embed_func=self.embedding_layer,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             use_prefix_cache=False,  # prefix caching is not meant for encoder-only architectures
-            targets=targets,  # n_messages, d_model
+            targets=targets,
         )
 
     def token_forward_pass(

@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputManager(_HFTokenInputManager):
     targets: Targets
-    # includes `target_response_toks` (n_messages, target_seq_len) if target outputs are provided;
+    # includes `target_response_toks` (n_templates, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
 
     @property
@@ -172,7 +172,7 @@ class LMHFModel(
 
     def set_token_inputs(
         self,
-        texts: List[str],
+        templates: TextTemplates,
         targets: Optional[Targets] = None,
     ) -> None:
         """
@@ -183,19 +183,19 @@ class LMHFModel(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
-        assert isinstance(texts, list) and all(isinstance(t, str) for t in texts), "texts must be a string or a list of strings."
+        assert isinstance(templates, list) and all(isinstance(t, str) for t in templates), "templates must be a list of strings."
         assert all(
-            [t.count(OPTIMIZED_TRIGGER_PLACEHOLDER) == 1 for t in texts]
-        ), f"`texts` must contain the `{OPTIMIZED_TRIGGER_PLACEHOLDER}` placeholder."
+            [t.count(OPTIMIZED_TRIGGER_PLACEHOLDER) == 1 for t in templates]
+        ), f"`templates` must contain the `{OPTIMIZED_TRIGGER_PLACEHOLDER}` placeholder."
 
-        # put in chat template + special tokens & tokenizer
+        # put in chat-template + special tokens & tokenizer
         template_tok_ids: List[List[int]] = [
             self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": text}],
+                [{"role": "user", "content": template}],
                 tokenize=True,
                 add_generation_prompt=True,
             )
-            for text in texts
+            for template in templates
         ]
 
         if targets is None:
@@ -234,9 +234,9 @@ class LMHFModel(
         return_trigger_logits_only: bool = False,
         return_after_trigger_logits_only: bool = False,
     ) -> (
-        Float[Tensor, "n_messages n_candidates seq_len vocab_size"]
+        Float[Tensor, "n_templates n_candidates seq_len vocab_size"]
         | Tuple[
-            Float[Tensor, "n_messages n_candidates seq_len vocab_size"], List[slice]
+            Float[Tensor, "n_templates n_candidates seq_len vocab_size"], List[slice]
         ]
     ):
         """
@@ -259,17 +259,17 @@ class LMHFModel(
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
 
         input_manager = self.token_input_manager
-        n_messages = input_manager.n_messages
+        n_templates = input_manager.n_templates
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         # Compute the logits (in batches)
         @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
         def _compute_logits_batched(batch_size):
-            all_logits = [[] for _ in range(n_messages)]
-            slices: List[Dict[str, slice]] = [None for _ in range(n_messages)]
+            all_logits = [[] for _ in range(n_templates)]
+            slices: List[Dict[str, slice]] = [None for _ in range(n_templates)]
 
-            for message_idx, cand_idx in itertools.product(
-                range(n_messages),
+            for template_idx, cand_idx in itertools.product(
+                range(n_templates),
                 range(0, n_candidates, batch_size),
             ):
                 cand_idx_end = min(cand_idx + batch_size, n_candidates)
@@ -278,33 +278,33 @@ class LMHFModel(
                 # Get inputs for this specific message
                 model_input = input_manager.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
-                    chosen_message_idx=message_idx,
+                    chosen_template_idx=template_idx,
                 )
                 # Compute the logits
                 logits_batch = self.token_forward_pass(
                     model_input=model_input,
                 ).output_logits
 
-                all_logits[message_idx].append(logits_batch)
-                slices[message_idx] = model_input.input_slices
+                all_logits[template_idx].append(logits_batch)
+                slices[template_idx] = model_input.input_slices
 
             # Stack all logits per message
             logits_per_message = [torch.cat(msg_logits, dim=0) for msg_logits in all_logits]
-            logits = torch.stack(logits_per_message, dim=0)  # (n_messages, n_candidates, seq_len, vocab_size)
+            logits = torch.stack(logits_per_message, dim=0)  # (n_templates, n_candidates, seq_len, vocab_size)
 
             return logits, slices
 
         logits, slices = _compute_logits_batched()
-        # (n_messages, n_candidates, seq_len, vocab_size)
+        # (n_templates, n_candidates, seq_len, vocab_size)
 
         if return_trigger_logits_only or return_after_trigger_logits_only:
             # return only the logits for the trigger part
             trigger_logits = torch.zeros(
-                (n_messages, n_candidates, (trigger_seq_len if return_trigger_logits_only else 1), logits.shape[-1]),
+                (n_templates, n_candidates, (trigger_seq_len if return_trigger_logits_only else 1), logits.shape[-1]),
                 device=logits.device,
-            )  # (n_messages, n_candidates, trigger_seq_len, vocab_size)
-            for i_message in range(n_messages):
-                slc_trigger = slices[i_message][SliceKey.TRIGGER]  # trigger slice for this candidate
+            )  # (n_templates, n_candidates, trigger_seq_len, vocab_size)
+            for i_template in range(n_templates):
+                slc_trigger = slices[i_template][SliceKey.TRIGGER]  # trigger slice for this candidate
 
                 # extract the relevant logits
                 if return_trigger_logits_only:
@@ -313,7 +313,7 @@ class LMHFModel(
                 else:  # return_after_trigger_logits_only
                     slc = slice(slc_trigger.stop, slc_trigger.stop + 1)
 
-                trigger_logits[i_message] = logits[i_message, :, slc, :]
+                trigger_logits[i_template] = logits[i_template, :, slc, :]
                 
                 assert trigger_logits.shape[2] == slc.stop - slc.start, "Extracted trigger logits length does not match expected length."
             

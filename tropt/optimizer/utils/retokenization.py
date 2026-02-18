@@ -65,7 +65,7 @@ def retokenize_filtering(
 def full_messages_retokenize_filtering(
     candidate_trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"],
     tokenizer: transformers.PreTrainedTokenizer,
-    text_templates: List[str],
+    templates: TextTemplates,
     trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
 ):
     """
@@ -88,11 +88,11 @@ def full_messages_retokenize_filtering(
             candidate trigger token ids
         tokenizer : ~transformers.PreTrainedTokenizer
             the model's tokenizer
-        text_templates : List[str] (length = n_messages)
+        templates : List[str] (length = n_templates)
             list of user message templates, each containing the `trigger_placeholder`
             where the trigger will be inserted.
         trigger_placeholder : str
-            the placeholder string in `text_templates` to be replaced by the trigger
+            the placeholder string in `templates` to be replaced by the trigger
 
     Returns:
         filtered_ids : Tensor, shape = (new_n_candidates, trigger_seq_len)
@@ -103,8 +103,8 @@ def full_messages_retokenize_filtering(
 
     # Split the user templates into before/after the trigger parts
     before_texts, after_texts = [], []
-    for text_template in text_templates:
-        bef, aft = text_template.split(trigger_placeholder)
+    for template in templates:
+        bef, aft = template.split(trigger_placeholder)
         before_texts.append(bef)
         after_texts.append(aft)
 
@@ -117,24 +117,24 @@ def full_messages_retokenize_filtering(
         # We take each trigger, combine it with each user template, and check if retokenization matches
         is_curr_trigger_valid = True
 
-        for text_template, curr_before_ids, curr_after_ids in zip(text_templates, before_ids, after_ids):
+        for template, curr_before_ids, curr_after_ids in zip(templates, before_ids, after_ids):
             # 1. Build the triggeted template text:
-            triggered_text_template: str = text_template.replace(trigger_placeholder, cand_trigger_text)
+            triggered_template: str = template.replace(trigger_placeholder, cand_trigger_text)
 
             # 2.a. Build the concat of the original ids:
             # (this is what the optimization sees)
-            triggered_text_template_ids: List[int] = curr_before_ids + cand_trigger_ids.tolist() + curr_after_ids
+            triggered_template_ids: List[int] = curr_before_ids + cand_trigger_ids.tolist() + curr_after_ids
             # 2.b. Get the (re)tokenization of the triggered text template:
             # (this is what the model input will see at inference time)
-            triggered_text_template_new_ids: List[int] = tokenizer(
-                triggered_text_template, add_special_tokens=False
+            triggered_template_new_ids: List[int] = tokenizer(
+                triggered_template, add_special_tokens=False
             ).input_ids
 
-            print("old texts:", tokenizer.decode(triggered_text_template_ids))
-            print("new texts:", tokenizer.decode(triggered_text_template_new_ids))
+            print("old texts:", tokenizer.decode(triggered_template_ids))
+            print("new texts:", tokenizer.decode(triggered_template_new_ids))
 
             # 3. We want the original to match the (re)tokenization:
-            if triggered_text_template_ids != triggered_text_template_new_ids:
+            if triggered_template_ids != triggered_template_new_ids:
                 is_curr_trigger_valid = False
                 break
 

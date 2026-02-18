@@ -86,7 +86,7 @@ def run_rasliteplus(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[prefix_info],
+        templates=[prefix_info],
         targets={TargetKey.TARGET_VECTORS: target_vector.to(device)},
         initial_trigger=initial_trigger,
     )

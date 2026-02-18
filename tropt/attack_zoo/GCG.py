@@ -44,7 +44,7 @@ def run_gcg(
     )
 
     result = optimizer.optimize_trigger(
-        texts=[instruction],
+        templates=[instruction],
         targets=Targets(
             target_response_strs=[target_response]
         ),
