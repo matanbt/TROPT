@@ -3,7 +3,7 @@ Optimizers
 
 .. module:: tropt.optimizer
 
-Base Optimizer
+Optimizer Interface
 --------------
 
 .. autoclass:: BaseOptimizer

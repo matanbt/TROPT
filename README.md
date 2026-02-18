@@ -100,7 +100,7 @@ While the Attack Zoo provides predefined attacks for convenience, you can also m
 This allows you to choose what _model_ you would like to target, what _loss_ function to optimize against, and what specific existing _optimization strategy_ to use (along its hyperparameters), etc. 
 Notably, this programmatic composition also underlies the Attack Zoo implementations.
 
-See [guide.ipynb](guide.ipynb) for comprehensive examples covering several features enabled be such manual attack composition (multi-instruction, encoders, combined losses, activation steering, and custom components).
+See [guide.ipynb](guide.ipynb) for comprehensive examples covering several features enabled by such manual attack composition (multi-instruction, encoders, combined losses, activation steering, and custom components).
 
 
 ### 🔬 Research: Custom Optimizers
@@ -109,7 +109,7 @@ TROPT is designed as a **factory for new optimizers**. You can write custom sear
 The optimizer you would implement can thus focus purely on the search algorithm.
 
 **Getting started:** It is recommended to build on existing optimizer code (see `tropt/optimizer/`) rather than from scratch, to follow the [package's best practices](DESIGN.md).
-Once implemented following the package's guidelines, the optimizer automatically works across all compatible models and losses through the generic model/loss abstractions.
+Once implemented according to the package's guidelines, the optimizer automatically works across all compatible models and losses via the generic model/loss abstractions.
 
 **Contributing:** Researchers who wish to develop new optimizers, or compose new attacks, while aiming to make their work reproducible and comparable, are strongly encouraged to contribute. Submit a PR to add the optimizer to the repo and make it available to the community, enabling future research to build upon and benchmark against the work.
 

@@ -383,6 +383,9 @@ class _HuggingFaceModelMixins:
         candidate_trigger_probs: Float[Tensor, "n_candidates trigger_seq_len vocab_size"] = None,
         do_gumbel_softmax: bool = False,
         gumbel_softmax_temp: Optional[float] = None,
+
+        # Additional config:
+        normalize_grads: bool = True,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
 
@@ -412,6 +415,9 @@ class _HuggingFaceModelMixins:
             gumbel_softmax_temp: Temperature for Gumbel-softmax sampling.
                 Lower values → more discrete (sharper), higher values → more uniform.
                 Only used when `do_gumbel_softmax=True`.
+            
+            normalize_grads: If True, L2-normalize the gradients along the vocab dimension.
+                Defaults to True, as this is usually desirable for fair comparison across token positions.
 
         Returns:
             Normalized gradients w.r.t. one-hot token matrix.
@@ -449,7 +455,6 @@ class _HuggingFaceModelMixins:
             n_candidates, trigger_seq_len = candidate_trigger_ids.shape
         else: # candidate_trigger_probs is not None:
             n_candidates, trigger_seq_len = candidate_trigger_probs.shape[:2]
-        # [TODO: allow second order grads] make it another function
 
         @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
         def _compute_grad__batched(
@@ -490,7 +495,6 @@ class _HuggingFaceModelMixins:
                     # (bsz_triggers, trigger_seq_len, vocab_size)
                     candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
                     candidate_ids_onehot.requires_grad_()
-                    # [TODO: allow second order grads] accept the `candidate_ids_onehot` as input (so the user can use the non-detached gradients later)
 
                     # 1'. optionally apply gumbel-softmax to the trigger probs
                     if do_gumbel_softmax:

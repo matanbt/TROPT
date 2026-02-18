@@ -3,7 +3,7 @@
 Losses
 ======
 
-Base Loss Classes
+Loss Classes Interfaces
 -----------------
 
 .. autoclass:: BaseLoss

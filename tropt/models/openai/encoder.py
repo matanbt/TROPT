@@ -2,6 +2,9 @@ from typing import Annotated, Any, List, Literal, Optional, Tuple
 
 import numpy as np
 import torch
+import tiktoken
+from typing import Annotated, Any, List, Literal, Optional, Tuple
+from openai import OpenAI
 from jaxtyping import Float, Int
 from tenacity import retry, stop_after_attempt, wait_exponential
 from torch import Tensor
@@ -241,8 +244,6 @@ class EncoderOpenAIModel(
             base_url: Optional base URL for the OpenAI client. If None, the default OpenAI API URL is used.
         """
         # Import openai only when instantiating (optional dependency)
-        from openai import OpenAI
-
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
 

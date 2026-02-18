@@ -4,7 +4,7 @@ Models
 ======
 
 
-Base Models
+Models Interface
 -----------
 .. autoclass:: BaseModel
    :members:

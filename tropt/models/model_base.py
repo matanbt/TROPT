@@ -66,7 +66,15 @@ class BaseModel(ABC):
         self._forward_sample_count += forward_samples
         self._grad_call_count += grad_calls
         self._grad_sample_count += grad_samples
-    
+
+    def reset_usage_stats(self):
+        """Resets the usage statistics."""
+        self._token_used = 0
+        self._forward_call_count = 0
+        self._forward_sample_count = 0
+        self._grad_call_count = 0
+        self._grad_sample_count = 0
+
     @property
     def device(self) -> torch.device:
         """
