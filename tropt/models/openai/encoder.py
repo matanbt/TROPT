@@ -1,9 +1,7 @@
-from typing import Annotated, Any, List, Literal, Optional, Tuple
-
 import numpy as np
 import torch
 import tiktoken
-from typing import Annotated, Any, List, Literal, Optional, Tuple
+from typing import Annotated, Any, List, Literal, Optional
 from openai import OpenAI
 from jaxtyping import Float, Int
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -11,7 +9,6 @@ from torch import Tensor
 from transformers import BatchEncoding
 
 from tropt.common import (
-    DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
@@ -22,7 +19,7 @@ from tropt.models import (
     EncoderBaseModel,
     LossTextAccessMixin,
     TokenAccessMixin,
-    TokenInputsManager,
+    TokenInputManager,
 )
 
 
@@ -36,9 +33,6 @@ class OpenAITokenizer(BaseTokenizer):
     A wrapper around OpenAI's tokenizer that mimics the HuggingFace interface.
     """
     def __init__(self, model_name: str) -> None:
-        # Import tiktoken only when instantiating (optional dependency)
-        import tiktoken
-
         # Get the tokeniser corresponding to a specific model in the OpenAI API
         try:
             self._encoding = tiktoken.encoding_for_model(model_name)
@@ -135,7 +129,7 @@ class OpenAITokenizer(BaseTokenizer):
 # --------------------------------------------------------------------------
 ## OpenAI Token Inputs Manager:
 # --------------------------------------------------------------------------
-class OpenAITokenInputsManager(TokenInputsManager):
+class OpenAITokenInputManager(TokenInputManager):
     """
     Inputs manager for OpenAI models (or other black-box API models).
     Instead of managing embeddings/tensors, this manages text reconstruction 
@@ -160,6 +154,8 @@ class OpenAITokenInputsManager(TokenInputsManager):
         self.after_texts = []
         
         for text in raw_texts:
+            print(f"DEBUG: Checking text: {repr(text)}")
+            print(f"DEBUG: Placeholder used: {repr(optimized_trigger_placeholder)}")
             assert text.count(optimized_trigger_placeholder) == 1, f"Text must contain exactly one placeholder '{optimized_trigger_placeholder}'"
 
             # Split only on the first occurrence
@@ -314,38 +310,27 @@ class EncoderOpenAIModel(
 
         return result
 
-    def prepare_token_inputs(
+    def set_token_inputs(
         self,
         texts: List[str],  # n_messages texts
         targets: Targets = None,
-        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-    ) -> Tuple[OpenAITokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
+    ) -> None:
         """
-        Prepares the inputs object and initial trigger from raw texts.
+        Prepares and stores the inputs manager from raw texts.
         """
         assert isinstance(texts, list), "texts must be a list of strings."
-        
+
         # 1. Tokenize the template texts
         tok_results = self.tokenizer(texts, return_tensors="list")
         tok_ids = tok_results["input_ids"]
 
-        # 2. Build the Manager
-        inputs = OpenAITokenInputsManager(
+        # 2. Build the Manager and store it
+        self.token_input_manager = OpenAITokenInputManager(
             tokenizer=self.tokenizer,
             tok_ids=tok_ids,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             targets=targets,
         )
 
-        # 3. Prepare Initial Trigger
-        if not initial_trigger:
-            trigger_ids = torch.zeros((1, 0), dtype=torch.long)
-        else:
-            # We want a tensor for the trigger ids to be compatible with the optimizer loop
-            trigger_ids = self.tokenizer(
-                initial_trigger, return_tensors="pt"
-            )["input_ids"]
-
-        return inputs, trigger_ids
 
 

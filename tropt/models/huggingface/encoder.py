@@ -1,6 +1,6 @@
 
 import logging
-from typing import Annotated, List, Optional, Tuple
+from typing import Annotated, List, Optional
 
 import sentence_transformers
 import torch
@@ -9,7 +9,6 @@ from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
 from tropt.common import (
-    DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
@@ -22,16 +21,16 @@ from tropt.models import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
 from tropt.models.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class EncoderHFTokenInputsManager(_HFTokenInputsManager):
+class EncoderHFTokenInputManager(_HFTokenInputManager):
     targets: Targets
-    # includes `target_vectors` (n_messages, d_model) if target outputs are provided; 
+    # includes `target_vectors` (n_messages, d_model) if target outputs are provided;
     # to optimize towards an vector per message
 
 
@@ -150,18 +149,17 @@ class EncoderHFModel(
             f"Could not extract embedding layer from Sentence Transformer model `{self.model_name}`. This model might need special care. Please report this issue."
         )
 
-    def prepare_token_inputs(
+    def set_token_inputs(
         self,
         texts: List[str],  # n_messages texts
-        targets: Targets,
-        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-    ) -> Tuple[EncoderHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
-
+        targets: Targets = None,
+    ) -> None:
+        """Prepare and store the inputs manager."""
         assert isinstance(texts, list), "texts must be a string or a list of strings."
 
         # Build the input manager, that will allow combining with different triggers
         tok_ids = self.tokenizer(texts, add_special_tokens=True)["input_ids"]
-        inputs = EncoderHFTokenInputsManager(
+        self.token_input_manager = EncoderHFTokenInputManager(
             tok_ids=tok_ids,
             model=self.model,
             tokenizer=self.tokenizer,
@@ -170,20 +168,6 @@ class EncoderHFModel(
             use_prefix_cache=False,  # prefix caching is not meant for encoder-only architectures
             targets=targets,  # n_messages, d_model
         )
-
-        # Tokenizer trigger
-        if not initial_trigger:
-            # start with an empty trigger
-            trigger_tok_ids = torch.zeros((1, 0), dtype=torch.long, device=self.model.device)
-        else:
-            trigger_tok_ids = (
-                self.tokenizer(
-                    initial_trigger, add_special_tokens=False, return_tensors="pt"
-                )["input_ids"]
-                .to(self.model.device, torch.int64)
-            )
-
-        return inputs, trigger_tok_ids
 
     def token_forward_pass(
         self,

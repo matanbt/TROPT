@@ -110,27 +110,24 @@ class BEASTOptimizer(BaseOptimizer):
         """
 
         # Prepare inputs for both target model and util LM
-        inputs, _ = self.model.prepare_token_inputs(
-            texts=texts,
-            targets=targets,
-        )
-
-        util_inputs, util_trigger_ids = self.util_lm.prepare_token_inputs(
+        self.model.set_token_inputs(texts=texts, targets=targets)
+        self.util_lm.set_token_inputs(
             texts=util_lm_texts if util_lm_texts is not None else texts,
             targets=targets,
-            initial_trigger="",  # BEAST starts with an empty trigger
         )
         util_tokenizer = self.util_lm.tokenizer
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
-            util_tokenizer, util_tokenizer.vocab_size
+            util_tokenizer, self.util_lm.vocab_size
         )
+
+        # BEAST starts with an empty trigger
+        util_trigger_ids = torch.zeros((1, 0), dtype=torch.long, device=self.model.device)
 
         # Initialize by sampling k1 diverse starting tokens
         # (Algorithm 1 in paper; lines 2-7)
         # Get logits for first token position
         initial_logits = self.util_lm.compute_logits_from_tokens(
             util_trigger_ids,  # empty trigger
-            util_inputs,
             return_after_trigger_logits_only=True
         ).squeeze(1)  # (1, vocab_size)
 
@@ -160,7 +157,7 @@ class BEASTOptimizer(BaseOptimizer):
         for step in pbar:
             # 1. Get logits for the next trigger token  (adv[-1]'s)
             next_token_logits = self.util_lm.compute_logits_from_tokens(
-                beam_trigger_ids, util_inputs, return_after_trigger_logits_only=True
+                beam_trigger_ids, return_after_trigger_logits_only=True
             )  # (beam, 1, vocab_size)
             next_token_logits = next_token_logits.squeeze(1)  # (beam, vocab_size)
 
@@ -202,13 +199,13 @@ class BEASTOptimizer(BaseOptimizer):
                 )
             # Token-level access: use trigger IDs directly
             losses = self.model.compute_loss_from_tokens(
-                model_candidate_triggers, inputs, loss_func=self.loss_func
+                model_candidate_triggers, loss_func=self.loss_func
             )
 
             if self.util_loss_func is not None:
                 # Also compute util loss and combine
                 util_losses = self.util_lm.compute_loss_from_tokens(
-                    candidate_triggers, util_inputs, loss_func=self.util_loss_func
+                    candidate_triggers, loss_func=self.util_loss_func
                 )
                 # Combine losses (simple sum)  # TODO make this more flexible?
                 losses = losses + util_losses
@@ -238,6 +235,8 @@ class BEASTOptimizer(BaseOptimizer):
             trigger_strs=trigger_strings,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        self.model.reset_token_inputs()
+        self.util_lm.reset_token_inputs()
         return result
 
     @staticmethod

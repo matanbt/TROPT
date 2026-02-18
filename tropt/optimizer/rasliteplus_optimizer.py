@@ -173,18 +173,15 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).
         # The evaluation operates on `texts` via `model` (text space of target model).
 
-        inputs, _ = self.model.prepare_text_inputs(
-            texts=texts,
-            targets=targets,
+        self.model.set_text_inputs(texts=texts, targets=targets)
+        self.util_model.set_token_inputs(texts=texts, targets=targets)
+        util_tokenizer = self.util_model.tokenizer
+        util_trigger_ids = (
+            util_tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
+            .to(self.util_model.device, torch.int64)
         )
-        util_inputs, util_trigger_ids = self.util_model.prepare_token_inputs(
-            texts=texts,
-            targets=targets,
-            initial_trigger=initial_trigger,
-        )
-        util_tokenizer = util_inputs.tokenizer
-        util_vocab_size = util_inputs.vocab_size
-        
+
+        util_vocab_size = self.util_model.vocab_size
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
             util_tokenizer, util_vocab_size
         )
@@ -221,7 +218,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         ]
         losses = self.model.compute_loss_from_texts(
             trigger_strs_buffer,
-            inputs,
             self.loss_func,
         ) # (n_cands,)
 
@@ -254,7 +250,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                     trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size, device=self.util_model.device)
                     logits = self.util_model.compute_logits_from_tokens(
                         trigger_vars,
-                        util_inputs,
                         return_trigger_logits_only=True,
                         keep_message_dim=False,
                     ) # (n_vars, seq_len, vocab_size)
@@ -262,7 +257,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                 else:
                     trigger_grad = self.util_model.compute_logits_from_tokens(
                         util_trigger_ids.unsqueeze(0),
-                        util_inputs,
                         return_trigger_logits_only=True,
                         keep_message_dim=False,
                     ).squeeze(0)
@@ -333,7 +327,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
                 losses = self.model.compute_loss_from_texts(
                     candidate_strs,
-                    inputs,
                     self.loss_func,
                     keep_message_dim=True,  # Get per-message loss
                 ).mean(
@@ -425,4 +418,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str, **model_stats_diff})
         logger.info(f"Best loss: {result.best_loss}| Usage stats: {model_stats_diff}")
+        self.model.reset_text_inputs()
+        self.util_model.reset_token_inputs()
         return result

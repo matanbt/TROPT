@@ -22,7 +22,7 @@ from tropt.common import (
 from tropt.loss.base import BaseLoss
 from tropt.loss.resolution import compute_loss_from_model_data
 from tropt.models import (
-    TokenInputsManager,
+    TokenInputManager,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class _HFTokenInputsManager(TokenInputsManager):
+class _HFTokenInputManager(TokenInputManager):
     before_ids: List[Float[Tensor, "bef_len"]]
     after_ids: List[Float[Tensor, "aft_len"]]  # of length n_messages
     embed_func: torch.nn.Embedding
@@ -373,7 +373,6 @@ class _HuggingFaceModelMixins:
 
     def compute_grad_from_tokens(
         self,
-        inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
 
         # Hard trigger input:
@@ -448,7 +447,8 @@ class _HuggingFaceModelMixins:
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
         model = self.model
         embedding_layer = self.embedding_layer
-        n_messages = inputs.n_messages
+        input_manager = self.token_input_manager
+        n_messages = input_manager.n_messages
 
         # Get shape from whichever input is provided
         if candidate_trigger_ids is not None:
@@ -515,7 +515,7 @@ class _HuggingFaceModelMixins:
                     if candidate_trigger_ids is not None:
                         assert torch.allclose(
                             candidate_embeds,
-                            inputs.embed_func(
+                            input_manager.embed_func(
                                 candidate_trigger_ids[cand_idx_start:cand_idx_end]
                             )
                         ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
@@ -532,7 +532,7 @@ class _HuggingFaceModelMixins:
                         # Compute discrete tokens from soft probabilities (before Gumbel-softmax)
                         ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
 
-                    model_input = inputs.get_triggered_inputs(
+                    model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
                         chosen_message_idx=message_idx,
 
@@ -545,6 +545,7 @@ class _HuggingFaceModelMixins:
                     )
                     loss = compute_loss_from_model_data(model_output, model_input, loss_func)
                     batch_losses.append(loss)
+                    # TODO somehow ensure gradient flew throughout the last three function?
 
                 # collect losses for the batch & take avg over messages
                 batch_losses = torch.stack(
@@ -563,8 +564,8 @@ class _HuggingFaceModelMixins:
                     outputs=batch_losses,
                     inputs=[candidate_ids_onehot],
                     grad_outputs=torch.ones_like(batch_losses, device=model.device),
-                    # create_graph=True  # [TODO: allow second order grads] <-- This tells PyTorch to make grads differentiable
                 )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
+                # [TODO: GRAD MATCHING second order losses ] put here a grad-alignment hook that--instead of the loss calc above will: (i) compute a non-detached grad of TWO losses (utility, adv goal; `create_graph=True`); (ii) compute the cosine similarity loss between the grads; (iii) return the detached grad of this cosine similarity --> this is the final gradient.
                 all_grads.append(candidate_onehot_grad)
                 # clear_device_cache()  # clear unused GPU memory
 
@@ -576,14 +577,13 @@ class _HuggingFaceModelMixins:
         all_grads = _compute_grad__batched()
 
         # normalize each token's gradient vector (over the vocab_size dim)
-        # TODO if norm?
-        all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
+        if normalize_grads:
+            all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         return all_grads
 
     def compute_grad_from_embeds(
         self,
-        inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
         return_loss: bool = False,
@@ -603,7 +603,8 @@ class _HuggingFaceModelMixins:
             Shape: (n_candidates, trigger_seq_len, embed_dim)
         """
         model = self.model
-        n_messages = inputs.n_messages
+        input_manager = self.token_input_manager
+        n_messages = input_manager.n_messages
         n_candidates = candidate_trigger_embeds.shape[0]
 
         @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
@@ -630,7 +631,7 @@ class _HuggingFaceModelMixins:
                     candidate_embeds.requires_grad_()
 
                     # 2. Get batched inputs
-                    model_input = inputs.get_triggered_inputs(
+                    model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
                         chosen_message_idx=message_idx,
                     )
@@ -684,7 +685,6 @@ class _HuggingFaceModelMixins:
     def compute_loss_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: _HFTokenInputsManager,
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_messages n_candidates"]:
@@ -702,7 +702,8 @@ class _HuggingFaceModelMixins:
                 the loss for each candidate sequence
         """
 
-        n_messages = inputs.n_messages
+        input_manager = self.token_input_manager
+        n_messages = input_manager.n_messages
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
@@ -730,7 +731,7 @@ class _HuggingFaceModelMixins:
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 logger.debug(f"from loss [msg={message_idx}]: {(cand_idx_end - cand_idx)}")
-                model_input = inputs.get_triggered_inputs(
+                model_input = input_manager.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
                     chosen_message_idx=message_idx,
                 )

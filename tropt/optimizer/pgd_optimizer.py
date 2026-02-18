@@ -18,7 +18,6 @@ from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TokenInputsManager,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker.base import BaseTracker
@@ -160,16 +159,13 @@ class PGDOptimizer(BaseOptimizer):
         super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization
-        inputs: TokenInputsManager
-        trigger_ids: Int[Tensor, "1 trigger_seq_len"]
-        inputs, trigger_ids = self.model.prepare_token_inputs(
-            texts=texts,
-            initial_trigger=initial_trigger,
-            targets=targets,
-        )
-
+        self.model.set_token_inputs(texts=texts, targets=targets)
         tokenizer = self.model.tokenizer
-        vocab_size = inputs.vocab_size
+        trigger_ids = (
+            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
+            .to(self.model.device, torch.int64)
+        )
+        vocab_size = self.model.vocab_size
         device = self.model.device
         dtype = self.model.dtype
 
@@ -207,7 +203,6 @@ class PGDOptimizer(BaseOptimizer):
             # We work directly with the probability distributions
             trigger_grad = self.model.compute_grad_from_tokens(
                 candidate_trigger_probs=probs_batch,
-                inputs=inputs,
                 loss_func=self.loss_func,
                 do_gumbel_softmax=False,  # PGD doesn't use Gumbel during optimization
             )
@@ -240,7 +235,6 @@ class PGDOptimizer(BaseOptimizer):
                 # Compute loss on discrete tokens
                 current_loss = self.model.compute_loss_from_tokens(
                     current_trigger_ids.unsqueeze(0),
-                    inputs,
                     loss_func=self.loss_func,
                 ).item()
 
@@ -278,7 +272,6 @@ class PGDOptimizer(BaseOptimizer):
                 # Compute loss
                 sample_loss = self.model.compute_loss_from_tokens(
                     sampled_ids.unsqueeze(0),
-                    inputs,
                     loss_func=self.loss_func,
                 ).item()
 
@@ -316,5 +309,5 @@ class PGDOptimizer(BaseOptimizer):
             "best_loss": result.best_loss,
             "best_trigger_str": result.best_trigger_str
         })
-
+        self.model.reset_token_inputs()
         return result

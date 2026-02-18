@@ -182,16 +182,15 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization:
-        inputs, trigger_ids = self.model.prepare_token_inputs(
-            texts=texts,
-            initial_trigger=initial_trigger,
-            targets=targets,
+        self.model.set_token_inputs(texts=texts, targets=targets)
+        tokenizer = self.model.tokenizer
+        trigger_ids = (
+            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
+            .to(self.model.device, torch.int64)
         )
         trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
-        vocab_size, tokenizer = inputs.vocab_size, self.model.tokenizer
-        blacklist_ids = self.token_constraints.get_blacklist_ids(
-            tokenizer, vocab_size
-        )
+        vocab_size = self.model.vocab_size
+        blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
@@ -216,7 +215,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         # Compute losses for initial triggers
         losses = self.model.compute_loss_from_tokens(
             torch.stack(triggers_for_buffer),
-            inputs,
             self.loss_func,
         ) # (n_cands,)
 
@@ -250,7 +248,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 trigger_vars = self._get_trigger_variations(trigger_ids, vocab_size)
                 grads = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 )  # (n_trigger_vars, trigger_seq_len, vocab_size)
 
@@ -322,7 +319,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 # Compute losses on candidate flips
                 losses = self.model.compute_loss_from_tokens(
                     candidate_triggers,
-                    inputs,
                     self.loss_func,
                     keep_message_dim=True,  # Get per-message loss
                 ).mean(
@@ -401,5 +397,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        self.model.reset_token_inputs()
         return result
 

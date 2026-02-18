@@ -8,7 +8,6 @@ from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import (
-    DEFAULT_INIT_TRIGGER,
     ModelInput,
     Targets,
     TokenTriggerCandidates,
@@ -16,9 +15,9 @@ from tropt.common import (
 from tropt.loss.base import BaseLoss
 from tropt.loss.resolution import compute_loss_from_model_data
 
-from .inputs import (
-    TextInputsManager,
-    TokenInputsManager,
+from .inputs_manager import (
+    TextInputManager,
+    TokenInputManager,
 )
 from .model_base import BaseTokenizer
 
@@ -28,22 +27,43 @@ from .model_base import BaseTokenizer
 class TokenAccessMixin(ABC):
     """Mixin for models that can access token-level inputs."""
 
+    _token_input_manager: Optional[TokenInputManager] = None
+
     @abstractmethod
-    def prepare_token_inputs(
+    def set_token_inputs(
         self,
         text_templates: Annotated[List[str], "n_messages"],
-        initial_trigger: str,  # initial trigger string
         targets: Targets = None,  # also n_messages, depends on the objective
-    ) -> tuple[TokenInputsManager, Float[Tensor, "1 trigger_len"] | str]:
-        """Prepare the model's inputs object and initial trigger from raw texts.
+    ) -> None:
+        """Prepare and store the inputs manager as self.token_input_manager.
 
         Args:
-            texts: Can be a single string or a list of strings.
-            **kwargs: Additional arguments for specific models.
-        Returns:
-            A tuple of (prepared inputs, initial trigger).
+            text_templates: List of text templates containing the trigger placeholder.
+            targets: Optional targets for the loss function.
         """
         raise NotImplementedError
+
+    @property
+    def token_input_manager(self) -> TokenInputManager:
+        """Returns the stored token input manager, raising if not initialized."""
+        if self._token_input_manager is None:
+            raise RuntimeError(
+                f"{type(self).__name__}.token_input_manager accessed before set_token_inputs() was called."
+            )
+        return self._token_input_manager
+
+    @text_input_manager.setter
+    def text_input_manager(self, value: Optional[TextInputManager]) -> None:
+        """Setter for the text input manager"""
+        self._text_input_manager = value
+
+    def reset_text_inputs(self) -> None:
+        """Clears the stored token input manager."""
+        self.text_input_manager = None
+
+    @property
+    def vocab_size(self) -> int:
+        return self.tokenizer.vocab_size
 
     @property
     @abstractmethod
@@ -61,9 +81,9 @@ class LossTokenAccessMixin(TokenAccessMixin):
 
     @abstractmethod
     def compute_loss_from_tokens(
-        self, candidate_trigger_ids: TokenTriggerCandidates, inputs: TokenInputsManager, **kwargs
+        self, candidate_trigger_ids: TokenTriggerCandidates, **kwargs
     ) -> Float[Tensor, "n_messages n_candidates"]:
-        """Compute the loss on the given inputs with the given trigger merged in."""
+        """Compute the loss on the stored token inputs with the given trigger merged in."""
         raise NotImplementedError
 
 
@@ -72,9 +92,9 @@ class LogitsTokenAccessMixin(TokenAccessMixin):
 
     @abstractmethod
     def compute_logits_from_tokens(
-        self, candidate_trigger_ids: TokenTriggerCandidates, inputs: TokenInputsManager, **kwargs
+        self, candidate_trigger_ids: TokenTriggerCandidates, **kwargs
     ) -> Float[Tensor, "trigger_seq_len vocab_size"]:
-        """Compute logits w.r.t. `trigger` tokens that are merge into `inputs`"""
+        """Compute logits w.r.t. `trigger` tokens that are merged into stored token inputs."""
         raise NotImplementedError
 
 
@@ -84,9 +104,9 @@ class GradientTokenAccessMixin(TokenAccessMixin):
 
     @abstractmethod
     def compute_grad_from_tokens(
-        self, candidate_trigger_ids: TokenTriggerCandidates, inputs: TokenInputsManager, **kwargs
+        self, candidate_trigger_ids: TokenTriggerCandidates, **kwargs
     ) -> Float[Tensor, "trigger_seq_len vocab_size"]:
-        """Compute gradients w.r.t. `trigger` tokens that are merge into `inputs`"""
+        """Compute gradients w.r.t. `trigger` tokens that are merged into stored token inputs."""
         raise NotImplementedError
 
 ## "White-box" Model Mixins w/ embed access:
@@ -96,11 +116,10 @@ class GradientEmbedAccessMixin(TokenAccessMixin):
     @abstractmethod
     def compute_grad_from_embeds(
         self,
-        inputs: TokenInputsManager,
         loss_func: BaseLoss,
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"]:
-        """Compute gradients w.r.t. `trigger` tokens that are merge into `inputs`"""
+        """Compute gradients w.r.t. `trigger` embeddings using stored token inputs."""
         raise NotImplementedError
 
 ## -------- Text-level access mixins ------- ##
@@ -108,19 +127,36 @@ class GradientEmbedAccessMixin(TokenAccessMixin):
 
 ## "Black-box" Model Mixins:
 class TextAccessMixin(ABC):
-    def prepare_text_inputs(
+    _text_input_manager: Optional[TextInputManager] = None
+
+    @property
+    def text_input_manager(self) -> TextInputManager:
+        """Returns the stored text input manager, raising if not initialized."""
+        if self._text_input_manager is None:
+            raise RuntimeError(
+                f"{type(self).__name__}.text_input_manager accessed before set_text_inputs() was called."
+            )
+        return self._text_input_manager
+
+    @text_input_manager.setter
+    def text_input_manager(self, value: Optional[TextInputManager]) -> None:
+        """Setter for the text input manager, allowing it to be set to None to reset."""
+        self._text_input_manager = value
+
+    def set_text_inputs(
         self,
         texts: Annotated[List[str], "n_messages"],
         targets: Targets = None,
-        initial_trigger: str = DEFAULT_INIT_TRIGGER,
-    ) -> Tuple[TextInputsManager, List[str]]:
-        """
-        Prepares the text-based inputs manager from raw text templates.
-        """
-        return TextInputsManager(
+    ) -> None:
+        """Prepare and store the text-based inputs manager."""
+        self.text_input_manager = TextInputManager(
             texts=texts,
             targets=targets,
-        ), [initial_trigger]
+        )
+
+    def reset_text_inputs(self) -> None:
+        """Clear the stored text input manager."""
+        self.text_input_manager = None
 
 
 class LossTextAccessMixin(TextAccessMixin):
@@ -130,26 +166,21 @@ class LossTextAccessMixin(TextAccessMixin):
     def compute_loss_from_texts(
         self,
         candidate_trigger_strs: List[str],
-        inputs: TextInputsManager,
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"]:
         """
-        Computes the loss on all candidate string texts.
+        Computes the loss on all candidate string texts using the stored text inputs manager.
         This computation is based on the __call__() method of the model, and the information it provides.
         """
-
-        assert isinstance(
-            inputs, TextInputsManager
-        ), f"inputs must be of type TextInputsManager, but got {type(inputs)}"
-
-        n_messages = inputs.n_messages
+        input_manager = self.text_input_manager
+        n_messages = input_manager.n_messages
         n_candidates = len(candidate_trigger_strs)
 
         # Main Loop: for each message, we compute the loss for all candidates
         losses = []
         for message_idx in range(n_messages):
-            curr_model_input = inputs.get_triggered_inputs(
+            curr_model_input = input_manager.get_triggered_inputs(
                 candidate_trigger_strs, chosen_message_idx=message_idx
             )
             curr_texts, curr_targets = (

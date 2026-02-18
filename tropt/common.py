@@ -2,9 +2,9 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
 
+import pydantic
 import torch
 from jaxtyping import Float, Int
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 from torch import Tensor
 
 # TODO arrange the comments and structure here
@@ -21,7 +21,7 @@ DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
 # ======================= Common input types =======================
 Texts = Annotated[
     List[str],
-    Field(min_length=1),
+    pydantic.Field(min_length=1),
     "n_messages"
 ]
 """List of input text strings, one per message. Are expected to contain the trigger placeholder (`{{OPTIMIZED_TRIGGER}}`).
@@ -49,9 +49,9 @@ class SliceKey(str, Enum):
     INPUT_LAST_TOKEN = "input_last_token"  # Last input token
     APPENDED = "appended"  # Appended tokens (if any); a.k.a. prefilled tokens
 
-class MessageTargets(BaseModel):
+class MessageTargets(pydantic.BaseModel):
     """Targets for a single selected message."""
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     target_response_strs: Optional[str] = None
     """Raw text target response for this message.
@@ -71,7 +71,7 @@ class MessageTargets(BaseModel):
     """
 
 
-class Targets(BaseModel):
+class Targets(pydantic.BaseModel):
     """Targets for all messages. Each field has an an initial n_messages dimension.
 
     Typically only one or two of these fields need to be provided depending
@@ -79,7 +79,7 @@ class Targets(BaseModel):
     For example, a standard LM jailbreak only needs `target_response_strs` (which will be
     tokenized internally).
     """
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
     target_response_strs: Optional[Annotated[List[str], "n_messages"]] = None
     """Raw text target outputs, one per message.
@@ -121,7 +121,7 @@ class Targets(BaseModel):
                 return len(val)
         return 0
 
-    @model_validator(mode="after")
+    @pydantic.model_validator(mode="after")
     def check_field_lengths(self) -> "Targets":
         lengths = {len(v) for k, v in self if v is not None}
         if len(lengths) > 1:
@@ -146,7 +146,7 @@ class Targets(BaseModel):
 
 # ======================= Model Input Wrapper =======================
 
-class ModelInput(BaseModel):
+class ModelInput(pydantic.BaseModel):
     """Standardized input container returned by InputsManager.get_triggered_inputs().
 
     This renders a uniform interface for model outputs, that can then be used
@@ -177,9 +177,9 @@ class ModelInput(BaseModel):
         ... )
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
-    # === Text-level inputs (TextInputsManager) ===
+    # === Text-level inputs (TextInputManager) ===
     input_texts: Optional[Annotated[List[str], "bsz"]] = None
     """List of complete text strings with triggers inserted, of length batch_size.
     """
@@ -188,7 +188,7 @@ class ModelInput(BaseModel):
     """List of trigger strings used in the inputs, of length batch_size.
     """
 
-    # === Token-level inputs (TokenInputsManager) ===
+    # === Token-level inputs (TokenInputManager) ===
     input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
     """Token IDs of the trigger candidates. Shape: (batch_size, trigger_sequence_length).
 
@@ -246,7 +246,7 @@ class ModelInput(BaseModel):
 
 # ======================= Model Output Wrapper =======================
 
-class ModelOutput(BaseModel):
+class ModelOutput(pydantic.BaseModel):
     """Standardized output container for all model types in TROPT.
 
     This renders a uniform interface for model outputs, that can then be used
@@ -281,7 +281,7 @@ class ModelOutput(BaseModel):
         ... )
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra='forbid')
+    model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 
     # === Embedding outputs (Encoder models) ===
     output_embeddings: Optional[Float[Tensor, "bsz d_model"]] = None

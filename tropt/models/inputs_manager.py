@@ -37,7 +37,7 @@ class InputsManager(ABC):
         raise NotImplementedError
 
 ## Text inputs manager ##
-class TextInputsManager(InputsManager):
+class TextInputManager(InputsManager):
     """
     Class for maintaining text-based trigger-combined inputs (fits black-box text-level query access).
     """
@@ -107,7 +107,7 @@ class TextInputsManager(InputsManager):
         )
 
 ## Token inputs manager ##
-class TokenInputsManager(InputsManager):
+class TokenInputManager(InputsManager):
     """
     Base class for maintaining token-level trigger-combined inputs (fits models with token-level access).
     """

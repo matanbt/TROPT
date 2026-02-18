@@ -7,10 +7,10 @@ from .model_base import (
 )
 
 # Input classes:
-from .inputs import (
+from .inputs_manager import (
     InputsManager,
-    TextInputsManager,
-    TokenInputsManager,
+    TextInputManager,
+    TokenInputManager,
 )
 
 
@@ -27,14 +27,14 @@ from .model_mixins import (
 )
 
 # Import all OpenAI models:
-from .openai.encoder import EncoderOpenAIModel, OpenAITokenInputsManager
+from .openai.encoder import EncoderOpenAIModel, OpenAITokenInputManager
 
 # Import all Google models:
 from .google.encoder import EncoderGeminiModel
-from .huggingface.encoder import EncoderHFModel, EncoderHFTokenInputsManager
+from .huggingface.encoder import EncoderHFModel, EncoderHFTokenInputManager
 
 # Import all HF models:
-from .huggingface.lm import LMHFModel, LMHFTokenInputsManager
+from .huggingface.lm import LMHFModel, LMHFTokenInputManager
 
 # Import LiteLLM models:
 from .litellm_proxy.lm import LiteLLMModel

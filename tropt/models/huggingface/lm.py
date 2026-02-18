@@ -11,7 +11,6 @@ from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.common import (
-    DEFAULT_INIT_TRIGGER,
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelInput,
     ModelOutput,
@@ -31,14 +30,14 @@ from tropt.models import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.base import _HFTokenInputsManager, _HuggingFaceModelMixins
+from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
 from tropt.models.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 
 
 # ======================= Input/Output Handlers logic =======================
-class LMHFTokenInputsManager(_HFTokenInputsManager):
+class LMHFTokenInputManager(_HFTokenInputManager):
     targets: Targets
     # includes `target_response_toks` (n_messages, target_seq_len) if target outputs are provided;
     # to optimize towards an output per message
@@ -171,14 +170,13 @@ class LMHFModel(
     def device(self):
         return self.model.device
 
-    def prepare_token_inputs(
+    def set_token_inputs(
         self,
         texts: List[str],
         targets: Optional[Targets] = None,
-        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-    ) -> Tuple[LMHFTokenInputsManager, Int[Tensor, "1 trigger_seq_len"]]:
+    ) -> None:
         """
-        Prepares the inputs for the model, including tokenization and target processing.
+        Prepares and stores the inputs manager for the model, including tokenization and target processing.
         """
         # To make sure the placeholder will be tokenizer as is
         self.tokenizer.add_special_tokens(
@@ -218,7 +216,7 @@ class LMHFModel(
         targets = targets.to_device(self.model.device)
 
         # Build the input manager, that will allow combining with different triggers
-        inputs = LMHFTokenInputsManager(
+        self.token_input_manager = LMHFTokenInputManager(
             tok_ids=template_tok_ids,
             model=self.model,
             tokenizer=self.tokenizer,
@@ -228,25 +226,10 @@ class LMHFModel(
             targets=targets,
         )
 
-        # Tokenizer trigger
-        if not initial_trigger:
-            # start with an empty trigger
-            trigger_ids = torch.zeros((1, 0), dtype=torch.long, device=self.model.device)
-        else:
-            trigger_ids = (
-                self.tokenizer.encode(
-                    initial_trigger, add_special_tokens=False, return_tensors="pt"
-                )
-                .to(self.model.device, torch.int64)
-            )
-
-        return inputs, trigger_ids
-
     @torch.no_grad()
     def compute_logits_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        inputs: LMHFTokenInputsManager,
         keep_message_dim: bool = False,
         return_trigger_logits_only: bool = False,
         return_after_trigger_logits_only: bool = False,
@@ -262,7 +245,7 @@ class LMHFModel(
         Args:
             candidate_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
                 the token ids of the candidate trigger sequences to evaluate
-            inputs: LMHFTokenInputsManager
+            inputs: LMHFTokenInputManager
                 the inputs object containing the input text and target text (if provided)
             return_slices: bool
                 whether to return the slices corresponding to each input in the batch (default: False)
@@ -275,7 +258,8 @@ class LMHFModel(
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
 
-        n_messages = inputs.n_messages
+        input_manager = self.token_input_manager
+        n_messages = input_manager.n_messages
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         # Compute the logits (in batches)
@@ -292,7 +276,7 @@ class LMHFModel(
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 # Get inputs for this specific message
-                model_input = inputs.get_triggered_inputs(
+                model_input = input_manager.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
                     chosen_message_idx=message_idx,
                 )
@@ -410,7 +394,8 @@ class LMHFModel(
         Generate text completions for the given input texts.
         """
         assert isinstance(texts, list), "texts must be a string or a list of strings."
-        # TODO support input embeds, to evaluate soft prompts
+
+        # TODO support input embeds, to evaluate soft prompts; specifically we should be able to accept both multi-texts (strings; as usual) and single trigger (embeds) and generate on them.
 
         # Add chat template and tokenize
         # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template

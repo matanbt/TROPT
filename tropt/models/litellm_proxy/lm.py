@@ -117,5 +117,4 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         return responses
 
-    def prepare_token_inputs(self, *args, **kwargs):
-        raise NotImplementedError("LiteLLMModel only supports text-level access (LossTextAccessMixin).")
+

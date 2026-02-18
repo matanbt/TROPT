@@ -17,7 +17,6 @@ from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TokenInputsManager,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering
@@ -140,20 +139,14 @@ class GCGOptimizer(BaseOptimizer):
         super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization:
-        inputs: TokenInputsManager
-        trigger_ids: Int[Tensor, "1 trigger_seq_len"]
-        inputs, trigger_ids = (
-            self.model.prepare_token_inputs(
-                texts=texts,
-                initial_trigger=initial_trigger,
-                targets=targets,
-            )
-        )
+        self.model.set_token_inputs(texts=texts, targets=targets)
         tokenizer = self.model.tokenizer
-        vocab_size = inputs.vocab_size
-        blacklist_ids = self.token_constraints.get_blacklist_ids(
-            tokenizer, vocab_size
+        trigger_ids = (
+            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
+            .to(self.model.device, torch.int64)
         )
+        vocab_size = self.model.vocab_size
+        blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
 
         trigger_ids: Int[Tensor, "trigger_seq_len"] = trigger_ids.squeeze(0)  # take the only trigger
         trigger_str: str = initial_trigger
@@ -164,7 +157,7 @@ class GCGOptimizer(BaseOptimizer):
 
         # Compute loss before optimization
         current_loss = self.model.compute_loss_from_tokens(
-            trigger_ids.unsqueeze(0), inputs, loss_func=self.loss_func
+            trigger_ids.unsqueeze(0), loss_func=self.loss_func
         ).item()
         self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
 
@@ -175,7 +168,6 @@ class GCGOptimizer(BaseOptimizer):
             trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
                 self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_ids.unsqueeze(0),
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 ).squeeze(0)  # take the only trigger
             )  # shape: (trigger_seq_len, vocab_size)
@@ -195,7 +187,7 @@ class GCGOptimizer(BaseOptimizer):
 
             # Compute loss on all candidate sequences
             losses = self.model.compute_loss_from_tokens(
-                candidate_trigger_ids, inputs, loss_func=self.loss_func
+                candidate_trigger_ids, loss_func=self.loss_func
             )  # shape: (n_messages, n_candidates)
             current_loss = losses.min().item()
             self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
@@ -224,4 +216,5 @@ class GCGOptimizer(BaseOptimizer):
             full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        self.model.reset_token_inputs()
         return result

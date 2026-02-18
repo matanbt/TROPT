@@ -73,15 +73,14 @@ class SoftPromptOptimizer(BaseOptimizer):
         super().optimize_trigger(texts, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization
-        inputs: TokenInputsManager
-        trigger_ids: Int[Tensor, "1 trigger_seq_len"]
-        inputs, trigger_ids = self.model.prepare_token_inputs(
-            texts=texts,
-            initial_trigger=initial_trigger,
-            targets=targets,
+        self.model.set_token_inputs(texts=texts, targets=targets)
+        tokenizer = self.model.tokenizer
+        trigger_ids = (
+            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
+            .to(self.model.device, torch.int64)
         )
 
-        trigger_embeds = inputs.embed_func(trigger_ids)  # (1, trigger_seq_len, embd_dim)
+        trigger_embeds = self.model.embedding_layer(trigger_ids)  # (1, trigger_seq_len, embd_dim)
         # trigger_embeds.requires_grad_(True)  # TODO ??
 
         # Initialize Adam optimizer on the logits
@@ -97,7 +96,6 @@ class SoftPromptOptimizer(BaseOptimizer):
 
             # Compute gradients w.r.t. trigger embeddings
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
-                inputs=inputs,
                 loss_func=self.loss_func,
                 candidate_trigger_embeds=trigger_embeds,
                 return_loss=True,
@@ -132,5 +130,5 @@ class SoftPromptOptimizer(BaseOptimizer):
             "best_loss": result.best_loss,
             "best_trigger_embeds": result.best_trigger
         })
-
+        self.model.reset_token_inputs()
         return result
