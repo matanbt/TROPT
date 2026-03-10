@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Annotated, Any, List, Optional
 
-import torch
 import pydantic
+import torch
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
 from tropt.loss.base import BaseLoss

@@ -11,6 +11,7 @@ from tropt.common import (
     ModelInput,
     SliceKey,
     Targets,
+    TextTemplates,
 )
 
 # ======================= Triggered Input Managers =======================

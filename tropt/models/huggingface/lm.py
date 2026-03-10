@@ -16,6 +16,7 @@ from tropt.common import (
     ModelOutput,
     SliceKey,
     Targets,
+    TextTemplates,
 )
 from tropt.loss.base import (
     AttentionBasedLoss,

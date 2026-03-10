@@ -1,9 +1,10 @@
-import numpy as np
-import torch
-import tiktoken
 from typing import Annotated, Any, List, Literal, Optional
-from openai import OpenAI
+
+import numpy as np
+import tiktoken
+import torch
 from jaxtyping import Float, Int
+from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 from torch import Tensor
 from transformers import BatchEncoding
@@ -13,6 +14,7 @@ from tropt.common import (
     ModelInput,
     ModelOutput,
     Targets,
+    TextTemplates,
 )
 from tropt.models import (
     BaseTokenizer,

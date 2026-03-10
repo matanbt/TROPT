@@ -10,7 +10,7 @@ import transformers
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
 
 logger = logging.getLogger(__name__)
 

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union, Annotated
+from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -10,6 +10,7 @@ from transformers import BatchEncoding, PreTrainedTokenizer
 from tropt.common import (
     ModelInput,
     Targets,
+    TextTemplates,
     TokenTriggerCandidates,
 )
 from tropt.loss.base import BaseLoss
@@ -56,10 +57,10 @@ class TokenAccessMixin(ABC):
             )
         return self._token_input_manager
 
-    @text_input_manager.setter
-    def text_input_manager(self, value: Optional[TextInputManager]) -> None:
-        """Setter for the text input manager"""
-        self._text_input_manager = value
+    @token_input_manager.setter
+    def token_input_manager(self, value: Optional[TokenInputManager]) -> None:
+        """Setter for the token input manager"""
+        self._token_input_manager = value
 
     @property
     def vocab_size(self) -> int:

@@ -13,6 +13,7 @@ from tropt.common import (
     ModelInput,
     ModelOutput,
     Targets,
+    TextTemplates,
 )
 from tropt.loss.base import BaseLoss
 from tropt.models import (
