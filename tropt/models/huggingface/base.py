@@ -2,7 +2,7 @@ import itertools
 import logging
 from abc import abstractmethod
 from functools import cached_property
-from typing import Dict, List, Optional, Tuple
+from typing import Annotated, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch

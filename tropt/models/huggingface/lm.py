@@ -255,7 +255,7 @@ class LMHFModel(
             return_trigger_logits_only: bool
                 whether to return only the logits corresponding to the trigger tokens (default: False)
             return_after_trigger_logits_only: bool
-                whether to return only the logits corresponding to the final token of the trigger (default: False)
+                whether to return only the logits corresponding to predicting the next token after trigger (default: False)
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
 
@@ -309,7 +309,7 @@ class LMHFModel(
 
                 # extract the relevant logits
                 if return_trigger_logits_only:
-                    slc = slice(slc_trigger.start - 1, slc_trigger.stop)
+                    slc = slice(slc_trigger.start - 1, slc_trigger.stop - 1)
                     assert slc.stop - slc.start == trigger_seq_len, "Trigger slice length does not match candidate trigger length."
                 else:  # return_after_trigger_logits_only
                     slc = slice(slc_trigger.stop, slc_trigger.stop + 1)
