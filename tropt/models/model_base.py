@@ -88,10 +88,23 @@ class LMBaseModel(BaseModel):
     """Language model base class."""
 
     def __call__(
-            self,
-            texts: List[str],
-            return_full_output: bool = False,
-            *args, **kwargs) -> List[str] | ModelOutput:
+        self,
+        texts: List[str],
+        return_full_output: bool = False,
+        **kwargs
+    ) -> List[str] | ModelOutput:
+        """
+        Generate text completions for the given input texts.
+        """
+        return self.generate(texts=texts, return_full_output=return_full_output, **kwargs)
+
+    @abstractmethod
+    def generate(
+        self,
+        texts: List[str],
+        return_full_output: bool = False,
+        **kwargs
+    ) -> List[str] | ModelOutput:
         """Generates text completions for the given input texts."""
         raise NotImplementedError
 
@@ -102,9 +115,19 @@ class EncoderBaseModel(BaseModel):
     def __call__(
         self, texts: List[str],
         return_full_output: bool = False,
-        *args, **kwargs
+        **kwargs
     ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
-        """Generates encoder embeddings for the given input texts."""
+        """Computes encoder embeddings for the given input texts."""
+        return self.encode(texts=texts, return_full_output=return_full_output, **kwargs)
+
+    @abstractmethod
+    def encode(
+        self, 
+        texts: List[str],
+        return_full_output: bool = False,
+        **kwargs
+    ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
+        """Computes encoder embeddings for the given input texts."""
         raise NotImplementedError
 
 

@@ -39,7 +39,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             "query": "RETRIEVAL_QUERY",
         }
 
-    def __call__(
+    def encode(
         self,
         texts: List[str],
         text_type: str = None,

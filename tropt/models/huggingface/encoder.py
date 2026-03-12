@@ -225,7 +225,7 @@ class EncoderHFModel(
         )
 
     @torch.no_grad()
-    def __call__(
+    def encode(
         self,
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,

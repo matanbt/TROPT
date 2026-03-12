@@ -271,14 +271,14 @@ class EncoderOpenAIModel(
         wait=wait_exponential(multiplier=1, min=4, max=60),
         stop=stop_after_attempt(5)
     )
-    def __call__(
+    def encode(
         self,
         texts: Annotated[List[str], "n_texts"],
         return_full_output: bool = False,
         **kwargs
     ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
-        Generates embeddings for the given texts using the OpenAI API.
+        Compute embeddings for the given texts using the OpenAI API.
 
         Args:
             texts: A list of strings to embed.

@@ -374,16 +374,6 @@ class LMHFModel(
             output_hidden_states=torch.stack(outputs.hidden_states, dim=1) if outputs.hidden_states else None,
         )
 
-    def __call__(
-        self,
-        texts: List[str],
-        **kwargs
-    ) -> List[str] | ModelOutput:
-        """
-        Generate text completions for the given input texts.
-        """
-        return self.generate(texts=texts, **kwargs)
-
     def generate(
         self,
         texts: List[str],
