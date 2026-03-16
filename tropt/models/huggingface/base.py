@@ -347,8 +347,8 @@ class _HFTokenInputManager(TokenInputManager):
 class _HuggingFaceModelMixins:
     """Implementation of common methods for HuggingFace models."""
 
-    model: transformers.PreTrainedModel
-    embedding_layer: torch.nn.Embedding
+    _model: transformers.PreTrainedModel
+    _embedding_layer: torch.nn.Embedding
 
     @cached_property
     def effective_embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
@@ -368,8 +368,8 @@ class _HuggingFaceModelMixins:
         Returns:
             Tensor of shape (vocab_size, embd_dim)
         """
-        all_token_ids = torch.arange(self.embedding_layer.num_embeddings, device=self.model.device)
-        effective_embedding_matrix = self.embedding_layer(all_token_ids)  # (vocab_size, dim)
+        all_token_ids = torch.arange(self._embedding_layer.num_embeddings, device=self._model.device)
+        effective_embedding_matrix = self._embedding_layer(all_token_ids)  # (vocab_size, dim)
         return effective_embedding_matrix  # shape: (vocab_size, embd_dim)
 
     def compute_grad_from_tokens(
@@ -433,7 +433,7 @@ class _HuggingFaceModelMixins:
 
         Example:
             >>> # GCG-style optimization with discrete token candidates
-            >>> inputs = model.prepare_token_inputs(texts, initial_trigger, targets)
+            >>> inputs = model.set_token_inputs(texts, initial_trigger, targets)
             >>> candidate_ids = torch.randint(0, vocab_size, (128, 20))  # 128 candidates
             >>> grads = model.compute_grad_from_tokens(
             ...     inputs=inputs,
@@ -446,9 +446,11 @@ class _HuggingFaceModelMixins:
         """
         assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
-        model = self.model
-        embedding_layer = self.embedding_layer
-        input_manager = self.token_input_manager
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+
+        model = self._model
+        embedding_layer = self._embedding_layer
+        input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
 
         # Get shape from whichever input is provided
@@ -457,16 +459,16 @@ class _HuggingFaceModelMixins:
         else: # candidate_trigger_probs is not None:
             n_candidates, trigger_seq_len = candidate_trigger_probs.shape[:2]
 
-        @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
+        @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
         ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update backward batch size ---
             # Automatically lower the default for future calls if this run required a downgrade
-            if batch_size < self.backward_pass_batch_size:
-                logger.info(f"OOM detected. Reducing backward_pass_batch_size from {self.backward_pass_batch_size} to {batch_size}")
-                self.backward_pass_batch_size = batch_size
+            if batch_size < self._backward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing _backward_pass_batch_size from {self._backward_pass_batch_size} to {batch_size}")
+                self._backward_pass_batch_size = batch_size
             # --------------------
 
             all_grads = []  # of len `n_candidate // batch_size`
@@ -603,20 +605,22 @@ class _HuggingFaceModelMixins:
             Gradients w.r.t. the input embeddings.
             Shape: (n_candidates, trigger_seq_len, embed_dim)
         """
-        model = self.model
-        input_manager = self.token_input_manager
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+
+        model = self._model
+        input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
         n_candidates = candidate_trigger_embeds.shape[0]
 
-        @find_executable_batch_size(starting_batch_size=self.backward_pass_batch_size)
+        @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
         ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update backward batch size ---
-            if batch_size < self.backward_pass_batch_size:
-                logger.info(f"OOM detected. Reducing backward_pass_batch_size from {self.backward_pass_batch_size} to {batch_size}")
-                self.backward_pass_batch_size = batch_size
+            if batch_size < self._backward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing _backward_pass_batch_size from {self._backward_pass_batch_size} to {batch_size}")
+                self._backward_pass_batch_size = batch_size
             # --------------------
 
             all_grads = []
@@ -702,21 +706,22 @@ class _HuggingFaceModelMixins:
             Tensor, shape = (n_candidates,), or (n_templates, n_candidates) if keep_message_dim=True
                 the loss for each candidate sequence
         """
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
 
-        input_manager = self.token_input_manager
+        input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
-        @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
+        @find_executable_batch_size(starting_batch_size=self._forward_pass_batch_size)
         def _compute_candidates_loss__batched(
             batch_size: int,
         ) -> Float[Tensor, "n_templates n_candidates"]:
 
             # --- Update forward batch size ---
             # Automatically lower the default for future calls if this run required a downgrade
-            if batch_size < self.forward_pass_batch_size:
-                logger.info(f"OOM detected. Reducing forward_pass_batch_size from {self.forward_pass_batch_size} to {batch_size}")
-                self.forward_pass_batch_size = batch_size
+            if batch_size < self._forward_pass_batch_size:
+                logger.info(f"OOM detected. Reducing _forward_pass_batch_size from {self._forward_pass_batch_size} to {batch_size}")
+                self._forward_pass_batch_size = batch_size
             # --------------------
 
             all_loss = [

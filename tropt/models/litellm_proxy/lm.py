@@ -44,17 +44,17 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             **client_kwargs: Additional arguments for the litellm completion call.
         """
         self.model_name = model_name
-        self.system_prompt = system_prompt
-        self.max_concurrent_requests = max_concurrent_requests
+        self._system_prompt = system_prompt
+        self._max_concurrent_requests = max_concurrent_requests
 
-        self.client_kwargs = client_kwargs
+        self._client_kwargs = client_kwargs
         if base_url:
-            self.client_kwargs["base_url"] = base_url
+            self._client_kwargs["base_url"] = base_url
         if api_key:
-            self.client_kwargs["api_key"] = api_key
+            self._client_kwargs["api_key"] = api_key
         if using_litellm_proxy:
             # LiteLLM proxy uses OpenAI-compatible API
-            self.client_kwargs['custom_llm_provider'] = 'openai'
+            self._client_kwargs['custom_llm_provider'] = 'openai'
 
     def __call__(
         self,
@@ -70,10 +70,10 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         # Build prompts
         prompts = [ [{"role": "user", "content": text}] for text in texts]
-        if self.system_prompt:
+        if self._system_prompt:
             # prepend system prompt, if provided
             for prompt in prompts:
-                prompt.insert(0, {"role": "system", "content": self.system_prompt})
+                prompt.insert(0, {"role": "system", "content": self._system_prompt})
 
         # Generation params:
         generation_kwargs = {
@@ -87,7 +87,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
                 messages=prompts,
                 num_retries=self._N_RETRIES,
                 retry_strategy=self._RETRY_STRATEGY,
-                **self.client_kwargs,
+                **self._client_kwargs,
                 **generation_kwargs,
                 **kwargs,
             )

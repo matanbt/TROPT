@@ -1,0 +1,417 @@
+# Adding a New Model
+
+This guide walks you through wrapping a new model backend in TROPT. Pick the section that matches your situation:
+
+- **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
+- **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
+- **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `_HuggingFaceModelMixins` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
+
+> This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../DESIGN.md) (especially "Pillar 1: Target Model"). For full API reference, see the [models API docs](api/models.html).
+
+---
+
+## Background
+
+### Base Classes
+
+Every model inherits from one of two base classes in [`tropt/models/model_base.py`](../tropt/models/model_base.py):
+
+| Base class | Use for | Inference method you implement |
+|---|---|---|
+| `LMBaseModel` | Language models (text generation) | `generate(texts, return_full_output, ...)` |
+| `EncoderBaseModel` | Embedding / encoder models | `encode(texts, return_full_output, ...)` and `d_model` property |
+
+Each base class defines `__call__` which delegates to its inference method (`generate` or `encode`). You implement the inference method; `__call__` is already wired up.
+
+Throughout this guide, we use **"inference method"** to refer to `encode` or `generate` — the method your base class requires.
+
+### Mixins (Access Levels)
+
+Mixins declare what *type of access* the model exposes. Optimizers check these at init via `model_requirements` to verify compatibility — this is how TROPT enforces that an optimizer only calls methods the model actually supports.
+
+**Naming convention**: `{Value}{InputType}AccessMixin`
+- *Value*: what can be computed (`Loss`, `Gradient`, `Logits`)
+- *InputType*: what goes in (`Token` for white/grey-box, `Text` for black-box)
+
+**Token-access mixins** — require embedding-level access:
+
+| Mixin | Access level | Methods you implement |
+|---|---|---|
+| `LossTokenAccessMixin` | grey-box | `compute_loss_from_tokens` |
+| `GradientTokenAccessMixin` | white-box | `compute_grad_from_tokens` |
+| `LogitsTokenAccessMixin` | white-box | `compute_logits_from_tokens` |
+| `GradientEmbedAccessMixin` | white-box | `compute_grad_from_embeds` |
+
+All token-access mixins inherit from `TokenAccessMixin`, which requires:
+- **`tokenizer`** property — HuggingFace `PreTrainedTokenizer` or [`BaseTokenizer`](../tropt/models/model_base.py) subclass.
+- **`set_token_inputs(templates, targets)`** — builds and stores an `InputsManager` for the optimization run.
+
+You implement `tokenizer` and `set_token_inputs` **once**, regardless of how many token mixins you include.
+
+**Text-access mixin** — black-box text I/O:
+
+| Mixin | Access level | Methods you implement |
+|---|---|---|
+| `LossTextAccessMixin` | black-box | *nothing* — fully implemented; it calls your `__call__` internally |
+
+`LossTextAccessMixin` provides `compute_loss_from_texts` and `set_text_inputs` out of the box. It works by calling `self(texts, return_full_output=True)` and passing the resulting `ModelOutput` through the [unified loss resolution system](../tropt/loss/resolution.py).
+
+A model can include both token-access and text-access mixins — see `LMHFModel` and `EncoderHFModel` for examples.
+
+### ModelOutput
+
+[`ModelOutput`](../tropt/common.py) is a dataclass that standardizes what your model returns. All fields are optional — populate only the ones your backend can provide:
+
+```python
+@dataclass
+class ModelOutput:
+    output_embeddings: ...   # Encoder models
+    output_logits: ...       # LMs (prefill logits)
+    response_logits: ...     # LMs (response-region logits)
+    output_hidden_states: ...
+    output_attentions: ...
+    generated_response_strs: ...  # LMs (generated text)
+    generated_response_ids: ...
+    generated_response_logits: ...
+    full_template_strs: ...
+    full_template_ids: ...
+```
+
+The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `ResponseLMScoreLoss`). The [loss resolution system](../tropt/loss/resolution.py) validates this at runtime and raises clear errors if a required field is missing.
+
+---
+
+## Adding a Text-Access (Black-box) Model
+
+Use this path when you can only query the model with text and receive text or embeddings back — no access to logits, gradients, or internal representations.
+
+Your class will inherit from:
+- A **base class**: `EncoderBaseModel` (for embedding models) or `LMBaseModel` (for language models)
+- The **`LossTextAccessMixin`** mixin — which provides `compute_loss_from_texts` and `set_text_inputs` for free
+
+**Existing examples**: [`EncoderGeminiModel`](../tropt/models/google/encoder.py), [`LiteLLMModel`](../tropt/models/litellm_proxy/lm.py).
+
+### What to implement
+
+You implement a single method — the inference method required by your base class. Here's an LM example:
+
+```python
+def generate(self, texts: List[str], return_full_output: bool = False, **kwargs) -> List[str] | ModelOutput:
+    responses = self._client.complete(texts)  # your backend call
+
+    self._update_usage_stats(
+        tokens=...,  # extract from backend response
+        forward_calls=1,
+        forward_samples=len(texts),
+    )
+
+    if return_full_output:
+        return ModelOutput(generated_response_strs=responses)
+    return responses
+```
+
+Key rules:
+- Input is always `List[str]`. Output depends on `return_full_output`.
+- When `return_full_output=False`, return the raw result directly. When `True`, wrap in `ModelOutput` — the fields you populate determine which loss types are compatible (see [ModelOutput](#modeloutput)).
+- **Call `_update_usage_stats` at the same call site as the backend call** — not from higher-level wrappers. This avoids double-counting.
+
+Everything else — `set_text_inputs`, `compute_loss_from_texts` — is provided by `LossTextAccessMixin`.
+
+### Minimal class skeleton
+
+```python
+from tropt.common import ModelOutput
+from tropt.models import LMBaseModel, LossTextAccessMixin
+
+
+class MyLMModel(LMBaseModel, LossTextAccessMixin):
+
+    def __init__(self, model_name, api_key=None):
+        self._client = ...   # initialize your API client
+        self._model_name = model_name
+
+    def generate(self, texts: List[str], return_full_output: bool = False, **kwargs):
+        responses = self._client.complete(texts)
+        self._update_usage_stats(
+            tokens=...,
+            forward_calls=1,
+            forward_samples=len(texts),
+        )
+        if return_full_output:
+            return ModelOutput(generated_response_strs=responses)
+        return responses
+```
+
+For complete working examples, see [`LiteLLMModel`](../tropt/models/litellm_proxy/lm.py) (LM) or [`EncoderGeminiModel`](../tropt/models/google/encoder.py) (encoder).
+
+### File placement
+
+Create a directory under `tropt/models/` for your backend:
+
+```
+tropt/models/
+├── huggingface/
+├── openai/
+├── google/
+├── litellm_proxy/
+└── my_backend/          # your new backend
+    ├── __init__.py
+    └── encoder.py       # or lm.py
+```
+
+Then export your class from [`tropt/models/__init__.py`](../tropt/models/__init__.py).
+
+---
+
+## Adding a Token-Access (Grey/White-box) Model
+
+Use this when your backend supports embedding-level input — you can pass raw input embeddings (not just text) and receive model outputs like logits or gradients. This is the path for non-HuggingFace backends with internal access.
+
+> If your model is HuggingFace-based, skip to [Adding a HuggingFace Model](#adding-a-huggingface-model) — the `_HuggingFaceModelMixins` class already provides the compute loop.
+
+### The InputsManager
+
+The `InputsManager` pre-processes text templates once (splitting at the `{{OPTIMIZED_TRIGGER}}` placeholder, tokenizing, embedding) and then efficiently inserts candidate triggers at each optimization step via `get_triggered_inputs(trigger_ids, chosen_template_idx)`, which returns a [`ModelInput`](../tropt/common.py) dataclass.
+
+For token-access models, subclass [`TokenInputManager`](../tropt/models/inputs_manager.py). The HuggingFace backend uses [`_HFTokenInputManager`](../tropt/models/huggingface/base.py) (handles embedding construction, attention masks, prefix caching, position slicing). For non-HF backends, see [`OpenAITokenInputManager`](../tropt/models/openai/encoder.py) for an example that reconstructs text from token IDs.
+
+### The setup-then-compute pattern
+
+Token-access follows a two-step pattern that separates *setup* from *computation*:
+
+1. **`set_token_inputs(templates, targets)`** — called by the optimizer **once** before `optimize_trigger()` begins. Tokenizes the templates, splits them at the `{{OPTIMIZED_TRIGGER}}` placeholder, and stores an `InputsManager` on the model.
+2. **`compute_{value}_from_tokens(candidate_trigger_ids, ...)`** — called **repeatedly** at each optimization step. Uses the stored manager to assemble full inputs for each candidate trigger, runs the model, and returns the result.
+
+This split matters because templates are fixed for an entire run. Pre-processing them once avoids redundant tokenization and embedding work at every step.
+
+Cleanup is handled by `reset_token_inputs()` (provided by `TokenAccessMixin`), which the optimizer calls at the end of `optimize_trigger()`. You don't need to implement or call it yourself.
+
+### What to implement
+
+**1. Inference method** — Same as for text-access models (see [above](#what-to-implement)).
+
+**2. `tokenizer` property** — Required by `TokenAccessMixin`. Must be a HuggingFace `PreTrainedTokenizer` or a [`BaseTokenizer`](../tropt/models/model_base.py) subclass. The optimizer uses it to encode/decode triggers.
+
+```python
+@property
+def tokenizer(self):
+    return self._tokenizer
+```
+
+If your backend doesn't use a HuggingFace tokenizer, implement the `BaseTokenizer` interface — see [`OpenAITokenizer`](../tropt/models/openai/encoder.py) for an example wrapping `tiktoken`.
+
+**3. `set_token_inputs`** — Tokenize the templates and construct your `InputsManager`. Store it via `self._token_input_manager`:
+
+```python
+def set_token_inputs(self, templates: List[str], targets: Targets = None) -> None:
+    tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
+    self._token_input_manager = MyTokenInputManager(
+        tok_ids=tok_ids,
+        tokenizer=self.tokenizer,
+        targets=targets,
+        # ... backend-specific args
+    )
+```
+
+**4. `compute_{value}_from_tokens`** — Implement one method per token-access mixin you include. The structure is the same for all: loop over templates, call `get_triggered_inputs` to get a `ModelInput`, run the model, and return the result.
+
+An important convention: **loss is computed per-template, not across templates**. Each template may have its own target, so we never mix templates in a single loss call. The per-template losses are aggregated (averaged) afterward.
+
+`compute_loss_from_tokens` (required by `LossTokenAccessMixin`) is the most common:
+
+```python
+@torch.no_grad()
+def compute_loss_from_tokens(
+    self,
+    candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
+    loss_func: BaseLoss,
+    keep_message_dim: bool = False,
+) -> Float[Tensor, "n_candidates"]:
+    input_manager = self._token_input_manager
+    n_templates = input_manager.n_templates
+    all_losses = [[] for _ in range(n_templates)]
+
+    for template_idx in range(n_templates):
+        for batch in batched(candidate_trigger_ids):  # implement your own batching
+            model_input = input_manager.get_triggered_inputs(
+                trigger_ids=batch, chosen_template_idx=template_idx
+            )
+            model_output = ...  # run your backend on model_input
+            self._update_usage_stats(forward_calls=1, forward_samples=len(batch), tokens=...)
+            loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+            all_losses[template_idx].append(loss)
+
+    losses = torch.stack([torch.cat(l) for l in all_losses])  # (n_templates, n_candidates)
+    return losses if keep_message_dim else losses.mean(dim=0)
+```
+
+The key line is `compute_loss_from_model_data(model_output, model_input, loss_func)` — this is the [unified loss resolution](../tropt/loss/resolution.py) function that dispatches to the correct loss computation based on loss type. You don't implement loss logic yourself; you just provide the data via `ModelOutput` and `ModelInput`.
+
+`compute_grad_from_tokens` (required by `GradientTokenAccessMixin`) has the same per-template loop structure, but returns the **gradient of the loss w.r.t. the token input** instead of the loss itself. The returned tensor has shape `(n_candidates, trigger_seq_len, vocab_size)` — one gradient value per token position per vocabulary entry, telling the optimizer which substitutions would most reduce the loss. How you compute this gradient is up to your backend.
+
+### File placement
+
+Same as for text-access models — one directory per backend, exported from `tropt/models/__init__.py`.
+
+---
+
+## Adding a HuggingFace Model
+
+HuggingFace models get the full token-access compute loop for free via [`_HuggingFaceModelMixins`](../tropt/models/huggingface/base.py). You only implement the model-specific parts.
+
+**Existing examples**: [`LMHFModel`](../tropt/models/huggingface/lm.py), [`EncoderHFModel`](../tropt/models/huggingface/encoder.py).
+
+### What `_HuggingFaceModelMixins` provides
+
+These methods are fully implemented and call `token_forward_pass` internally:
+
+- **`compute_loss_from_tokens`** — batched forward pass over all candidate triggers with automatic OOM-safe batch size reduction.
+- **`compute_grad_from_tokens`** — gradient w.r.t. one-hot token representations. Handles both hard (discrete) and soft (probabilistic) triggers.
+- **`compute_grad_from_embeds`** — gradient w.r.t. continuous trigger embeddings (for soft optimization).
+- **`effective_embedding_matrix`** — computes the actual embedding matrix used by the model. This matters because some models (e.g., Gemma) apply scaling inside the embedding layer, so a plain `embedding_layer.weight` lookup gives incorrect embeddings.
+- **`cast_to_model_tokenizer`** — cross-tokenizer casting (used by hybrid optimizers like RASLITE+).
+
+All of these call **`token_forward_pass`** internally — the one method you must implement.
+
+The mixin also handles the template loop, batching, and loss resolution via `compute_loss_from_model_data`. You don't need to write any of that logic.
+
+### What you implement
+
+**1. `__init__`** — Load the HF model and set these fields (expected by `_HuggingFaceModelMixins`):
+
+```python
+self._model                    # transformers.PreTrainedModel (or SentenceTransformer)
+self._embedding_layer          # nn.Module — model.get_input_embeddings()
+self._tokenizer                # HF tokenizer
+self._forward_pass_batch_size  # int — starting batch size for loss computation
+self._backward_pass_batch_size # int — starting batch size for gradient computation
+```
+
+Both batch sizes are automatically reduced on OOM. Set them high and let the handler dial them down.
+
+Set the model to **eval mode** and disable gradients on its parameters — optimization gradients flow through the one-hot input, not the model weights:
+
+```python
+self._model.eval()
+for param in self._model.parameters():
+    param.requires_grad = False
+```
+
+Register the trigger placeholder as a special token so it tokenizes as a single ID:
+
+```python
+self._tokenizer.add_special_tokens(
+    {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
+)
+```
+
+**2. `token_forward_pass`** — The single entry point for all white/grey-box forward passes. Receives a `ModelInput` (assembled by the input manager), runs the model on `model_input.input_embeds`, and returns a `ModelOutput`.
+
+```python
+def token_forward_pass(self, model_input: ModelInput, reference_loss_func: BaseLoss = None) -> ModelOutput:
+    outputs = self._model(
+        inputs_embeds=model_input.input_embeds,
+        attention_mask=model_input.input_attention_mask,
+        **(model_input.input_prefix_cache_kwargs or {}),
+    )
+    self._update_usage_stats(
+        forward_calls=1,
+        forward_samples=model_input.input_embeds.shape[0],
+        tokens=model_input.input_attention_mask.sum().item(),
+    )
+    return ModelOutput(
+        output_logits=outputs.logits,   # populate what your model provides
+    )
+```
+
+The `reference_loss_func` argument lets you conditionally enable expensive outputs only when needed. For example, `LMHFModel` enables `output_attentions=True` only for `AttentionBasedLoss`:
+
+```python
+output_attentions = (
+    reference_loss_func.contains_loss_type(AttentionBasedLoss)
+    if reference_loss_func else False
+)
+```
+
+**3. `set_token_inputs`** — Build an [`_HFTokenInputManager`](../tropt/models/huggingface/base.py) (or a model-specific subclass) and store it:
+
+```python
+def set_token_inputs(self, templates: List[str], targets: Targets = None) -> None:
+    tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
+    self._token_input_manager = _HFTokenInputManager(
+        tok_ids=tok_ids,
+        model=self._model,
+        tokenizer=self.tokenizer,
+        embed_func=self._embedding_layer,
+        optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
+        targets=targets,
+    )
+```
+
+LM models typically apply the chat template and tokenize target responses before building the manager — see [`LMHFModel.set_token_inputs`](../tropt/models/huggingface/lm.py) for the full pattern. You may also subclass `_HFTokenInputManager` if your model has special target handling — see [`LMHFTokenInputManager`](../tropt/models/huggingface/lm.py) (which auto-appends target response embeddings for prefill-based losses) and [`EncoderHFTokenInputManager`](../tropt/models/huggingface/encoder.py).
+
+**4. Inference method** — The public method called by `__call__`. This is a **separate code path** from `token_forward_pass` — it handles plain-text evaluation, not optimization. See [`LMHFModel.generate`](../tropt/models/huggingface/lm.py) or [`EncoderHFModel.encode`](../tropt/models/huggingface/encoder.py) for full examples.
+
+### Class skeleton
+
+```python
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, ModelInput, ModelOutput, Targets
+from tropt.loss.base import BaseLoss
+from tropt.models import (
+    LMBaseModel,
+    GradientTokenAccessMixin,
+    LogitsTokenAccessMixin,
+    LossTextAccessMixin,
+    LossTokenAccessMixin,
+)
+from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.models.model_mixins import GradientEmbedAccessMixin
+
+
+class MyHFLMModel(
+    LMBaseModel,
+    _HuggingFaceModelMixins,
+    # token-level access:
+    LossTokenAccessMixin,
+    GradientTokenAccessMixin,
+    LogitsTokenAccessMixin,
+    GradientEmbedAccessMixin,
+    # text-level access:
+    LossTextAccessMixin,
+):
+    def __init__(self, model_name, device=None, dtype=None):
+        self._model = ...                        # AutoModelForCausalLM.from_pretrained(...)
+        self._embedding_layer = ...              # self._model.get_input_embeddings()
+        self._tokenizer = ...                    # AutoTokenizer.from_pretrained(...)
+        self._forward_pass_batch_size = 512
+        self._backward_pass_batch_size = 32
+
+        self._tokenizer.add_special_tokens(
+            {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
+        )
+
+    @property
+    def tokenizer(self): return self._tokenizer
+
+    @property
+    def device(self): return self._model.device
+
+    def set_token_inputs(self, templates, targets=None): ...
+
+    def token_forward_pass(self, model_input, reference_loss_func=None): ...
+
+    def generate(self, texts, return_full_output=False, **kwargs): ...
+```
+
+You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `_HuggingFaceModelMixins`.
+
+---
+
+## Checklist
+
+After implementing your model:
+
+1. **Export** — Add your class to [`tropt/models/__init__.py`](../tropt/models/__init__.py).
+2. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
+3. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
+4. **Usage stats** — Confirm `_update_usage_stats` is called at each backend call site (not from wrappers) and that `get_usage_stats()` returns sensible values after a run.

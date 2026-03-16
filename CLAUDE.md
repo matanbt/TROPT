@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - Prefer concise modifications for tasks, with minimal changes to existing code -- so these can be later easily reviewed and integrated. However, if such minimal changes result in creating technical debt or code that is hard to read, prefer clarity and maintainability!
 - Any temporary script or markdown you (Claude) create, must be located under the `/claude_stuff/` directory. Don't make a mess! 
+- Avoid over-commenting code. The code should be as self-explanatory as possible. Use clear variable and function names, and only add comments where the intent is not obvious.
 
 ## Project Overview
 

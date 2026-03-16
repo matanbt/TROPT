@@ -49,20 +49,6 @@ class TokenAccessMixin(ABC):
         self._token_input_manager = None
 
     @property
-    def token_input_manager(self) -> TokenInputManager:
-        """Returns the stored token input manager, raising if not initialized."""
-        if self._token_input_manager is None:
-            raise RuntimeError(
-                f"{type(self).__name__}.token_input_manager accessed before set_token_inputs() was called."
-            )
-        return self._token_input_manager
-
-    @token_input_manager.setter
-    def token_input_manager(self, value: Optional[TokenInputManager]) -> None:
-        """Setter for the token input manager"""
-        self._token_input_manager = value
-
-    @property
     def vocab_size(self) -> int:
         return self.tokenizer.vocab_size
 
@@ -130,34 +116,20 @@ class GradientEmbedAccessMixin(TokenAccessMixin):
 class TextAccessMixin(ABC):
     _text_input_manager: Optional[TextInputManager] = None
 
-    @property
-    def text_input_manager(self) -> TextInputManager:
-        """Returns the stored text input manager, raising if not initialized."""
-        if self._text_input_manager is None:
-            raise RuntimeError(
-                f"{type(self).__name__}.text_input_manager accessed before set_text_inputs() was called."
-            )
-        return self._text_input_manager
-
-    @text_input_manager.setter
-    def text_input_manager(self, value: Optional[TextInputManager]) -> None:
-        """Setter for the text input manager, allowing it to be set to None to reset."""
-        self._text_input_manager = value
-
     def set_text_inputs(
         self,
         templates: TextTemplates,
         targets: Targets = None,
     ) -> None:
         """Prepare and store the text-based inputs manager."""
-        self.text_input_manager = TextInputManager(
+        self._text_input_manager = TextInputManager(
             templates=templates,
             targets=targets,
         )
 
     def reset_text_inputs(self) -> None:
         """Clear the stored text input manager."""
-        self.text_input_manager = None
+        self._text_input_manager = None
 
 
 class LossTextAccessMixin(TextAccessMixin):
@@ -174,7 +146,9 @@ class LossTextAccessMixin(TextAccessMixin):
         Computes the loss on all candidate string texts using the stored text inputs manager.
         This computation is based on the __call__() method of the model, and the information it provides.
         """
-        input_manager = self.text_input_manager
+        assert self._text_input_manager is not None, "Text input manager is not initialized. Please call set_text_inputs() first."
+
+        input_manager = self._text_input_manager
         n_templates = input_manager.n_templates
         n_candidates = len(candidate_trigger_strs)
 

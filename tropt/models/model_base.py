@@ -147,6 +147,12 @@ class EncoderBaseModel(BaseModel):
         This method also updates the usage stats (e.g., token counts, forward call counts, etc.) based on the generated output.
         """
         raise NotImplementedError
+    
+    @property
+    @abstractmethod
+    def d_model(self) -> int:
+        """Returns the dimensionality of the output embeddings."""
+        raise NotImplementedError
 
 
 # ====================== Tokenzier base classes ===================

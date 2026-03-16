@@ -31,10 +31,10 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         # Import google.genai only when instantiating (optional dependency)
         from google import genai
 
-        self.client = genai.Client()
+        self._client = genai.Client()
         self.model_name = model_name
         self.d_model = d_model  # for gemini-embedding-001: could be 768, 1536, or 3072
-        self.text_to_task_type = {
+        self._text_to_task_type = {
             "document": "RETRIEVAL_DOCUMENT",
             "query": "RETRIEVAL_QUERY",
         }
@@ -60,11 +60,11 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             "document",
             "query",
         ), f"Unsupported text_type {text_type}"
-        task_type = self.text_to_task_type.get(text_type, None)
+        task_type = self._text_to_task_type.get(text_type, None)
 
         import google.genai as genai  # optional dependency
 
-        response = self.client.models.embed_content(
+        response = self._client.models.embed_content(
             contents=texts,
             model=self.model_name,
             config=genai.types.EmbedContentConfig(

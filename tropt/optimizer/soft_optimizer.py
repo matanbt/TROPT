@@ -79,7 +79,7 @@ class SoftPromptOptimizer(BaseOptimizer):
             .to(self.model.device, torch.int64)
         )
 
-        trigger_embeds = self.model.embedding_layer(trigger_ids)  # (1, trigger_seq_len, embd_dim)
+        trigger_embeds = self.model._embedding_layer(trigger_ids)  # (1, trigger_seq_len, embd_dim)
         # trigger_embeds.requires_grad_(True)  # TODO ??
 
         # Initialize Adam optimizer on the logits

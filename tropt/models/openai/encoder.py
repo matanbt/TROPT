@@ -240,14 +240,14 @@ class EncoderOpenAIModel(
             base_url: Optional base URL for the OpenAI client. If None, the default OpenAI API URL is used.
         """
         # Import openai only when instantiating (optional dependency)
-        self.client = OpenAI(api_key=api_key, base_url=base_url)
+        self._client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
 
         if d_model is None:
             # Deduce d_model via a dummy request
             try:
                 # We use a single token to check the dimensionality
-                response = self.client.embeddings.create(
+                response = self._client.embeddings.create(
                     input="test",
                     model=self.model_name,
                 )
@@ -255,15 +255,17 @@ class EncoderOpenAIModel(
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to deduce d_model for {model_name}. "
-                    f"Please specify d_model explicitly or check your API connection. Error: {e}"
                 ) from e
 
-        self.d_model = d_model
+        self._d_model = d_model
 
         # Get the tokenizer
         self._tokenizer = OpenAITokenizer(self.model_name)
 
     @property
+    def d_model(self):
+        return self._d_model
+
     def tokenizer(self) -> OpenAITokenizer:
         return self._tokenizer
 
@@ -287,7 +289,7 @@ class EncoderOpenAIModel(
             A tensor containing the generated embeddings.
         """
         # Note: OpenAI's API handles batches of texts
-        response = self.client.embeddings.create(
+        response = self._client.embeddings.create(
             input=texts,
             model=self.model_name,
             **kwargs
@@ -321,12 +323,12 @@ class EncoderOpenAIModel(
         assert isinstance(templates, list), "templates must be a list of strings."
 
         # 1. Tokenize the template texts
-        tok_results = self.tokenizer(templates, return_tensors="list")
+        tok_results = self._tokenizer(templates, return_tensors="list")
         tok_ids = tok_results["input_ids"]
 
         # 2. Build the Manager and store it
-        self.token_input_manager = OpenAITokenInputManager(
-            tokenizer=self.tokenizer,
+        self._token_input_manager = OpenAITokenInputManager(
+            tokenizer=self._tokenizer,
             tok_ids=tok_ids,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             targets=targets,
