@@ -350,6 +350,11 @@ class _HuggingFaceModelMixins:
     _model: transformers.PreTrainedModel
     _embedding_layer: torch.nn.Embedding
 
+    @property
+    def n_layers(self) -> int:
+        """Number of hidden layers in the model."""
+        return self._model.config.num_hidden_layers
+
     @cached_property
     def effective_embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
         """
@@ -386,6 +391,7 @@ class _HuggingFaceModelMixins:
 
         # Additional config:
         normalize_grads: bool = True,
+        return_loss: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
 
@@ -418,6 +424,8 @@ class _HuggingFaceModelMixins:
             
             normalize_grads: If True, L2-normalize the gradients along the vocab dimension.
                 Defaults to True, as this is usually desirable for fair comparison across token positions.
+
+            return_loss: If True, also return the computed detached loss values for each candidate. Useful for debugging.
 
         Returns:
             Normalized gradients w.r.t. one-hot token matrix.
@@ -472,6 +480,7 @@ class _HuggingFaceModelMixins:
             # --------------------
 
             all_grads = []  # of len `n_candidate // batch_size`
+            all_losses = []  # per-batch mean losses (detached)
 
             # Prepare the one-hot encoding matrix
             # (n_candidates, trigger_seq_len, vocab_size)
@@ -570,18 +579,23 @@ class _HuggingFaceModelMixins:
                     grad_outputs=torch.ones_like(batch_losses, device=model.device),
                 )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
                 all_grads.append(candidate_onehot_grad)
+                all_losses.append(batch_losses.detach())
                 # clear_device_cache()  # clear unused GPU memory
 
-            return torch.cat(
-                all_grads, dim=0
-            )  # (n_candidates, trigger_seq_len, vocab_size)
+            return (
+                torch.cat(all_grads, dim=0),  # (n_candidates, trigger_seq_len, vocab_size)
+                torch.cat(all_losses, dim=0),  # (n_candidates,)
+            )
 
         # get the candidates' gradients; (n_candidates, trigger_seq_len, vocab_size)
-        all_grads = _compute_grad__batched()
+        all_grads, all_losses = _compute_grad__batched()
 
         # normalize each token's gradient vector (over the vocab_size dim)
         if normalize_grads:
             all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
+
+        if return_loss:
+            return all_grads, all_losses
 
         return all_grads
 

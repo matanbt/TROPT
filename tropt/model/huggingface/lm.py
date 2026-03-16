@@ -162,10 +162,6 @@ class LMHFModel(
                 )
 
     @property
-    def n_layers(self) -> int:
-        return self._model.config.num_hidden_layers
-
-    @property
     def tokenizer(self):
         return self._tokenizer
 

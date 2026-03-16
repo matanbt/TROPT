@@ -56,7 +56,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             # LiteLLM proxy uses OpenAI-compatible API
             self._client_kwargs['custom_llm_provider'] = 'openai'
 
-    def __call__(
+    def generate(
         self,
         texts: List[str],
         max_new_tokens: int = 128,

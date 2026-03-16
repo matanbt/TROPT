@@ -51,7 +51,7 @@ def run_iris(
     )  # (n_layers, d_model)
 
     # Select refusal direction from relative layer position 0.5 (middle of model)
-    num_layers = model._model.config.num_hidden_layers  # TODO make this an acceessible property of HF models
+    num_layers = model.n_layers
     source_layer = int(0.5 * num_layers)  # a thumb rule commonly used
     refusal_direction = refusal_dirs[source_layer]  # (d_model,)
     refusal_directions = refusal_direction.unsqueeze(0)  # (1, d_model)

@@ -33,11 +33,15 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
 
         self._client = genai.Client()
         self.model_name = model_name
-        self.d_model = d_model  # for gemini-embedding-001: could be 768, 1536, or 3072
+        self._d_model = d_model  # for gemini-embedding-001: could be 768, 1536, or 3072
         self._text_to_task_type = {
             "document": "RETRIEVAL_DOCUMENT",
             "query": "RETRIEVAL_QUERY",
         }
+
+    @property
+    def d_model(self) -> int:
+        return self._d_model
 
     def encode(
         self,
@@ -69,7 +73,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             model=self.model_name,
             config=genai.types.EmbedContentConfig(
                 task_type=task_type,
-                output_dimensionality=self.d_model,
+                output_dimensionality=self._d_model,
             ),
         )
 
