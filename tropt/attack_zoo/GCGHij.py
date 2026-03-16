@@ -3,9 +3,9 @@ import math
 import torch
 
 from tropt.common import SliceKey, Targets
-from tropt.loss.base import AttentionEnhLoss, CombinedLoss, PrefillCELoss
+from tropt.loss import AttentionEnhLoss, CombinedLoss, PrefillCELoss
 from tropt.models.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 

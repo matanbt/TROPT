@@ -2,11 +2,11 @@ import torch
 from jaxtyping import Float
 
 from tropt.common import DEFAULT_INIT_TRIGGER, TargetKey
-from tropt.loss.base import SimilarityLoss
+from tropt.loss import SimilarityLoss
 from tropt.models import TextAccessMixin, TokenAccessMixin
 from tropt.models.huggingface.encoder import EncoderHFModel
 from tropt.models.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 
@@ -53,7 +53,7 @@ def run_rasliteplus(
     loss = SimilarityLoss()
 
     if log_to_wandb:
-        from tropt.tracker.base import WandbTracker
+        from tropt.tracker import WandbTracker
         tracker = WandbTracker("raslite+", "tropt-runs")
 
     optimizer = RASLITEPlusOptimizer(
@@ -90,6 +90,7 @@ def run_rasliteplus(
         targets={TargetKey.TARGET_VECTORS: target_vector.to(device)},
         initial_trigger=initial_trigger,
     )
+    # [TODO update this module due to the existence of Targets object]
 
     if log_to_wandb:
         usage_stats = model.get_usage_stats()

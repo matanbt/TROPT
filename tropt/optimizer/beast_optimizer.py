@@ -8,7 +8,7 @@ from torch import Tensor
 from tqdm import tqdm
 
 from tropt.common import Targets, TextTemplates
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.models import (
     BaseModel,
     LMBaseModel,
@@ -17,9 +17,9 @@ from tropt.models import (
 )
 from tropt.models.huggingface.lm import LMHFModel
 from tropt.models.model_mixins import LossTextAccessMixin
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.tracker.base import BaseTracker
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 

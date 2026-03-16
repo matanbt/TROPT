@@ -13,13 +13,13 @@ from tropt.common import (
     Targets,
     TextTemplates,
 )
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.models import (
     BaseModel,
     GradientEmbedAccessMixin,
 )
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
-from tropt.tracker.base import BaseTracker
+from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 

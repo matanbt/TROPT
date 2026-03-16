@@ -12,16 +12,16 @@ from tropt.common import (
     Targets,
     TextTemplates,
 )
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.models import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.tracker.base import BaseTracker
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 

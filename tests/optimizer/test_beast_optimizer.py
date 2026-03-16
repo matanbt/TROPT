@@ -11,7 +11,7 @@ from tropt.models import (
     TextInputManager,
     TokenInputManager
 )
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 
 
 class MockTextInputManager(TextInputManager):

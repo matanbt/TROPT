@@ -257,7 +257,7 @@ BaseLoss
 
 **Purpose**: Centralized loss computation logic that eliminates duplication across model implementations. Prior to this refactoring, loss resolution logic was duplicated in 3 locations (~180 lines total).
 
-**Main Function**: `compute_loss_from_model_data(model_output: ModelOutput, model_input: ModelInput, loss_func: BaseLoss) -> Tensor`
+**Main Function**: `resolve_and_compute_loss(model_output: ModelOutput, model_input: ModelInput, loss_func: BaseLoss) -> Tensor`
 
 **How it works**:
 1. Accepts standardized `ModelOutput` and `ModelInput` dataclasses
@@ -295,7 +295,7 @@ model_input = ModelInput(
 )
 
 # Single line replaces ~100 lines of duplicated logic
-return compute_loss_from_model_data(model_output, model_input, loss_func)
+return resolve_and_compute_loss(model_output, model_input, loss_func)
 ```
 
 ### Pillar 4: Optimizers (`tropt/optimizer/`)

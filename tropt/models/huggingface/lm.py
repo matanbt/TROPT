@@ -18,7 +18,7 @@ from tropt.common import (
     Targets,
     TextTemplates,
 )
-from tropt.loss.base import (
+from tropt.loss import (
     AttentionBasedLoss,
     BaseLoss,
     HiddenStateBased,

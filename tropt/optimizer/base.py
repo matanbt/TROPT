@@ -6,9 +6,9 @@ import pydantic
 import torch
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.models import BaseModel
-from tropt.tracker.base import BaseTracker, DummyTracker
+from tropt.tracker import BaseTracker, DummyTracker
 
 
 ## ------- Optimizer result ------- ##

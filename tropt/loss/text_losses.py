@@ -1,3 +1,9 @@
+"""
+General loss functions.
+
+Imporant note: The losses arguments must match the fields in ModelOutput and ModelInput
+for unified loss resolution to work properly.
+"""
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -8,10 +14,33 @@ from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from tropt.loss.base import TextBasedLoss
+from tropt.loss.base import BaseLoss
 
 logger = logging.getLogger(__name__)
 
+############################
+
+@dataclass
+class TextBasedLoss(BaseLoss):
+    """Loss computed based on text inputs (useful for black-box models)."""
+
+    def __call__(
+        self,
+        input_texts: Annotated[List[str], "bsz"],
+    ) -> Float[torch.Tensor, "bsz"]:
+        raise NotImplementedError()
+
+
+@dataclass
+class ResponseLMScoreLoss(TextBasedLoss):
+    """A loss based on an LM-as-a-judge score of the model's response.
+
+    TODO: Implement this loss function.
+    """
+
+    pass
+
+############################
 
 @dataclass
 class BinaryLMJudgeLoss(TextBasedLoss):

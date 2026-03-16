@@ -4,7 +4,7 @@ from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
 from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputManager
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 
 # TODO review & consider dropping the mocks
 

@@ -1,24 +1,25 @@
 from .base import (
-    AttentionBasedLoss,
-    AttentionEnhLoss,
     BaseLoss,
     CombinedLoss,
+)
+from .losses import (
+    AttentionBasedLoss,
+    AttentionEnhLoss,
     EmbeddingBasedLoss,
     HiddenStateBased,
     LogitBasedLoss,
-    TextBasedLoss,
 
     # Concrete losses:
     PrefillCELoss,
     PrefillCWLoss,
     PrefillMellowMaxLoss,
-    ResponseLMScoreLoss,
     SimilarityLoss,
     SteeringActivationLoss,
     TriggerPerplexityLoss,
 )
 
-from .text_loss import (
+from .text_losses import (
+    TextBasedLoss,
     BinaryLMJudgeLoss,
 
     # Concrete text losses

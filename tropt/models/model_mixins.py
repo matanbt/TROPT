@@ -13,7 +13,7 @@ from tropt.common import (
     TextTemplates,
     TokenTriggerCandidates,
 )
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.loss.resolution import resolve_and_compute_loss
 
 from .inputs_manager import (

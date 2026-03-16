@@ -1,10 +1,10 @@
 import torch
 from jaxtyping import Float
 
-from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.loss.base import SimilarityLoss
+from tropt.loss import SimilarityLoss
 from tropt.models.huggingface.encoder import EncoderHFModel
 
 

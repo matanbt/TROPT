@@ -9,7 +9,7 @@ import torch
 from unittest.mock import Mock, patch, MagicMock
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
-from tropt.loss.base import SimilarityLoss
+from tropt.loss import SimilarityLoss
 from tropt.models.openai.encoder import OpenAITokenizer # Import OpenAITokenizer directly
 
 

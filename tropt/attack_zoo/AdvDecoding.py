@@ -6,11 +6,11 @@ https://arxiv.org/abs/2410.02163
 import torch
 from jaxtyping import Float
 
-from tropt.loss.base import CombinedLoss, PrefillCELoss, SimilarityLoss
-from tropt.loss.text_loss import InputReadabilityLoss
+from tropt.loss import CombinedLoss, PrefillCELoss, SimilarityLoss
+from tropt.loss import InputReadabilityLoss
 from tropt.models.huggingface.encoder import EncoderHFModel
 from tropt.models.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer import OptimizerResult
 from tropt.optimizer.beast_optimizer import BEASTOptimizer
 
 

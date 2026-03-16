@@ -14,7 +14,7 @@ from tropt.common import (
     Targets,
     TextTemplates,
 )
-from tropt.loss.base import BaseLoss
+from tropt.loss import BaseLoss
 from tropt.models import (
     BaseModel,
     LMBaseModel,
@@ -22,12 +22,12 @@ from tropt.models import (
     LossTextAccessMixin,
     TokenAccessMixin,
 )
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
-from tropt.tracker.base import BaseTracker
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 

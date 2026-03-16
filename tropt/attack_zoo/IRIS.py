@@ -8,9 +8,9 @@ https://aclanthology.org/2025.naacl-long.302/
 import torch
 
 from tropt.common import SliceKey, Targets
-from tropt.loss.base import CombinedLoss, PrefillCELoss, SteeringActivationLoss
+from tropt.loss import CombinedLoss, PrefillCELoss, SteeringActivationLoss
 from tropt.models.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
+from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.utils.refusal_dir import (

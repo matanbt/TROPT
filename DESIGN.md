@@ -2,6 +2,8 @@
 # Design Principles
 This repository is aimed at easing the implementation, run, and research of discrete text optimizers. The core logic of this repo is provided in its three pillars. These would require heavy engineering from anyone who would venture writing such implementations; moreover, prior research has pointed at small implementation details as critical (such as retokenization [GCG,GASLITE], or slightly modifying candidate sampling [GCG,GASLITE]), and the recurring attempt to implement such from scratch is prone to include certain fail points.
 
+<!-- [TODO] illustration of the onion of this package: AttackZoo->Optimizer->Model&Loss&Input (by abstraction levels) -->
+
 **Backend vs Frontend:** TROPT separates complex infrastructure (backend) from creative optimization logic (frontend). 
 
 - The *backend*--comprising the first three pillars--handles token-level gradients, trigger-template combination, multi-library integration (e.g., of model providers), etc. This is a complex boilerplate that is required from any implementer of optimization scheme, and we maintain it as part of the repository.
@@ -213,7 +215,7 @@ In this way, the model is able to call and compute only losses compatible with t
 
 This duplication made it difficult to add new loss types and easy to introduce bugs when updating loss computation logic.
 
-**Solution** (`tropt/loss/resolution.py`): A single function `compute_loss_from_model_data(model_output, model_input, loss_func)` that:
+**Solution** (`tropt/loss/resolution.py`): A single function `resolve_and_compute_loss(model_output, model_input, loss_func)` that:
 1. Accepts standardized `ModelOutput` and `ModelInput` dataclasses
 2. Performs type-based dispatch to specialized helper functions based on loss type
 3. Validates required data is present in model_output (raises `LossResolutionError` with clear messages if missing)
@@ -235,7 +237,7 @@ model_output = ModelOutput(output_logits=outputs.logits, ...)
 model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets, ...)
 
 # Single line replaces all duplicated loss resolution logic
-return compute_loss_from_model_data(model_output, model_input, loss_func)
+return resolve_and_compute_loss(model_output, model_input, loss_func)
 ```
 
 **Benefits**:
