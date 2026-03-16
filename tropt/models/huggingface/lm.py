@@ -366,7 +366,7 @@ class LMHFModel(
         response_logits = None
         if reference_loss_func is not None and reference_loss_func.contains_loss_type(LogitBasedLoss):
             response_slc = model_input.input_slices[SliceKey.APPENDED]
-            response_logits = outputs.logits[:, response_slc, :]  # (bsz, response_seq_len, vocab_size)
+            response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
 
         return ModelOutput(
             output_logits=outputs.logits,
