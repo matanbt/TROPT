@@ -197,7 +197,10 @@ def test_model_requirements_validation():
         def compute_loss_from_tokens(self, *args, **kwargs):
             pass
 
-        def prepare_token_inputs(self, *args, **kwargs):
+        def set_token_inputs(self, *args, **kwargs):
+            pass
+
+        def reset_token_inputs(self, *args, **kwargs):
             pass
 
         @property

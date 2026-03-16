@@ -6,18 +6,18 @@ from tropt.optimizer.beast_optimizer import BEASTOptimizer
 from tropt.models import (
     BaseModel,
     LMBaseModel,
-    LossTextAccessMixin,
+    LossTokenAccessMixin, # Changed from LossTextAccessMixin
     LogitsTokenAccessMixin,
-    TextInputsManager,
-    TokenInputsManager
+    TextInputManager,
+    TokenInputManager
 )
 from tropt.loss.base import BaseLoss
 
 
-class MockTextInputsManager(TextInputsManager):
+class MockTextInputManager(TextInputManager):
     """Mock text inputs manager for testing"""
     def __init__(self):
-        # Set the attributes that n_messages property depends on
+        # Set the attributes that n_templates property depends on
         self.before_texts = ["Test message "]
         self.after_texts = [""]
         self.targets = {}  # TargetsDict is a type alias, use plain dict
@@ -26,18 +26,18 @@ class MockTextInputsManager(TextInputsManager):
         pass
 
 
-class MockTokenInputsManager(TokenInputsManager):
+class MockTokenInputManager(TokenInputManager):
     """Mock token inputs manager for testing"""
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
-        # Set attributes that n_messages might depend on
+        # Set attributes that n_templates might depend on
         self.before_ids = [torch.tensor([1, 2, 3])]  # Single message
         self.after_ids = [torch.tensor([4, 5])]
         self.targets = {}  # TargetsDict is a type alias, use plain dict
 
     @property
-    def n_messages(self):
+    def n_templates(self):
         return len(self.before_ids)
 
     def get_triggered_inputs(self, *args, **kwargs):
@@ -59,15 +59,17 @@ class MockUtilLM(LMBaseModel, LogitsTokenAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def prepare_token_inputs(self, texts, initial_trigger, targets=None):
-        inputs = MockTokenInputsManager(self.tokenizer)
-        trigger_ids = torch.tensor(
-            [self.tokenizer.encode(initial_trigger, add_special_tokens=False)] if initial_trigger else [[]],
-            dtype=torch.long
-        )
-        return inputs, trigger_ids
+    def set_token_inputs(self, texts, targets=None):
+        self._token_input_manager = MockTokenInputManager(self.tokenizer)
 
-    def compute_logits_from_tokens(self, trigger_ids, inputs, return_after_trigger_logits_only=False):
+    def reset_token_inputs(self):
+        self._token_input_manager = None
+
+    @property
+    def vocab_size(self):
+        return self._tokenizer.vocab_size
+
+    def compute_logits_from_tokens(self, trigger_ids, return_after_trigger_logits_only=False):
         """Return mock logits for next token prediction"""
         batch_size = trigger_ids.shape[0]
         vocab_size = self.tokenizer.vocab_size
@@ -80,8 +82,8 @@ class MockUtilLM(LMBaseModel, LogitsTokenAccessMixin):
             return torch.randn(batch_size, seq_len, vocab_size)
 
 
-class MockTargetModel(BaseModel, LossTextAccessMixin):
-    """Mock target model for black-box loss evaluation"""
+class MockTargetModel(BaseModel, LossTokenAccessMixin): # Changed from LossTextAccessMixin
+    """Mock target model for white-box loss evaluation""" # Changed docstring
 
     @property
     def tokenizer(self):
@@ -95,13 +97,19 @@ class MockTargetModel(BaseModel, LossTextAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def prepare_text_inputs(self, texts, targets=None):
-        inputs = MockTextInputsManager()
-        return inputs, None
+    def set_token_inputs(self, texts, targets=None):
+        self._token_input_manager = MockTokenInputManager(self.tokenizer)
 
-    def compute_loss_from_texts(self, candidate_triggers, inputs, loss_func=None):
+    def reset_token_inputs(self):
+        self._token_input_manager = None
+
+    @property
+    def vocab_size(self):
+        return self._tokenizer.vocab_size
+
+    def compute_loss_from_tokens(self, candidate_trigger_ids, loss_func=None):
         """Return mock losses for candidate triggers"""
-        n_candidates = len(candidate_triggers)
+        n_candidates = candidate_trigger_ids.shape[0]
         # Return random losses that decrease over time to simulate optimization
         return torch.rand(n_candidates) * 0.5 + 0.5  # losses in [0.5, 1.0]
 

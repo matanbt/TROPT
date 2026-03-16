@@ -8,23 +8,23 @@ from tropt.models import (
     LossTextAccessMixin, 
     LogitsTokenAccessMixin, 
     LMBaseModel,
-    TokenInputsManager,
-    TextInputsManager
+    TokenInputManager,
+    TextInputManager
 )
 from tropt.loss.base import BaseLoss
 
-class MockInputsManager(TokenInputsManager):
+class MockInputsManager(TokenInputManager):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
-        self.n_messages = 1
+        self.n_templates = 1
     
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 
-class MockTextInputsManager(TextInputsManager):
+class MockTextInputManager(TextInputManager):
     def __init__(self):
-        # Mocking the attributes required by the n_messages property in TextInputsManager
+        # Mocking the attributes required by the n_templates property in TextInputManager
         self.before_texts = [""] 
         self.targets = {}
 
@@ -40,13 +40,16 @@ class MockTargetModel(BaseModel, LossTextAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def prepare_text_inputs(self, texts, initial_trigger, targets=None):
-        return MockTextInputsManager(), initial_trigger
+    def set_text_inputs(self, texts, targets=None):
+        self._text_input_manager = MockTextInputManager()
 
-    def compute_loss_from_texts(self, candidate_trigger_strs, inputs, loss_func, keep_message_dim=False, **kwargs):
+    def reset_text_inputs(self):
+        self._text_input_manager = None
+
+    def compute_loss_from_texts(self, candidate_trigger_strs, loss_func, keep_message_dim=False, **kwargs):
         # return random loss for each candidate string
         n_candidates = len(candidate_trigger_strs)
-        # shape: (n_messages, n_candidates)
+        # shape: (n_templates, n_candidates)
         # Assuming 1 message
         losses = torch.rand(1, n_candidates)
         if not keep_message_dim:
@@ -71,12 +74,17 @@ class MockUtilModel(LMBaseModel, LogitsTokenAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def prepare_token_inputs(self, texts, initial_trigger, targets=None):
-        inputs = MockInputsManager(self.tokenizer)
-        trigger_ids = torch.tensor([self.tokenizer.encode(initial_trigger, add_special_tokens=False)], dtype=torch.long)
-        return inputs, trigger_ids
+    def set_token_inputs(self, texts, targets=None):
+        self._token_input_manager = MockInputsManager(self.tokenizer)
 
-    def compute_logits_from_tokens(self, candidate_trigger_ids, inputs, return_trigger_logits_only=True, keep_message_dim=False, **kwargs):
+    def reset_token_inputs(self):
+        self._token_input_manager = None
+
+    @property
+    def vocab_size(self):
+        return self._tokenizer.vocab_size
+
+    def compute_logits_from_tokens(self, candidate_trigger_ids, return_trigger_logits_only=True, keep_message_dim=False, **kwargs):
         # Return random logits
         # candidate_trigger_ids shape: (n_cands, seq_len)
         n_cands, seq_len = candidate_trigger_ids.shape

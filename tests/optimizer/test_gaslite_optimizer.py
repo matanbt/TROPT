@@ -3,17 +3,17 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
-from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputsManager
+from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputManager
 from tropt.loss.base import BaseLoss
 
 # TODO review & consider dropping the mocks
 
 
-class MockInputsManager(TokenInputsManager):
+class MockInputsManager(TokenInputManager):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
-        self.n_messages = 1
+        self.n_templates = 1
     
     def get_triggered_inputs(self, *args, **kwargs):
         pass
@@ -35,26 +35,31 @@ class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def prepare_token_inputs(self, texts, initial_trigger, targets=None):
-        inputs = MockInputsManager(self.tokenizer)
-        trigger_ids = torch.tensor([self.tokenizer.encode(initial_trigger, add_special_tokens=False)], dtype=torch.long, device=self.device)
-        return inputs, trigger_ids
+    @property
+    def vocab_size(self):
+        return self._tokenizer.vocab_size
 
-    def compute_loss_from_tokens(self, candidate_trigger_ids, inputs, loss_func, keep_message_dim=False, **kwargs):
+    def set_token_inputs(self, texts, targets=None):
+        self._token_input_manager = MockInputsManager(self.tokenizer)
+
+    def reset_token_inputs(self):
+        self._token_input_manager = None
+
+    def compute_loss_from_tokens(self, candidate_trigger_ids, loss_func=None, keep_message_dim=False, **kwargs):
         # return random loss
         n_candidates = candidate_trigger_ids.shape[0]
-        # shape: (n_messages, n_candidates)
-        losses = torch.rand(inputs.n_messages, n_candidates, device=self.device)
+        # shape: (n_templates, n_candidates)
+        losses = torch.rand(self._token_input_manager.n_templates, n_candidates, device=self.device)
         if not keep_message_dim:
             losses = losses.mean(dim=0)
         return losses
 
-    def compute_grad_from_tokens(self, candidate_trigger_ids, inputs, **kwargs):
+    def compute_grad_from_tokens(self, candidate_trigger_ids, **kwargs):
         # return random grad
         # Input shape: (n_cands, trigger_seq_len)
         # Output shape: (n_cands, trigger_seq_len, vocab_size)
         n_cands, trigger_seq_len = candidate_trigger_ids.shape
-        vocab_size = inputs.vocab_size
+        vocab_size = self._token_input_manager.vocab_size
         return torch.randn(n_cands, trigger_seq_len, vocab_size, device=self.device)
 
     def compute_logits_from_tokens(self, *args, **kwargs):
