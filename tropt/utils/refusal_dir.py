@@ -23,6 +23,15 @@ from tropt.model.huggingface.lm import LMHFModel
 
 logger = logging.getLogger(__name__)
 
+def get_hf_model(
+    model: LMHFModel,
+):
+    """
+    Extract the underlying HuggingFace model from the LMHFModel wrapper.
+    This is off-pattern, but needed for the hooks in this module.
+    """
+    return model._model
+
 
 def get_harmful_instructions(n_samples: Optional[int] = None, test_split: float = 0.2) -> Tuple[List[str], List[str]]:
     """
@@ -99,9 +108,11 @@ def extract_activations(
             add_generation_prompt=True,
         ).to(model.device)
 
+        hf_model = get_hf_model(model)
+
         # Forward pass with hidden states
         with torch.no_grad():
-            outputs = model.model(
+            outputs = hf_model(
                 inputs,
                 output_hidden_states=True,
                 return_dict=True,
@@ -255,10 +266,12 @@ def ablate_refusal_direction(
         scale=scale,
         targeted_positions=targeted_positions,
     )
+    
+    hf_model = get_hf_model(model)
 
     # Register hooks to model layers
     hook_handles = []
-    for i, layer in enumerate(model.model.model.layers):
+    for i, layer in enumerate(hf_model.model.layers):
         if targeted_layers is not None and i not in targeted_layers:
             continue
         hook_handles.append(layer.register_forward_hook(hook_fn))
@@ -312,9 +325,11 @@ def generate_jailbroken_responses(
             add_generation_prompt=True,
         ).to(model.device)
 
+        hf_model = get_hf_model(model)
+
         # Generate
         with torch.no_grad():
-            outputs = model.model.generate(
+            outputs = hf_model.generate(
                 inputs,
                 max_new_tokens=max_new_tokens,
                 do_sample=False,  # Greedy decoding
