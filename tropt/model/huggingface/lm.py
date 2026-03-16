@@ -344,17 +344,17 @@ class LMHFModel(
 
         Args:
             model_input: ModelInput
-        
+
         Returns:
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
-        
+
         """
         if reference_loss_func is not None and reference_loss_func.contains_loss_type(AttentionBasedLoss) and self._model.config._attn_implementation != "eager":
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
-        
+
         assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
 
         outputs = self._model(
@@ -370,7 +370,6 @@ class LMHFModel(
             tokens=model_input.input_attention_mask.sum().item(),
         )
 
-        # get a view (not a copy) of the response logits only, if needed
         response_logits = None
         if reference_loss_func is not None and reference_loss_func.contains_loss_type(LogitBasedLoss):
             response_slc = model_input.input_slices[SliceKey.APPENDED]
@@ -380,7 +379,7 @@ class LMHFModel(
             output_logits=outputs.logits,
             response_logits=response_logits,
             output_attentions=torch.stack(outputs.attentions, dim=1) if outputs.attentions else None,
-            output_hidden_states=torch.stack(outputs.hidden_states, dim=1) if outputs.hidden_states else None,
+            output_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if outputs.hidden_states else None,  # (skips input embedding (layer 0)
         )
 
     def generate(

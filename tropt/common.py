@@ -168,13 +168,13 @@ class ModelInput(pydantic.BaseModel):
         ...     input_trigger_ids=torch.randint(0, 1000, (4, 20)),
         ...     input_embeds=torch.randn(4, 100, 768),
         ...     input_attention_mask=torch.ones(4, 100),
-        ...     targets={TargetKey.TARGET_RESPONSE_TOKS: target_ids}
+        ...     targets=MessageTargets(target_response_toks=target_ids)
         ... )
 
         >>> # Text-level input
         >>> text_input = ModelInput(
         ...     input_texts=["Text with trigger 1", "Text with trigger 2"],
-        ...     targets={TargetKey.TARGET_RESPONSE_STRS: ["Response 1", "Response 2"]}
+        ...     targets=MessageTargets(target_response_strs="Response 1")
         ... )
     """
 
@@ -236,10 +236,9 @@ class ModelInput(pydantic.BaseModel):
     targets: Optional[MessageTargets] = None
     """Target data required by loss functions.
 
-    Dictionary mapping `TargetKey`s to their corresponding target values. The specific
-    keys and values depend on which loss function is being used.
-
-    Expects a single message's targets.
+    A `MessageTargets` instance containing the target data for a single message.
+    The specific fields used depend on the loss function (e.g., `target_response_strs`
+    for text-based losses, `target_directions` for steering losses).
     """
 
     # TODO optional additional validators to check shapes of inputs?

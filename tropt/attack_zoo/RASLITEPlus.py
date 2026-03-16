@@ -1,9 +1,8 @@
 import torch
 from jaxtyping import Float
 
-from tropt.common import DEFAULT_INIT_TRIGGER, TargetKey
+from tropt.common import DEFAULT_INIT_TRIGGER, Targets
 from tropt.loss import SimilarityLoss
-from tropt.model import TextAccessMixin, TokenAccessMixin
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
@@ -87,10 +86,11 @@ def run_rasliteplus(
 
     result = optimizer.optimize_trigger(
         templates=[prefix_info],
-        targets={TargetKey.TARGET_VECTORS: target_vector.to(device)},
+        targets=Targets(
+            target_vectors=target_vector.to(device),
+        ),
         initial_trigger=initial_trigger,
     )
-    # [TODO update this module due to the existence of Targets object]
 
     if log_to_wandb:
         usage_stats = model.get_usage_stats()

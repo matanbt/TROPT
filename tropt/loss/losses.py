@@ -355,12 +355,14 @@ class SteeringActivationLoss(HiddenStateBased):
         steer_away: Whether to minimize alignment instead of maximizing (default: False = steer towards)
         slc_name: Which token positions to apply steering on (default: "last_input_token")
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
+        apply_square: Whether to square the similarity scores (default: False)
     """
 
     targeted_layers: slice = slice(None)
     steer_away: bool = False
     slc_name: str = SliceKey.INPUT_LAST_TOKEN
     do_cosine_sim: bool = False
+    apply_square: bool = False
 
     def __call__(
         self,
@@ -401,6 +403,10 @@ class SteeringActivationLoss(HiddenStateBased):
 
         # (bsz, 1, 1, d_model) -> broadcast dot product -> (bsz, n_targeted_layers, slc_seq_len)
         res = (h * target_directions[:, None, None, :]).sum(dim=-1)
+
+        # Optionally square the similarity scores
+        if self.apply_square:
+            res = res.pow(2)
 
         # Average over layers and positions -> (bsz,)
         loss = res.mean(dim=(-1, -2))

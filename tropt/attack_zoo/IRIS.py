@@ -41,23 +41,22 @@ def run_iris(
     # Load model
     model = LMHFModel(
         model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
         use_prefix_cache=False,  # Disable for activation steering
     )
 
     # Compute refusal directions for all layers
     refusal_dirs = compute_refusal_directions(
         model=model,
-        n_samples=32,  # Use 32 samples for efficiency
+        n_samples=128,  # Following Arditi et al. (2024)
     )  # (n_layers, d_model)
 
     # Select refusal direction from relative layer position 0.5 (middle of model)
-    num_layers = model.model.config.num_hidden_layers
-    source_layer = int(0.5 * num_layers)
+    num_layers = model._model.config.num_hidden_layers  # TODO make this an acceessible property of HF models
+    source_layer = int(0.5 * num_layers)  # a thumb rule commonly used
     refusal_direction = refusal_dirs[source_layer]  # (d_model,)
     refusal_directions = refusal_direction.unsqueeze(0)  # (1, d_model)
 
-    # Generate jailbroken target output via refusal ablation (paper Section 5.1)
+    # Generate jailbroken target output str via refusal ablation (paper Section 5.1)
     # Extract instruction without trigger placeholder
     instruction_clean = instruction.replace(" {{OPTIMIZED_TRIGGER}}", "").replace("{{OPTIMIZED_TRIGGER}}", "")
     target_outputs = generate_jailbroken_responses(
@@ -69,13 +68,14 @@ def run_iris(
     )
     target_output = target_outputs[0]
 
-    # Create combined loss: CE (β=0.25) + Steering (β=0.75)
+    # Create combined loss: CE + Steering (following Eq 8)
     ce_loss = PrefillCELoss()
     steering_loss = SteeringActivationLoss(
         steer_away=True,
-        targeted_layers=slice(None),  # Apply to all layers (paper Eq 8)
+        targeted_layers=slice(None),  # Apply to all layers
         slc_name=SliceKey.INPUT_LAST_TOKEN,
-        do_cosine_sim=False,  # Use dot product as in paper Eq 8
+        do_cosine_sim=False,  # Use dot product
+        apply_square=True,  # Square the products
     )
     combined_loss = CombinedLoss(
         [ce_loss, steering_loss],
@@ -104,7 +104,7 @@ def run_iris(
             target_response_strs=[target_output],  # Jailbroken response from refusal ablation
             target_directions=refusal_directions,  # For steering loss
         ),
-        initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",  # 20 tokens
+        initial_trigger=("! " * 20).strip(),
     )
 
     return result

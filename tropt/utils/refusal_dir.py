@@ -3,7 +3,7 @@ Refusal direction extraction and ablation for steering-based attacks.
 
 Implements the difference-in-means method from:
 - Arditi et al. (2024): https://arxiv.org/abs/2406.11717
-- Original implementation: https://github.com/andyrdt/refusal_direction
+- Loosely based on the original implementation: https://github.com/andyrdt/refusal_direction
 
 Useful for attacks the suppress model refusals via activation steering (e.g., IRIS attack), or for
 generating jailbroken target outputs via refusal ablation (a.k.a. on thegreat abliterated model).

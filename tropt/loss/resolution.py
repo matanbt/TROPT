@@ -142,7 +142,7 @@ def resolve_and_compute_loss(
                 f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
-                f"Available in targets: {list(model_input.targets.model_fields.keys()) if model_input.targets else []}"
+                f"Available in targets: {list(type(model_input.targets).model_fields) if model_input.targets else []}"
             )
 
     # Call the loss function with matched arguments
@@ -157,13 +157,7 @@ def resolve_and_compute_loss(
 
 def _get_non_none_fields(obj: ModelOutput | ModelInput) -> list[str]:
     """Helper to get list of non-None field names from a Pydantic model."""
-    if hasattr(obj, 'model_fields'):
-        # Pydantic v2
-        # TODO resolve deprecation
-        return [name for name in obj.model_fields.keys() if getattr(obj, name) is not None]
-    else:
-        # Fallback for dataclass or Pydantic v1
-        return [name for name, value in obj.__dict__.items() if value is not None]
+    return [name for name in type(obj).model_fields if getattr(obj, name) is not None]
 
 
 def _compute_combined_loss(

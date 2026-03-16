@@ -69,7 +69,6 @@ class BinaryLMJudgeLoss(TextBasedLoss):
     _tokenizer: Any = field(default=None, init=False, repr=False)
     _positive_token_ids: Set[int] = field(default=None, init=False, repr=False)
     _negative_token_ids: Set[int] = field(default=None, init=False, repr=False)
-    # TODO are the `field` required?
 
     def __post_init__(self):
         logger.info(f"Loading LM judge model for loss: {self.model_name_or_path}")
