@@ -91,7 +91,7 @@ class OpenAITokenizer(BaseTokenizer):
         elif return_tensors == "list":
             input_ids = input_ids.tolist()
         return BatchEncoding({"input_ids": input_ids})
-    
+
     def encode(self, text, **kwargs):
         return self(text, **kwargs).input_ids
 

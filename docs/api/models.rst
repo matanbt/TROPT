@@ -4,6 +4,20 @@ Models
 ======
 
 
+Data Classes
+------------
+.. autoclass:: tropt.common.ModelInput
+   :members:
+   :undoc-members:
+
+.. autoclass:: tropt.common.ModelOutput
+   :members:
+   :undoc-members:
+
+.. raw:: html
+
+   <hr class="hr-major">
+
 Models Interface
 -----------
 .. autoclass:: BaseModel

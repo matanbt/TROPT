@@ -26,7 +26,10 @@ class BaseModel(ABC):
 
     @abstractmethod
     def __call__(self, *args, **kwargs):
-        """Forward pass through the model, returns model default output (e.g., text response for LMs)."""
+        """
+        Forward pass through the model, returns model default output (e.g., text response for LMs).
+        - This method sould also update the usage stats (e.g., token counts, forward call counts, etc.)
+        """
         raise NotImplementedError
 
     # ... prepare inputs methods will be added upon expansion ...
@@ -35,14 +38,14 @@ class BaseModel(ABC):
 
     # ... usage stats methods will be added upon expansion ...
     def get_usage_stats(self) -> Dict[str, int]:
-        """Returns summary of model usage statistics."""
-        return dict(
-            total_tokens=getattr(self, "_token_used", 0),
-            forward_calls=getattr(self, "_forward_call_count", 0),
-            forward_samples=getattr(self, "_forward_sample_count", 0),
-            grad_calls=getattr(self, "_grad_call_count", 0),
-            grad_samples=getattr(self, "_grad_sample_count", 0),
-        )
+        """Returns summary of model usage statistics, namespaced under 'usage/' for W&B logging."""
+        return {
+            "usage/total_tokens": getattr(self, "_token_used", 0),
+            "usage/forward_calls": getattr(self, "_forward_call_count", 0),
+            "usage/forward_samples": getattr(self, "_forward_sample_count", 0),
+            "usage/grad_calls": getattr(self, "_grad_call_count", 0),
+            "usage/grad_samples": getattr(self, "_grad_sample_count", 0),
+        }
 
     def _update_usage_stats(
         self,
@@ -52,7 +55,12 @@ class BaseModel(ABC):
         grad_calls: int = 0,
         grad_samples: int = 0,
     ):
-        """Updates the usage statistics."""
+        """Updates the usage statistics.
+
+        Call this immediately after any model call (e.g. self.model(...)),
+        at the same call site. It is best to AVOID calling from higher-level wrappers (compute_loss_from_tokens,
+        compute_grad_from_tokens, etc.) to avoid double-counting.
+        """
         if not hasattr(self, "_token_used"):
             # Initialize stats if not present
             self._token_used = 0
@@ -95,6 +103,7 @@ class LMBaseModel(BaseModel):
     ) -> List[str] | ModelOutput:
         """
         Generate text completions for the given input texts.
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
         """
         return self.generate(texts=texts, return_full_output=return_full_output, **kwargs)
 
@@ -105,7 +114,10 @@ class LMBaseModel(BaseModel):
         return_full_output: bool = False,
         **kwargs
     ) -> List[str] | ModelOutput:
-        """Generates text completions for the given input texts."""
+        """
+        Generates text completions for the given input texts.
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+        """
         raise NotImplementedError
 
 
@@ -117,17 +129,23 @@ class EncoderBaseModel(BaseModel):
         return_full_output: bool = False,
         **kwargs
     ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
-        """Computes encoder embeddings for the given input texts."""
+        """
+        Computes encoder embeddings for the given input texts.
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+        """
         return self.encode(texts=texts, return_full_output=return_full_output, **kwargs)
 
     @abstractmethod
     def encode(
-        self, 
+        self,
         texts: List[str],
         return_full_output: bool = False,
         **kwargs
     ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
-        """Computes encoder embeddings for the given input texts."""
+        """
+        Computes encoder embeddings for the given input texts.
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.) based on the generated output.
+        """
         raise NotImplementedError
 
 

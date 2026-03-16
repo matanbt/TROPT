@@ -230,6 +230,10 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 
         # Extract trigger logits
         slc = input_slices[self.slc_name]
+        assert slc.start > 0, (
+            f"TriggerPerplexityLoss requires the trigger slice to start after position 0 "
+            f"(got slc.start={slc.start}). This could happen since loss is incompatible with `use_prefix_cache=True` -- try setting it to `False`."
+        )
         trigger_logits = output_logits[:, slc.start - 1 : slc.stop - 1, :]  # (bsz, trigger_seq_len, vocab_size)
         trigger_logits = trigger_logits / self.temperature
 

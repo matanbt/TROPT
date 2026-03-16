@@ -743,11 +743,6 @@ class _HuggingFaceModelMixins:
                 loss = compute_loss_from_model_data(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)
 
-                self._update_usage_stats(
-                    forward_calls=1,
-                    forward_samples=len(batch_candidate_trigger_ids)
-                )
-
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)
 
         losses = _compute_candidates_loss__batched()

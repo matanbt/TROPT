@@ -354,13 +354,18 @@ class LMHFModel(
             )
         
         assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
-        
+
         outputs = self.model(
             inputs_embeds=model_input.input_embeds,
             attention_mask=model_input.input_attention_mask,
             output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss) if reference_loss_func else False,
             output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBased) if reference_loss_func else False,
             **(model_input.input_prefix_cache_kwargs or {})
+        )
+        self._update_usage_stats(
+            forward_calls=1,
+            forward_samples=model_input.input_embeds.shape[0],
+            tokens=model_input.input_attention_mask.sum().item(),
         )
 
         # get a view (not a copy) of the response logits only, if needed
@@ -388,7 +393,7 @@ class LMHFModel(
         """
         assert isinstance(texts, list), "texts must be a string or a list of strings."
 
-        # TODO support input embeds, to evaluate soft prompts; specifically we should be able to accept both multi-texts (strings; as usual) and single trigger (embeds) and generate on them.
+        # TODO support input embeds, to *evaluate* soft prompts; specifically we should be able to accept both multi-texts (strings; as usual) and single trigger (embeds) and generate on them.
 
         # Add chat template and tokenize
         # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template

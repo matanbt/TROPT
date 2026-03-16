@@ -1,16 +1,20 @@
-<!-- # Textual Trigger Optimization Toolbox (TROPT) -->
-
-<div align="center">
-  <img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="100%">
-</div>
-
 <div align="center">
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-<!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b.svg)](https://arxiv.org/) -->
+# TROPT
+
+**Discrete text trigger optimization toward any goal, with any optimizer, for any NLP model**
+
+<img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="80%">
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Transformers](https://img.shields.io/badge/transformers-%E2%89%A54.40-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://opensource.org/licenses/MIT)
+<!-- [![Ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff) -->
+<!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b?style=flat-square)](https://arxiv.org/) -->
 
 </div>
+
+---
 
 ***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for optimizing discrete text triggers that elicit (un)desired behaviors from various types of NLP models (LLMs, embeddings, etc). 
 It supports any optimization approach that minimizes a quantifiable objective by iteratively updating a trigger combined with user-provided templates; this is a common method used in LLM jailbreak.

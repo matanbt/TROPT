@@ -193,30 +193,10 @@ class EncoderHFModel(
                 attention_mask=model_input.input_attention_mask, # (bsz, seq_len
             )
         )
-        output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
-
-        return ModelOutput(
-            output_embeddings=output_emb,
-        )
-
-    def forward_pass(
-        self,
-        model_input: ModelInput
-    ) -> ModelOutput:
-        """
-        Perform a white-box forward pass through the model given the ModelInput.
-
-        Args:
-            model_input (ModelInput): The input data for the model.
-
-        Returns:
-            ModelOutput: The output from the model.
-        """
-        inputs_embeds = model_input.input_embeds  # (bsz, seq_len, embd_dim)
-        attention_mask = model_input.attention_mask  # (bsz, seq_len)
-
-        outputs = self.model(
-            dict(inputs_embeds=inputs_embeds, attention_mask=attention_mask)
+        self._update_usage_stats(
+            forward_calls=1,
+            forward_samples=len(model_input.input_embeds),
+            tokens=model_input.input_attention_mask.sum().item(),
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
@@ -237,6 +217,11 @@ class EncoderHFModel(
         assert isinstance(texts, list)
 
         emb = self.model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
+        self._update_usage_stats(
+            forward_calls=1,
+            forward_samples=len(texts),
+            tokens=sum(len(ids) for ids in self.tokenizer(texts)["input_ids"]),
+        )
 
         if return_full_output:
             return ModelOutput(
