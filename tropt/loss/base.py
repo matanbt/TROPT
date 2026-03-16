@@ -15,8 +15,6 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.loss.base import BaseLoss
-
 logger = logging.getLogger(__name__)
 
 
