@@ -223,9 +223,14 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
         input_slices: dict[SliceKey, slice],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
+        """
+        Compute perplexity loss on the trigger tokens.
+        Perplexity is computed wrt to the trigger logits in `output_logits` and the target ids in `input_trigger_ids`.
+        """
 
         # Extract trigger logits
-        trigger_logits = output_logits[:, input_slices[self.slc_name], :]  # (bsz, trigger_seq_len, vocab_size)
+        slc = input_slices[self.slc_name]
+        trigger_logits = output_logits[:, slc.start - 1 : slc.stop - 1, :]  # (bsz, trigger_seq_len, vocab_size)
         trigger_logits = trigger_logits / self.temperature
 
         assert (

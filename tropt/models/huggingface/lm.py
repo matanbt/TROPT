@@ -313,7 +313,8 @@ class LMHFModel(
                     slc = slice(slc_trigger.start - 1, slc_trigger.stop - 1)
                     assert slc.stop - slc.start == trigger_seq_len, "Trigger slice length does not match candidate trigger length."
                 else:  # return_after_trigger_logits_only
-                    slc = slice(slc_trigger.stop, slc_trigger.stop + 1)
+                    # take the logits at last trigger token
+                    slc = slice(slc_trigger.stop - 1, slc_trigger.stop)
 
                 trigger_logits[i_template] = logits[i_template, :, slc, :]
                 
