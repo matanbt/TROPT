@@ -57,7 +57,7 @@ class BaseModel(ABC):
     ):
         """Updates the usage statistics.
 
-        Call this immediately after any model call (e.g. self.model(...)),
+        Call this immediately after any model call (e.g. self._model(...)),
         at the same call site. It is best to AVOID calling from higher-level wrappers (compute_loss_from_tokens,
         compute_grad_from_tokens, etc.) to avoid double-counting.
         """

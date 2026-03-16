@@ -420,7 +420,7 @@ class LMHFModel(
         if inputs_embeds is not None:
             # --- Embed flow ----------------------------------
             n = inputs_embeds.shape[0]
-            generation_output = self.model.generate(
+            generation_output = self._model.generate(
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
                 **hf_gen_kwargs
@@ -457,7 +457,7 @@ class LMHFModel(
 
             prompt_lengths = [len(toks) for toks in inputs.input_ids]
 
-            generation_output = self.model.generate(
+            generation_output = self._model.generate(
                 **inputs,
                 **hf_gen_kwargs
             )
