@@ -3,7 +3,7 @@ import torch
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss.base import SimilarityLoss
-from tropt.models.huggingface.encoder import EncoderHFModel
+from tropt.model.huggingface.encoder import EncoderHFModel
 
 # TODO review & consider dropping the mocks
 

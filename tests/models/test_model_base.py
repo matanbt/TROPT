@@ -7,7 +7,7 @@ These tests verify the core infrastructure that all model implementations build 
 import pytest
 import torch
 
-from tropt.models.model_base import BaseModel, EncoderBaseModel, LMBaseModel
+from tropt.model.model_base import BaseModel, EncoderBaseModel, LMBaseModel
 
 # ==============================================================================
 # BaseModel Tests
@@ -161,12 +161,12 @@ def test_model_requirements_validation():
     This is a critical test because optimizers depend on this validation
     to ensure they can safely call model methods.
     """
-    from tropt.models import (
+    from tropt.model import (
         LMBaseModel,
         GradientTokenAccessMixin,
         LossTokenAccessMixin,
     )
-    from tropt.models.model_base import BaseTokenizer
+    from tropt.model.model_base import BaseTokenizer
 
     class MockTokenizer(BaseTokenizer):
         @property
@@ -219,7 +219,7 @@ def test_model_requirements_validation():
 
 def test_usage_stats_initialization():
     """Test that all models initialize usage stats correctly."""
-    from tropt.models.huggingface.encoder import EncoderHFModel
+    from tropt.model.huggingface.encoder import EncoderHFModel
 
     # Test with a small model (requires internet to download)
     try:

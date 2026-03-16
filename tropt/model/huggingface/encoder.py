@@ -16,14 +16,14 @@ from tropt.common import (
     TextTemplates,
 )
 from tropt.loss import BaseLoss
-from tropt.models import (
+from tropt.model import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
-from tropt.models.model_mixins import GradientEmbedAccessMixin
+from tropt.model.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================

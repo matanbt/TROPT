@@ -16,7 +16,7 @@ from tropt.common import (
     Targets,
     TextTemplates,
 )
-from tropt.models import (
+from tropt.model import (
     BaseTokenizer,
     EncoderBaseModel,
     LossTextAccessMixin,

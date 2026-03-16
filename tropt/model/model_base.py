@@ -12,7 +12,7 @@ from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import DEFAULT_INIT_TRIGGER, ModelOutput, Targets
-from tropt.models.inputs_manager import (
+from tropt.model.inputs_manager import (
     TextInputManager,
     TokenInputManager,
 )

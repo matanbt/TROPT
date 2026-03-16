@@ -7,7 +7,7 @@ import torch
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
 from tropt.loss import BaseLoss
-from tropt.models import BaseModel
+from tropt.model import BaseModel
 from tropt.tracker import BaseTracker, DummyTracker
 
 

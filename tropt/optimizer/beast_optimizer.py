@@ -9,14 +9,14 @@ from tqdm import tqdm
 
 from tropt.common import Targets, TextTemplates
 from tropt.loss import BaseLoss
-from tropt.models import (
+from tropt.model import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.lm import LMHFModel
-from tropt.models.model_mixins import LossTextAccessMixin
+from tropt.model.huggingface.lm import LMHFModel
+from tropt.model.model_mixins import LossTextAccessMixin
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker

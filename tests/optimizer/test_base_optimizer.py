@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from tropt.loss import BaseLoss
-from tropt.models import BaseModel
+from tropt.model import BaseModel
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 
 # TODO review & consider dropping the mocks

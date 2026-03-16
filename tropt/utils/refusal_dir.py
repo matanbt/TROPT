@@ -19,7 +19,7 @@ import torch
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 
-from tropt.models.huggingface.lm import LMHFModel
+from tropt.model.huggingface.lm import LMHFModel
 
 logger = logging.getLogger(__name__)
 

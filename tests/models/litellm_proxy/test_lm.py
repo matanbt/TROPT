@@ -2,10 +2,10 @@
 Tests for the LiteLLM model wrapper.
 Important note: These tests require a running LiteLLM proxy server and Ollama with the specified model pulled.
 """
-from tropt.models.litellm_proxy.lm import LiteLLMModel
+from tropt.model.litellm_proxy.lm import LiteLLMModel
 
 import pytest
-from tropt.models.litellm_proxy.lm import LiteLLMModel
+from tropt.model.litellm_proxy.lm import LiteLLMModel
 
 MODEL_NAME = "ollama/gemma3:270m"
 LITELLM_URL = "http://localhost:4000"

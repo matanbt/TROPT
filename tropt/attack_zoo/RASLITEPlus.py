@@ -3,9 +3,9 @@ from jaxtyping import Float
 
 from tropt.common import DEFAULT_INIT_TRIGGER, TargetKey
 from tropt.loss import SimilarityLoss
-from tropt.models import TextAccessMixin, TokenAccessMixin
-from tropt.models.huggingface.encoder import EncoderHFModel
-from tropt.models.huggingface.lm import LMHFModel
+from tropt.model import TextAccessMixin, TokenAccessMixin
+from tropt.model.huggingface.encoder import EncoderHFModel
+from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -35,7 +35,7 @@ def run_rasliteplus(
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     if model_name.startswith("openai/"):
-        from tropt.models.openai.encoder import EncoderOpenAIModel
+        from tropt.model.openai.encoder import EncoderOpenAIModel
         model_name = model_name.replace("openai/", "")
         model = EncoderOpenAIModel(
             model_name=model_name,

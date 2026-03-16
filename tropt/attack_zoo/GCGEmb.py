@@ -5,7 +5,7 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.loss import SimilarityLoss
-from tropt.models.huggingface.encoder import EncoderHFModel
+from tropt.model.huggingface.encoder import EncoderHFModel
 
 
 def run_gcg_embedding_variant(

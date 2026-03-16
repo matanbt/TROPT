@@ -24,15 +24,15 @@ from tropt.loss import (
     HiddenStateBased,
     LogitBasedLoss,
 )
-from tropt.models import (
+from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
-from tropt.models.model_mixins import GradientEmbedAccessMixin
+from tropt.model.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +147,7 @@ class LMHFModel(
                 "Tokenizer padding side is not 'left'. Our code currently assumes left padding."
             )
             # TODO is it true that we need it? where do we assume it?? maybe it's not needed anymore?
+            # !!!!!!!!!!!!!!!!!!!!!!!!
             self._tokenizer.padding_side = "left"
 
         if not self._tokenizer.pad_token:

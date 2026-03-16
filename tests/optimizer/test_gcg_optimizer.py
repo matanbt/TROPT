@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
-from tropt.models import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputManager
+from tropt.model import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputManager
 from tropt.loss import BaseLoss
 
 # TODO review & consider dropping the mocks (or not because it's useful for isolated testing)

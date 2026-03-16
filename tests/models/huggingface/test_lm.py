@@ -3,7 +3,7 @@ import torch
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, SliceKey, Targets
 from tropt.loss.base import PrefillCELoss, SteeringActivationLoss
-from tropt.models.huggingface.lm import LMHFModel
+from tropt.model.huggingface.lm import LMHFModel
 
 
 @pytest.fixture(scope="module")

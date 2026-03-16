@@ -2,7 +2,7 @@ import torch
 
 from tropt.common import Targets
 from tropt.loss import PrefillCELoss
-from tropt.models.huggingface.lm import LMHFModel
+from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints

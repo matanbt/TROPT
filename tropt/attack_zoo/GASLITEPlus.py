@@ -3,7 +3,7 @@ from jaxtyping import Float
 
 from tropt.common import Targets
 from tropt.loss import SimilarityLoss
-from tropt.models.huggingface.encoder import EncoderHFModel
+from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gasliteplus_optimizer import GASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints

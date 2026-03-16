@@ -21,7 +21,7 @@ from tropt.common import (
 )
 from tropt.loss import BaseLoss
 from tropt.loss.resolution import resolve_and_compute_loss
-from tropt.models import (
+from tropt.model import (
     TokenInputManager,
 )
 
@@ -194,7 +194,7 @@ class _HFTokenInputManager(TokenInputManager):
         """
         # assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
         assert chosen_template_idx is not None, "`chosen_template_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
-        # TODO re-read and test this critical code
+        # TODO re-read and test this critical code !!!!!!!!!!!
 
         if trigger_embeds is None:
             # embed the trigger-ids, if trigger embeddings are not provided
@@ -279,7 +279,7 @@ class _HFTokenInputManager(TokenInputManager):
 
         return ModelInput(
             # input_texts=TODO
-            # input_trigger_strs=TODO
+            # input_trigger_strs=TODO   !!!!!!!!!!!!!
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
             input_attention_mask=attention_mask.to(self.device, torch.int64),
@@ -515,6 +515,7 @@ class _HuggingFaceModelMixins:
 
                     # TODO move to this check to the tests, to avoid slowing down this function
                     # Only check when using discrete tokens (not soft probabilities)
+                    # TODO wrap in "MORE_CHECKS" flag or something, to avoid slowing down in prod  !!!!!!!!!!!!!!!!
                     if candidate_trigger_ids is not None:
                         assert torch.allclose(
                             candidate_embeds,
@@ -548,7 +549,7 @@ class _HuggingFaceModelMixins:
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
-                    # TODO somehow ensure gradient flew throughout the last three function?
+                    # TODO somehow ensure gradient flew throughout the last three function?  / add a respecitve test for that  !!!!!!!!!!!
 
                 # collect losses for the batch & take avg over texts
                 batch_losses = torch.stack(
@@ -568,7 +569,6 @@ class _HuggingFaceModelMixins:
                     inputs=[candidate_ids_onehot],
                     grad_outputs=torch.ones_like(batch_losses, device=model.device),
                 )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
-                # [TODO: GRAD MATCHING second order losses ] put here a grad-alignment hook that--instead of the loss calc above will: (i) compute a non-detached grad of TWO losses (utility, adv goal; `create_graph=True`); (ii) compute the cosine similarity loss between the grads; (iii) return the detached grad of this cosine similarity --> this is the final gradient.
                 all_grads.append(candidate_onehot_grad)
                 # clear_device_cache()  # clear unused GPU memory
 
@@ -677,7 +677,7 @@ class _HuggingFaceModelMixins:
         all_grads, avg_loss = _compute_grad__batched()
 
         # Normalize gradients (L2 norm along the embedding dimension)
-        # TODO ??
+        # TODO ?? MAKE IT OPTIONAL!!!!
         all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         if return_loss:

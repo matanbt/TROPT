@@ -14,7 +14,7 @@ from tropt.common import (
     TextTemplates,
 )
 from tropt.loss import BaseLoss
-from tropt.models import (
+from tropt.model import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,

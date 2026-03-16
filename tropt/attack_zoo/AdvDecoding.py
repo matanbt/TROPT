@@ -8,8 +8,8 @@ from jaxtyping import Float
 
 from tropt.loss import CombinedLoss, PrefillCELoss, SimilarityLoss
 from tropt.loss import InputReadabilityLoss
-from tropt.models.huggingface.encoder import EncoderHFModel
-from tropt.models.huggingface.lm import LMHFModel
+from tropt.model.huggingface.encoder import EncoderHFModel
+from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.beast_optimizer import BEASTOptimizer
 

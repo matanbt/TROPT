@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss import SimilarityLoss
-from tropt.models.openai.encoder import OpenAITokenizer # Import OpenAITokenizer directly
+from tropt.model.openai.encoder import OpenAITokenizer # Import OpenAITokenizer directly
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def mock_tiktoken():
 
 def test_openai_encoder_init(mock_openai_client, mock_tiktoken):
     """Test OpenAI encoder initialization."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",
@@ -84,7 +84,7 @@ def test_openai_encoder_init(mock_openai_client, mock_tiktoken):
 
 def test_openai_encoder_init_deduces_d_model(mock_openai_client, mock_tiktoken):
     """Test that OpenAI encoder can deduce d_model from API."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     # Mock should return 1536-dim embedding
     model = EncoderOpenAIModel(
@@ -97,7 +97,7 @@ def test_openai_encoder_init_deduces_d_model(mock_openai_client, mock_tiktoken):
 
 def test_openai_encoder_call(mock_openai_client, mock_tiktoken):
     """Test OpenAI encoder forward pass (embedding generation)."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",
@@ -115,7 +115,7 @@ def test_openai_encoder_call(mock_openai_client, mock_tiktoken):
 
 def test_openai_encoder_set_token_inputs(mock_openai_client, mock_tiktoken):
     """Test set_token_inputs for OpenAI encoder."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",
@@ -139,7 +139,7 @@ def test_openai_encoder_set_token_inputs(mock_openai_client, mock_tiktoken):
 
 def test_openai_encoder_compute_loss_from_texts(mock_openai_client, mock_tiktoken):
     """Test compute_loss_from_texts for OpenAI encoder."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",
@@ -170,7 +170,7 @@ def test_openai_encoder_compute_loss_from_texts(mock_openai_client, mock_tiktoke
 
 def test_openai_encoder_multi_message(mock_openai_client, mock_tiktoken):
     """Test OpenAI encoder with multiple messages."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",
@@ -193,7 +193,7 @@ def test_openai_encoder_multi_message(mock_openai_client, mock_tiktoken):
 
 def test_openai_tokenizer(mock_tiktoken):
     """Test OpenAI tokenizer wrapper."""
-    from tropt.models.openai.encoder import OpenAITokenizer
+    from tropt.model.openai.encoder import OpenAITokenizer
 
     tokenizer = OpenAITokenizer("gpt-4")
 
@@ -205,7 +205,7 @@ def test_openai_tokenizer(mock_tiktoken):
 
 def test_openai_encoder_usage_stats(mock_openai_client, mock_tiktoken):
     """Test that usage statistics are tracked."""
-    from tropt.models.openai.encoder import EncoderOpenAIModel
+    from tropt.model.openai.encoder import EncoderOpenAIModel
 
     model = EncoderOpenAIModel(
         model_name="text-embedding-3-small",

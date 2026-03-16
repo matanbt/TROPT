@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
-from tropt.models import (
+from tropt.model import (
     BaseModel, 
     LossTextAccessMixin, 
     LogitsTokenAccessMixin, 

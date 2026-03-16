@@ -5,7 +5,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 from tropt.common import ModelOutput
-from tropt.models import EncoderBaseModel, LossTextAccessMixin
+from tropt.model import EncoderBaseModel, LossTextAccessMixin
 
 
 class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):

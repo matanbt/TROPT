@@ -3,7 +3,7 @@ import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
 from tropt.optimizer.beast_optimizer import BEASTOptimizer
-from tropt.models import (
+from tropt.model import (
     BaseModel,
     LMBaseModel,
     LossTokenAccessMixin, # Changed from LossTextAccessMixin
