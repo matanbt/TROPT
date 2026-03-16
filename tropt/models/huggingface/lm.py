@@ -146,6 +146,7 @@ class LMHFModel(
             logger.warning(
                 "Tokenizer padding side is not 'left'. Our code currently assumes left padding."
             )
+            # TODO is it true that we need it? where do we assume it?? maybe it's not needed anymore?
             self._tokenizer.padding_side = "left"
 
         if not self._tokenizer.pad_token:

@@ -27,7 +27,7 @@ class LossResolutionError(Exception):
     """
     pass
 
-
+# TODO rename to: `resolve_and_compute_loss`
 def compute_loss_from_model_data(
     model_output: ModelOutput,
     model_input: ModelInput,
@@ -160,6 +160,7 @@ def _get_non_none_fields(obj: ModelOutput | ModelInput) -> list[str]:
     """Helper to get list of non-None field names from a Pydantic model."""
     if hasattr(obj, 'model_fields'):
         # Pydantic v2
+        # TODO resolve deprecation
         return [name for name in obj.model_fields.keys() if getattr(obj, name) is not None]
     else:
         # Fallback for dataclass or Pydantic v1
