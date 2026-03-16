@@ -20,7 +20,7 @@ from tropt.common import (
     Targets,
 )
 from tropt.loss.base import BaseLoss
-from tropt.loss.resolution import compute_loss_from_model_data
+from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.models import (
     TokenInputManager,
 )
@@ -546,7 +546,7 @@ class _HuggingFaceModelMixins:
                         model_input=model_input,
                         reference_loss_func=loss_func,
                     )
-                    loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+                    loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
                     # TODO somehow ensure gradient flew throughout the last three function?
 
@@ -648,7 +648,7 @@ class _HuggingFaceModelMixins:
                     )
 
                     # 4. Compute Loss
-                    loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+                    loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
 
                 # Collect losses & average over messages
@@ -745,7 +745,7 @@ class _HuggingFaceModelMixins:
                         model_input=model_input,
                         reference_loss_func=loss_func,
                     )
-                loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+                loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)
 
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)

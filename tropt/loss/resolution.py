@@ -27,8 +27,7 @@ class LossResolutionError(Exception):
     """
     pass
 
-# TODO rename to: `resolve_and_compute_loss`
-def compute_loss_from_model_data(
+def resolve_and_compute_loss(
     model_output: ModelOutput,
     model_input: ModelInput,
     loss_func: BaseLoss,
@@ -75,7 +74,7 @@ def compute_loss_from_model_data(
         >>> # Encoder model with SimilarityLoss(output_embeddings, target_embeddings)
         >>> output = ModelOutput(output_embeddings=torch.randn(4, 768))
         >>> input_data = ModelInput(targets=MessageTargets(target_vectors=target_vecs))
-        >>> loss = compute_loss_from_model_data(output, input_data, SimilarityLoss())
+        >>> loss = resolve_and_compute_loss(output, input_data, SimilarityLoss())
 
         >>> # Language model with PrefillCELoss(response_logits, input_slices, targets)
         >>> output = ModelOutput(response_logits=torch.randn(2, 50, 32000))
@@ -83,7 +82,7 @@ def compute_loss_from_model_data(
         ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
         ...     targets=MessageTargets(target_response_toks=target_ids)
         ... )
-        >>> loss = compute_loss_from_model_data(output, input_data, PrefillCELoss())
+        >>> loss = resolve_and_compute_loss(output, input_data, PrefillCELoss())
 
     """
 
@@ -176,7 +175,7 @@ def _compute_combined_loss(
 
     CombinedLoss is a weighted combination of multiple loss functions. This
     function computes each component loss separately (using recursive calls to
-    compute_loss_from_model_data) and combines them with their weights.
+    resolve_and_compute_loss) and combines them with their weights.
 
     Args:
         model_output: Model outputs available for all component losses
@@ -189,7 +188,7 @@ def _compute_combined_loss(
     component_losses = []
     for component_loss in loss_func.loss_funcs:
         # Recursive call - each component loss gets resolved independently
-        component_loss_value = compute_loss_from_model_data(
+        component_loss_value = resolve_and_compute_loss(
             model_output, model_input, component_loss
         )
         component_losses.append(component_loss_value)

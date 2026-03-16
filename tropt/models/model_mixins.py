@@ -14,7 +14,7 @@ from tropt.common import (
     TokenTriggerCandidates,
 )
 from tropt.loss.base import BaseLoss
-from tropt.loss.resolution import compute_loss_from_model_data
+from tropt.loss.resolution import resolve_and_compute_loss
 
 from .inputs_manager import (
     TextInputManager,
@@ -176,7 +176,7 @@ class LossTextAccessMixin(TextAccessMixin):
             )
 
             # Use unified loss resolution
-            loss = compute_loss_from_model_data(model_output, model_input, loss_func)  # shape: (n_candidates,)
+            loss = resolve_and_compute_loss(model_output, model_input, loss_func)  # shape: (n_candidates,)
             losses.append(loss)
 
         losses = torch.stack(losses, dim=0)  # shape: (n_templates, n_candidates)

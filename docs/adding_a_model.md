@@ -238,14 +238,14 @@ def compute_loss_from_tokens(
             )
             model_output = ...  # run your backend on model_input
             self._update_usage_stats(forward_calls=1, forward_samples=len(batch), tokens=...)
-            loss = compute_loss_from_model_data(model_output, model_input, loss_func)
+            loss = resolve_and_compute_loss(model_output, model_input, loss_func)
             all_losses[template_idx].append(loss)
 
     losses = torch.stack([torch.cat(l) for l in all_losses])  # (n_templates, n_candidates)
     return losses if keep_message_dim else losses.mean(dim=0)
 ```
 
-The key line is `compute_loss_from_model_data(model_output, model_input, loss_func)` — this is the [unified loss resolution](../tropt/loss/resolution.py) function that dispatches to the correct loss computation based on loss type. You don't implement loss logic yourself; you just provide the data via `ModelOutput` and `ModelInput`.
+The key line is `resolve_and_compute_loss(model_output, model_input, loss_func)` — this is the [unified loss resolution](../tropt/loss/resolution.py) function that dispatches to the correct loss computation based on loss type. You don't implement loss logic yourself; you just provide the data via `ModelOutput` and `ModelInput`.
 
 `compute_grad_from_tokens` (required by `GradientTokenAccessMixin`) has the same per-template loop structure, but returns the **gradient of the loss w.r.t. the token input** instead of the loss itself. The returned tensor has shape `(n_candidates, trigger_seq_len, vocab_size)` — one gradient value per token position per vocabulary entry, telling the optimizer which substitutions would most reduce the loss. How you compute this gradient is up to your backend.
 
@@ -273,7 +273,7 @@ These methods are fully implemented and call `token_forward_pass` internally:
 
 All of these call **`token_forward_pass`** internally — the one method you must implement.
 
-The mixin also handles the template loop, batching, and loss resolution via `compute_loss_from_model_data`. You don't need to write any of that logic.
+The mixin also handles the template loop, batching, and loss resolution via `resolve_and_compute_loss`. You don't need to write any of that logic.
 
 ### What you implement
 

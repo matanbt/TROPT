@@ -26,6 +26,6 @@ from .text_loss import (
 )
 
 from .resolution import (
-    compute_loss_from_model_data,
+    resolve_and_compute_loss,
     LossResolutionError,
 )
