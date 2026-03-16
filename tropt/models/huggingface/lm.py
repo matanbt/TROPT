@@ -84,17 +84,17 @@ class LMHFModel(
         model_name: str,
         device: str = None,
         dtype: str = None,
-        forward_pass_batch_size: int = 512,
-        backward_pass_batch_size: int = 32,
+        _forward_pass_batch_size: int = 512,
+        _backward_pass_batch_size: int = 32,
         # more args:
         use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
         use_eager_attention: bool = False,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
-        self.model_name = model_name
-        self.forward_pass_batch_size = forward_pass_batch_size
-        self.backward_pass_batch_size = backward_pass_batch_size
+        self._model_name = model_name
+        self._forward_pass_batch_size = _forward_pass_batch_size
+        self._backward_pass_batch_size = _backward_pass_batch_size
 
         if use_eager_attention:
             # required for to support attention-based losses
@@ -103,22 +103,22 @@ class LMHFModel(
                 f"Using eager attention for model {model_name} to support attention-based loss."
             )
 
-        self.model = AutoModelForCausalLM.from_pretrained(
+        self._model = AutoModelForCausalLM.from_pretrained(
             model_name,
             device_map=device or "auto",
             dtype=dtype or "auto",
             **model_kwargs
         )
-        self.dtype = self.model.dtype
+        self.dtype = self._model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.embedding_layer = self.model.get_input_embeddings()
-        self.use_prefix_cache = use_prefix_cache
+        self._embedding_layer = self._model.get_input_embeddings()
+        self._use_prefix_cache = use_prefix_cache
 
         # Set model to eval mode
         if set_model_to_eval:
-            self.model.eval()
-            for param in self.model.parameters():
+            self._model.eval()
+            for param in self._model.parameters():
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
@@ -127,12 +127,12 @@ class LMHFModel(
         )
 
         ## warning and checks:
-        if self.model.dtype in (torch.float32, torch.float64):
+        if self._model.dtype in (torch.float32, torch.float64):
             logger.warning(
-                f"Model is in {self.model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
+                f"Model is in {self._model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
             )
 
-        if self.model.device == torch.device("cpu"):
+        if self._model.device == torch.device("cpu"):
             logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
         if not self._tokenizer.chat_template:
@@ -162,7 +162,7 @@ class LMHFModel(
 
     @property
     def n_layers(self) -> int:
-        return self.model.config.num_hidden_layers
+        return self._model.config.num_hidden_layers
 
     @property
     def tokenizer(self):
@@ -170,7 +170,7 @@ class LMHFModel(
 
     @property
     def device(self):
-        return self.model.device
+        return self._model.device
 
     def set_token_inputs(
         self,
@@ -181,7 +181,7 @@ class LMHFModel(
         Prepares and stores the inputs manager for the model, including tokenization and target processing.
         """
         # To make sure the placeholder will be tokenizer as is
-        self.tokenizer.add_special_tokens(
+        self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
 
@@ -192,7 +192,7 @@ class LMHFModel(
 
         # put in chat-template + special tokens & tokenizer
         template_tok_ids: List[List[int]] = [
-            self.tokenizer.apply_chat_template(
+            self._tokenizer.apply_chat_template(
                 [{"role": "user", "content": template}],
                 tokenize=True,
                 add_generation_prompt=True,
@@ -205,26 +205,26 @@ class LMHFModel(
 
         # Encode target outputs, if provided
         if targets.target_response_strs is not None:
-            tokenized_lists = self.tokenizer(
+            tokenized_lists = self._tokenizer(
                 targets.target_response_strs, add_special_tokens=False
             )["input_ids"]
             # convert to list of tensors
             targets.target_response_toks = [
-                torch.tensor(ids, device=self.model.device) for ids in tokenized_lists
+                torch.tensor(ids, device=self._model.device) for ids in tokenized_lists
                 # each of shape (target_seq_len,)
             ]
 
         # Move targets to device
-        targets = targets.to_device(self.model.device)
+        targets = targets.to_device(self._model.device)
 
         # Build the input manager, that will allow combining with different triggers
-        self.token_input_manager = LMHFTokenInputManager(
+        self._token_input_manager = LMHFTokenInputManager(
             tok_ids=template_tok_ids,
-            model=self.model,
-            tokenizer=self.tokenizer,
-            embed_func=self.embedding_layer,
+            model=self._model,
+            tokenizer=self._tokenizer,
+            embed_func=self._embedding_layer,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
-            use_prefix_cache=self.use_prefix_cache,
+            use_prefix_cache=self._use_prefix_cache,
             targets=targets,
         )
 
@@ -259,13 +259,14 @@ class LMHFModel(
                 whether to return only the logits corresponding to predicting the next token after trigger (default: False)
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
 
-        input_manager = self.token_input_manager
+        input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
         n_candidates, trigger_seq_len = candidate_trigger_ids.shape
 
         # Compute the logits (in batches)
-        @find_executable_batch_size(starting_batch_size=self.forward_pass_batch_size)
+        @find_executable_batch_size(starting_batch_size=self._forward_pass_batch_size)
         def _compute_logits_batched(batch_size):
             all_logits = [[] for _ in range(n_templates)]
             slices: List[Dict[str, slice]] = [None for _ in range(n_templates)]
@@ -347,7 +348,7 @@ class LMHFModel(
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
         
         """
-        if reference_loss_func is not None and reference_loss_func.contains_loss_type(AttentionBasedLoss) and self.model.config._attn_implementation != "eager":
+        if reference_loss_func is not None and reference_loss_func.contains_loss_type(AttentionBasedLoss) and self._model.config._attn_implementation != "eager":
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
@@ -355,7 +356,7 @@ class LMHFModel(
         
         assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
 
-        outputs = self.model(
+        outputs = self._model(
             inputs_embeds=model_input.input_embeds,
             attention_mask=model_input.input_attention_mask,
             output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss) if reference_loss_func else False,
@@ -383,73 +384,105 @@ class LMHFModel(
 
     def generate(
         self,
-        texts: List[str],
+        texts: Optional[List[str]] = None,
+
+        # [Optional] Embedding input:
+        inputs_embeds: Optional[Float[Tensor, "bsz seq_len embd_dim"]] = None,
+        attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
+
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
         return_full_output: bool = False,
     ) -> List[str] | ModelOutput:
         """
-        Generate text completions for the given input texts.
+        Generate text completions.
+
+        Accepts either plain texts or input embeddings,
+
+        Args:
+            texts: list of plain-text prompts.  Mutually exclusive with ``inputs_embeds``.
+            inputs_embeds: pre-built prompt embeddings (bsz, seq_len, embd_dim). 
+                Note that in the case of input_embedding the full_template_strs and full_template_ids will not be returned in the output, as we don't have access to the text/tokenizedinput.
+            attention_mask: Only relevant if ``inputs_embeds`` is provided. Attention mask matching ``inputs_embeds``.
         """
-        assert isinstance(texts, list), "texts must be a string or a list of strings."
+        assert (texts is None) ^ (inputs_embeds is None), \
+            "Exactly one of `texts` or `inputs_embeds` must be provided."
 
-        # TODO support input embeds, to *evaluate* soft prompts; specifically we should be able to accept both multi-texts (strings; as usual) and single trigger (embeds) and generate on them.
+        hf_gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": not greedy_decode,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "output_scores": return_full_output,
+            "return_dict_in_generate": return_full_output,
+        }
 
-        # Add chat template and tokenize
-        # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template
-        template_tok_ids: List[List[int]] = [
-            self.tokenizer.apply_chat_template(
-                [{"role": "user", "content": text}],
-                tokenize=True,
-                add_generation_prompt=True,
+        if inputs_embeds is not None:
+            # --- Embed flow ----------------------------------
+            n = inputs_embeds.shape[0]
+            generation_output = self.model.generate(
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                **hf_gen_kwargs
             )
-            for text in texts
-        ]
 
-        # Use tokenizer's pad method for consistent padding behavior
-        inputs = self.tokenizer.pad(
-            {"input_ids": template_tok_ids},
-            padding=True,
-            return_tensors="pt"
-        ).to(self.device)
+            if return_full_output:
+                full_toks = generation_output.sequences
+                generation_logits = torch.stack(generation_output.scores, dim=1)
+            else:
+                full_toks = generation_output
 
-        # Keep prompt lengths
-        prompt_lengths = [len(toks) for toks in inputs.input_ids]
+            # HF returns only generated token IDs when inputs_embeds is used
+            generated_toks = [full_toks[i] for i in range(n)]
+            n_prompt_tokens = inputs_embeds.shape[0] * inputs_embeds.shape[1]
 
-        # Generate responses
-        generation_output = self.model.generate(
-            **inputs,
-            max_new_tokens=max_new_tokens,
-            do_sample=not greedy_decode,
-            pad_token_id=self.tokenizer.pad_token_id,
-            output_scores=return_full_output,
-            return_dict_in_generate=return_full_output,
-        )
-
-        if return_full_output:
-            full_toks = generation_output.sequences
-            generation_logits = torch.stack(generation_output.scores, dim=1)
         else:
-            full_toks = generation_output
+            # --- Text flow ----------------------------------
+            # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template
+            assert isinstance(texts, list), "texts must be a list of strings."
+            template_tok_ids: List[List[int]] = [
+                self._tokenizer.apply_chat_template(
+                    [{"role": "user", "content": text}],
+                    tokenize=True,
+                    add_generation_prompt=True,
+                )
+                for text in texts
+            ]
 
-        # Extract only the generated part
-        generated_toks = [
-            full_toks[i][prompt_lengths[i]:] for i in range(len(full_toks))
-        ]
+            inputs = self._tokenizer.pad(
+                {"input_ids": template_tok_ids},
+                padding=True,
+                return_tensors="pt"
+            ).to(self.device)
 
-        # Decode to strings
-        generation_strs = self.tokenizer.batch_decode(
+            prompt_lengths = [len(toks) for toks in inputs.input_ids]
+
+            generation_output = self.model.generate(
+                **inputs,
+                **hf_gen_kwargs
+            )
+
+            if return_full_output:
+                full_toks = generation_output.sequences
+                generation_logits = torch.stack(generation_output.scores, dim=1)
+            else:
+                full_toks = generation_output
+
+            generated_toks = [
+                full_toks[i][prompt_lengths[i]:] for i in range(len(full_toks))
+            ]
+            n_prompt_tokens = inputs.input_ids.numel()
+
+        # --- Shared post-processing ------------------------------------
+        generation_strs = self._tokenizer.batch_decode(
             generated_toks,
             skip_special_tokens=True
         )
 
-        # Track usage
-        prompt_tokens = inputs.input_ids.numel()
-        gen_tokens = sum(len(t) for t in generated_toks)
+        n_gen_tokens = sum(len(t) for t in generated_toks)
         self._update_usage_stats(
-            tokens=prompt_tokens + gen_tokens,
+            tokens=n_prompt_tokens + n_gen_tokens,
             forward_calls=1,
-            forward_samples=len(texts)
+            forward_samples=len(generated_toks),
         )
 
         if return_full_output:
@@ -460,17 +493,20 @@ class LMHFModel(
                 for i in range(len(generated_toks))
             ]
 
-            full_strs = self.tokenizer.batch_decode(
-                full_toks,
-                skip_special_tokens=False
-            )
+            if inputs_embeds is None:
+                full_strs = self._tokenizer.batch_decode(full_toks, skip_special_tokens=False)
+                full_toks_out = full_toks
+            else:
+                # Prompt was given as embeddings; no prompt token IDs to reconstruct
+                full_strs = None
+                full_toks_out = None
 
             return ModelOutput(
                 generated_response_strs=generation_strs,
                 generated_response_ids=generated_toks,
                 generated_response_logits=generation_logits,
                 full_template_strs=full_strs,
-                full_template_ids=full_toks,
+                full_template_ids=full_toks_out,
             )
 
         return generation_strs
