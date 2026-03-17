@@ -1,7 +1,7 @@
 import itertools
 import logging
 from functools import cached_property
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from accelerate.utils.memory import find_executable_batch_size
@@ -169,7 +169,9 @@ class LMHFModel(
     def device(self):
         return self._model.device
 
-    def set_token_inputs(
+    # ======================= Token-access methods =======================
+
+    def set_inputs_from_tokens(
         self,
         templates: TextTemplates,
         targets: Optional[Targets] = None,
@@ -256,7 +258,7 @@ class LMHFModel(
                 whether to return only the logits corresponding to predicting the next token after trigger (default: False)
         """
         assert int(return_trigger_logits_only) + int(return_after_trigger_logits_only) <= 1, "Cannot set both `return_trigger_logits_only` and `return_after_trigger_logits_only` to True."
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
@@ -281,8 +283,8 @@ class LMHFModel(
                     chosen_template_idx=template_idx,
                 )
                 # Compute the logits
-                logits_batch = self.token_forward_pass(
-                    model_input=model_input,
+                logits_batch = self.invoke_from_tokens(
+                    **model_input.to_dict(),
                 ).output_logits
 
                 all_logits[template_idx].append(logits_batch)
@@ -330,20 +332,27 @@ class LMHFModel(
 
         return logits
 
-    def token_forward_pass(
+    def invoke_from_tokens(
         self,
-        model_input: ModelInput,
-        reference_loss_func: BaseLoss=None,
+        input_embeds: Float[Tensor, "bsz seq_len embd_dim"],
+        input_attention_mask: Float[Tensor, "bsz seq_len"],
+        input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
+        input_slices: Optional[Dict[str, slice]] = None,
+        reference_loss_func: BaseLoss = None,
     ) -> ModelOutput:
         """
-        Performs a forward pass through the model given the input embeddings and attention mask from the ModelInput.
+        Performs a forward pass through the model given input embeddings and attention mask.
 
         Args:
-            model_input: ModelInput
+            input_embeds: Input embeddings tensor of shape (bsz, seq_len, embd_dim).
+            input_attention_mask: Attention mask tensor of shape (bsz, seq_len).
+            input_prefix_cache_kwargs: Optional dict of prefix cache kwargs to pass to the model.
+            input_slices: Optional dict mapping slice keys to slices for extracting specific parts of the output.
+            reference_loss_func: Optional loss function used to determine which outputs to compute
+                (e.g., attentions for AttentionBasedLoss, hidden states for HiddenStateBasedLoss).
 
         Returns:
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
-
         """
         if reference_loss_func is not None and reference_loss_func.contains_loss_type(AttentionBasedLoss) and self._model.config._attn_implementation != "eager":
             logger.warning(
@@ -351,24 +360,24 @@ class LMHFModel(
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
 
-        assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+        assert input_embeds is not None, "input_embeds must be provided in HF's invoke_from_tokens."
 
         outputs = self._model(
-            inputs_embeds=model_input.input_embeds,
-            attention_mask=model_input.input_attention_mask,
+            inputs_embeds=input_embeds,
+            attention_mask=input_attention_mask,
             output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss) if reference_loss_func else False,
             output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBasedLoss) if reference_loss_func else False,
-            **(model_input.input_prefix_cache_kwargs or {})
+            **(input_prefix_cache_kwargs or {})
         )
         self._update_usage_stats(
             forward_calls=1,
-            forward_samples=model_input.input_embeds.shape[0],
-            tokens=model_input.input_attention_mask.sum().item(),
+            forward_samples=input_embeds.shape[0],
+            tokens=input_attention_mask.sum().item(),
         )
 
         response_logits = None
         if reference_loss_func is not None and reference_loss_func.contains_loss_type(LogitBasedLoss):
-            response_slc = model_input.input_slices[SliceKey.APPENDED]
+            response_slc = input_slices[SliceKey.APPENDED]
             response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
 
         return ModelOutput(
@@ -378,9 +387,11 @@ class LMHFModel(
             output_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if outputs.hidden_states else None,  # (skips input embedding (layer 0)
         )
 
-    def generate(
+    # ======================= Text-access methods =======================
+
+    def invoke_from_texts(
         self,
-        texts: Optional[List[str]] = None,
+        input_texts: Optional[List[str]] = None,
 
         # [Optional] Embedding input:
         inputs_embeds: Optional[Float[Tensor, "bsz seq_len embd_dim"]] = None,
@@ -388,28 +399,27 @@ class LMHFModel(
 
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
-        return_full_output: bool = False,
-    ) -> List[str] | ModelOutput:
+    ) -> ModelOutput:
         """
-        Generate text completions.
+        Generate text completions. Always returns a ModelOutput.
 
-        Accepts either plain texts or input embeddings,
+        Accepts either plain texts or input embeddings.
 
         Args:
-            texts: list of plain-text prompts.  Mutually exclusive with ``inputs_embeds``.
-            inputs_embeds: pre-built prompt embeddings (bsz, seq_len, embd_dim). 
-                Note that in the case of input_embedding the full_template_strs and full_template_ids will not be returned in the output, as we don't have access to the text/tokenizedinput.
+            input_texts: list of plain-text prompts.  Mutually exclusive with ``inputs_embeds``.
+            inputs_embeds: pre-built prompt embeddings (bsz, seq_len, embd_dim).
+                Note that in the case of input_embedding the full_template_strs and full_template_ids will not be returned in the output, as we don't have access to the text/tokenized input.
             attention_mask: Only relevant if ``inputs_embeds`` is provided. Attention mask matching ``inputs_embeds``.
         """
-        assert (texts is None) ^ (inputs_embeds is None), \
-            "Exactly one of `texts` or `inputs_embeds` must be provided."
+        assert (input_texts is None) ^ (inputs_embeds is None), \
+            "Exactly one of `input_texts` or `inputs_embeds` must be provided."
 
         hf_gen_kwargs = {
             "max_new_tokens": max_new_tokens,
             "do_sample": not greedy_decode,
             "pad_token_id": self._tokenizer.pad_token_id,
-            "output_scores": return_full_output,
-            "return_dict_in_generate": return_full_output,
+            "output_scores": True,
+            "return_dict_in_generate": True,
         }
 
         if inputs_embeds is not None:
@@ -421,11 +431,8 @@ class LMHFModel(
                 **hf_gen_kwargs
             )
 
-            if return_full_output:
-                full_toks = generation_output.sequences
-                generation_logits = torch.stack(generation_output.scores, dim=1)
-            else:
-                full_toks = generation_output
+            full_toks = generation_output.sequences
+            generation_logits = torch.stack(generation_output.scores, dim=1)
 
             # HF returns only generated token IDs when inputs_embeds is used
             generated_toks = [full_toks[i] for i in range(n)]
@@ -434,14 +441,14 @@ class LMHFModel(
         else:
             # --- Text flow ----------------------------------
             # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template
-            assert isinstance(texts, list), "texts must be a list of strings."
+            assert isinstance(input_texts, list), "input_texts must be a list of strings."
             template_tok_ids: List[List[int]] = [
                 self._tokenizer.apply_chat_template(
                     [{"role": "user", "content": text}],
                     tokenize=True,
                     add_generation_prompt=True,
                 )
-                for text in texts
+                for text in input_texts
             ]
 
             inputs = self._tokenizer.pad(
@@ -457,11 +464,8 @@ class LMHFModel(
                 **hf_gen_kwargs
             )
 
-            if return_full_output:
-                full_toks = generation_output.sequences
-                generation_logits = torch.stack(generation_output.scores, dim=1)
-            else:
-                full_toks = generation_output
+            full_toks = generation_output.sequences
+            generation_logits = torch.stack(generation_output.scores, dim=1)
 
             generated_toks = [
                 full_toks[i][prompt_lengths[i]:] for i in range(len(full_toks))
@@ -481,28 +485,25 @@ class LMHFModel(
             forward_samples=len(generated_toks),
         )
 
-        if return_full_output:
-            # Trim logits per-sample to match actual generated length
-            # (scores are already prompt-excluded, but samples may differ due to EOS)
-            generation_logits = [
-                generation_logits[i, :len(generated_toks[i])]
-                for i in range(len(generated_toks))
-            ]
+        # Trim logits per-sample to match actual generated length
+        # (scores are already prompt-excluded, but samples may differ due to EOS)
+        generation_logits = [
+            generation_logits[i, :len(generated_toks[i])]
+            for i in range(len(generated_toks))
+        ]
 
-            if inputs_embeds is None:
-                full_strs = self._tokenizer.batch_decode(full_toks, skip_special_tokens=False)
-                full_toks_out = full_toks
-            else:
-                # Prompt was given as embeddings; no prompt token IDs to reconstruct
-                full_strs = None
-                full_toks_out = None
+        if inputs_embeds is None:
+            full_strs = self._tokenizer.batch_decode(full_toks, skip_special_tokens=False)
+            full_toks_out = full_toks
+        else:
+            # Prompt was given as embeddings; no prompt token IDs to reconstruct
+            full_strs = None
+            full_toks_out = None
 
-            return ModelOutput(
-                generated_response_strs=generation_strs,
-                generated_response_ids=generated_toks,
-                generated_response_logits=generation_logits,
-                full_template_strs=full_strs,
-                full_template_ids=full_toks_out,
-            )
-
-        return generation_strs
+        return ModelOutput(
+            generated_response_strs=generation_strs,
+            generated_response_ids=generated_toks,
+            generated_response_logits=generation_logits,
+            full_template_strs=full_strs,
+            full_template_ids=full_toks_out,
+        )

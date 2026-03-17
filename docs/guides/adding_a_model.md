@@ -180,7 +180,7 @@ Use this when your backend supports embedding-level input — you can pass raw i
 
 The `InputsManager` pre-processes text templates once (splitting at the `{{OPTIMIZED_TRIGGER}}` placeholder, tokenizing, embedding) and then efficiently inserts candidate triggers at each optimization step via `get_triggered_inputs(trigger_ids, chosen_template_idx)`, which returns a [`ModelInput`](../../tropt/common.py) dataclass.
 
-The default [`TokenInputManager`](../../tropt/models/inputs_manager.py) works with any tokenizer supporting the `BaseTokenizer` interface — it decodes trigger IDs to strings and reconstructs full texts. The HuggingFace backend uses [`_HFTokenInputManager`](../../tropt/models/huggingface/base.py), which overrides this with embedding-level input construction, attention masks, prefix caching, and position slicing.
+The default [`DefaultTokenInputManager`](../../tropt/models/inputs_manager.py) works with any tokenizer supporting the `BaseTokenizer` interface — it decodes trigger IDs to strings and reconstructs full texts. The HuggingFace backend uses [`_HFTokenInputManager`](../../tropt/models/huggingface/base.py), which overrides this with embedding-level input construction, attention masks, prefix caching, and position slicing.
 
 ### The setup-then-compute pattern
 
@@ -207,12 +207,12 @@ def tokenizer(self):
 
 If your backend doesn't use a HuggingFace tokenizer, implement the `BaseTokenizer` interface — see [`OpenAITokenizer`](../../tropt/models/openai/encoder.py) for an example wrapping `tiktoken`.
 
-**3. `set_inputs_from_tokens`** — Tokenize the templates and construct your `InputsManager`. Store it via `self._token_input_manager`. In most cases you can use the default `TokenInputManager`, which works with any `BaseTokenizer`:
+**3. `set_inputs_from_tokens`** — Tokenize the templates and construct your `InputsManager`. Store it via `self._token_input_manager`. In most cases you can use the `DefaultTokenInputManager`, which works with any `BaseTokenizer`:
 
 ```python
 def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) -> None:
     tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
-    self._token_input_manager = TokenInputManager(
+    self._token_input_manager = DefaultTokenInputManager(
         tok_ids=tok_ids,
         tokenizer=self.tokenizer,
         targets=targets,

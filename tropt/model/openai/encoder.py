@@ -20,7 +20,7 @@ from tropt.model import (
     EncoderBaseModel,
     LossTextAccessMixin,
     TokenAccessMixin,
-    TokenInputManager,
+    DefaultTokenInputManager,
 )
 
 
@@ -240,7 +240,7 @@ class EncoderOpenAIModel(
         tok_ids = tok_results["input_ids"]
 
         # 2. Build the Manager and store it
-        self._token_input_manager = TokenInputManager(
+        self._token_input_manager = DefaultTokenInputManager(
             tokenizer=self._tokenizer,
             tok_ids=tok_ids,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,

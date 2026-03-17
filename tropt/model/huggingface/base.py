@@ -2,7 +2,7 @@ import itertools
 import logging
 from abc import abstractmethod
 from functools import cached_property
-from typing import Annotated, Dict, List, Optional, Tuple
+from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -441,7 +441,7 @@ class _HuggingFaceModelMixins:
 
         Example:
             >>> # GCG-style optimization with discrete token candidates
-            >>> inputs = model.set_token_inputs(texts, initial_trigger, targets)
+            >>> inputs = model.set_inputs_from_tokens(texts, initial_trigger, targets)
             >>> candidate_ids = torch.randint(0, vocab_size, (128, 20))  # 128 candidates
             >>> grads = model.compute_grad_from_tokens(
             ...     inputs=inputs,
@@ -454,7 +454,7 @@ class _HuggingFaceModelMixins:
         """
         assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
         model = self._model
         embedding_layer = self._embedding_layer
@@ -552,8 +552,8 @@ class _HuggingFaceModelMixins:
                         # Also pass trigger ids as a reference
                         trigger_ids=ref_trigger_ids,
                     )
-                    model_output = self.token_forward_pass(
-                        model_input=model_input,
+                    model_output = self.invoke_from_tokens(
+                        **model_input.to_dict(),
                         reference_loss_func=loss_func,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
@@ -619,7 +619,7 @@ class _HuggingFaceModelMixins:
             Gradients w.r.t. the input embeddings.
             Shape: (n_candidates, trigger_seq_len, embed_dim)
         """
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
         model = self._model
         input_manager = self._token_input_manager
@@ -656,8 +656,8 @@ class _HuggingFaceModelMixins:
                     )
 
                     # 3. Forward pass
-                    model_output = self.token_forward_pass(
-                        model_input=model_input,
+                    model_output = self.invoke_from_tokens(
+                        **model_input.to_dict(),
                         reference_loss_func=loss_func,
                     )
 
@@ -720,7 +720,7 @@ class _HuggingFaceModelMixins:
             Tensor, shape = (n_candidates,), or (n_templates, n_candidates) if keep_message_dim=True
                 the loss for each candidate sequence
         """
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_token_inputs() first."
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
@@ -755,8 +755,8 @@ class _HuggingFaceModelMixins:
                     trigger_ids=batch_candidate_trigger_ids,
                     chosen_template_idx=template_idx,
                 )
-                model_output = self.token_forward_pass(
-                        model_input=model_input,
+                model_output = self.invoke_from_tokens(
+                        **model_input.to_dict(),
                         reference_loss_func=loss_func,
                     )
                 loss = resolve_and_compute_loss(model_output, model_input, loss_func)
@@ -772,24 +772,28 @@ class _HuggingFaceModelMixins:
         return losses
 
     @abstractmethod
-    def token_forward_pass(
+    def invoke_from_tokens(
         self,
-        model_input: ModelInput,
-        reference_loss_func: BaseLoss,
-    ) -> Float[Tensor, "bsz"]:
-        """Performs a forward pass with the given token-based model input. Forward pass is expected to be done on `input_embeds` from `model_input`.
+        input_embeds: Float[Tensor, "bsz seq_len d_model"],
+        input_attention_mask: Int[Tensor, "bsz seq_len"],
+        reference_loss_func: BaseLoss = None,
+        **kwargs,
+    ) -> ModelOutput:
+        """Performs a forward pass with the given token-based model input. Forward pass is expected to be done on `input_embeds`.
 
         Args:
-            model_input: ModelInput
-                the model input containing the triggered input_embeds and other info
+            input_embeds: Float[Tensor, "bsz seq_len d_model"]
+                the input embeddings with the trigger merged in; if provided, used instead of any other potential input.
+            input_attention_mask: Int[Tensor, "bsz seq_len"]
+                the attention mask matching the input embeddings
             reference_loss_func: BaseLoss
                 the loss function to use for reference (some models may need it for special handling)
 
         Returns:
-            Tensor, shape = (bsz,)
-                the loss for each input in the batch
+            ModelOutput
+                the model output containing logits, embeddings, attentions, etc.
         """
-        raise NotImplementedError("`token_forward_pass` must be implemented in subclasses of `_HuggingFaceModelMixins`.")
+        pass
 
     @staticmethod
     def cast_to_model_tokenizer(

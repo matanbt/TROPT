@@ -110,14 +110,84 @@ class TextInputManager(InputsManager):
 ## Token inputs manager ##
 class TokenInputManager(InputsManager):
     """
-    Base class for maintaining token-level trigger-combined inputs (fits models with token-level access).
+    Abstract base class for token-level inputs managers.
+
+    Subclasses manage the combination of candidate triggers into tokenized
+    templates.
     """
 
-    before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
-    after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
-    targets: Targets
     tokenizer: Any
-
-    # Properties:
-    vocab_size: int
+    targets: Targets
     n_templates: int
+
+
+class DefaultTokenInputManager(TokenInputManager):
+    """
+    Default token-level inputs manager for models with token-level access.
+
+    This implementation works with any tokenizer supporting the BaseTokenizer
+    interface (or HuggingFace PreTrainedTokenizer). It decodes trigger token IDs
+    to strings and reconstructs full texts — suitable for API-based models or
+    any model where embedding-level manipulation is not needed.
+    """
+
+    def __init__(
+        self,
+        tokenizer: Any,
+        tok_ids: List[List[int]],
+        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
+        targets: Targets = None,
+        **kwargs,
+    ):
+        self.tokenizer = tokenizer
+
+        if targets is None:
+            targets = Targets()
+        self.targets = targets
+
+        # Decode the input tokens back to text and split by placeholder
+        raw_texts = tokenizer.batch_decode(tok_ids)
+        self.before_texts = []
+        self.after_texts = []
+
+        for text in raw_texts:
+            assert text.count(optimized_trigger_placeholder) == 1, (
+                f"Text must contain exactly one placeholder '{optimized_trigger_placeholder}'"
+            )
+            bef, aft = text.split(optimized_trigger_placeholder, 1)
+            self.before_texts.append(bef)
+            self.after_texts.append(aft)
+
+        self.n_templates = len(raw_texts)
+
+    @property
+    def vocab_size(self):
+        return self.tokenizer.vocab_size
+
+    def get_triggered_inputs(
+        self,
+        trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
+        chosen_template_idx: Optional[int],
+        **kwargs
+    ) -> ModelInput:
+        """
+        Constructs full text inputs by decoding candidate trigger tokens
+        and inserting them into the templates.
+        """
+        trigger_strs = self.tokenizer.batch_decode(trigger_ids, skip_special_tokens=True)
+
+        bef = self.before_texts[chosen_template_idx]
+        aft = self.after_texts[chosen_template_idx]
+
+        curr_message_candidates = [
+            f"{bef}{trig}{aft}" for trig in trigger_strs
+        ]
+
+        targets = self.targets.select_message(chosen_template_idx)
+
+        return ModelInput(
+            input_trigger_ids=trigger_ids,
+            input_trigger_strs=trigger_strs,
+            input_texts=curr_message_candidates,
+            targets=targets,
+        )

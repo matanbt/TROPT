@@ -14,7 +14,6 @@ from transformers import BatchEncoding, PreTrainedTokenizer
 from tropt.common import DEFAULT_INIT_TRIGGER, ModelOutput, Targets
 from tropt.model.inputs_manager import (
     TextInputManager,
-    TokenInputManager,
 )
 
 # ====================== Model Base Classes =======================

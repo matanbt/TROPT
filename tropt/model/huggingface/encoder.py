@@ -153,7 +153,9 @@ class EncoderHFModel(
             f"Could not extract embedding layer from Sentence Transformer model `{self._model_name}`. This model might need special care. Please report this issue."
         )
 
-    def set_token_inputs(
+    # ----------------------- set_inputs_from_tokens -----------------------
+
+    def set_inputs_from_tokens(
         self,
         templates: TextTemplates,  # n_templates templates
         targets: Targets = None,
@@ -173,33 +175,40 @@ class EncoderHFModel(
             targets=targets,
         )
 
-    def token_forward_pass(
+    # ----------------------- invoke_from_tokens -----------------------
+
+    def invoke_from_tokens(
         self,
-        model_input: ModelInput,
-        reference_loss_func: BaseLoss=None,
+        input_embeds: Float[Tensor, "bsz seq_len d_model"],
+        input_attention_mask: Float[Tensor, "bsz seq_len"],
+        # TODO add input_ids, but input-embeds should be priority
+        reference_loss_func: BaseLoss = None,
+        **kwargs
     ) -> ModelOutput:
         """
-        Perform a white-box forward pass through the model given the ModelInput. This method uses input_embeds.
+        Perform a white-box forward pass through the model using input embeddings.
 
         Args:
-            model_input (ModelInput): The input data for the model.
+            input_embeds: Input embeddings tensor (bsz, seq_len, d_model).
+            input_attention_mask: Attention mask tensor (bsz, seq_len).
+            reference_loss_func: Optional reference loss function.
 
         Returns:
             ModelOutput: The output from the model.
         """
 
-        assert model_input.input_embeds is not None, "inputs_embeds must be provided in HF's token_forward_pass."
+        assert input_embeds is not None, "input_embeds must be provided in invoke_from_tokens."
 
         outputs = self._model(
             dict(
-                inputs_embeds=model_input.input_embeds,  # (bsz, seq_len, embd_dim)
-                attention_mask=model_input.input_attention_mask, # (bsz, seq_len
+                inputs_embeds=input_embeds,  # (bsz, seq_len, embd_dim)
+                attention_mask=input_attention_mask,  # (bsz, seq_len)
             )
         )
         self._update_usage_stats(
             forward_calls=1,
-            forward_samples=len(model_input.input_embeds),
-            tokens=model_input.input_attention_mask.sum().item(),
+            forward_samples=len(input_embeds),
+            tokens=input_attention_mask.sum().item(),
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
@@ -207,28 +216,26 @@ class EncoderHFModel(
             output_embeddings=output_emb,
         )
 
+    # ----------------------- invoke_from_texts -----------------------
+
     @torch.no_grad()
-    def encode(
+    def invoke_from_texts(
         self,
-        texts: Annotated[List[str], "n_texts"],
-        return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
+        input_texts: Annotated[List[str], "n_texts"],
+    ) -> ModelOutput:
         """
         Get the embeddings for the given texts (n_texts elements).
         Note: we mostly assume any prompting/instruction will be applied before the call to this function.
         """
-        assert isinstance(texts, list)
+        assert isinstance(input_texts, list)
 
-        emb = self._model.encode(texts, convert_to_tensor=True, show_progress_bar=False)
+        emb = self._model.encode(input_texts, convert_to_tensor=True, show_progress_bar=False)
         self._update_usage_stats(
             forward_calls=1,
-            forward_samples=len(texts),
-            tokens=sum(len(ids) for ids in self._tokenizer(texts)["input_ids"]),
+            forward_samples=len(input_texts),
+            tokens=sum(len(ids) for ids in self._tokenizer(input_texts)["input_ids"]),
         )
 
-        if return_full_output:
-            return ModelOutput(
-                output_embeddings=emb,
-            )
-
-        return emb
+        return ModelOutput(
+            output_embeddings=emb,
+        )

@@ -10,7 +10,7 @@ from .model_base import (
 from .inputs_manager import (
     InputsManager,
     TextInputManager,
-    TokenInputManager,
+    DefaultTokenInputManager,
 )
 
 

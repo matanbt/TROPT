@@ -241,6 +241,10 @@ class ModelInput(pydantic.BaseModel):
     for text-based losses, `target_directions` for steering losses).
     """
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a dictionary, excluding None values."""
+        return self.model_dump(exclude_none=True)
+
     # TODO optional additional validators to check shapes of inputs?
 
 
@@ -337,6 +341,10 @@ class ModelOutput(pydantic.BaseModel):
     full_template_strs: Optional[List[str]] = None
     """Full template strings (prompt + generation).
     """
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to a dictionary, excluding None values."""
+        return self.model_dump(exclude_none=True)
 
     # TODO add validators to check shapes?
 
