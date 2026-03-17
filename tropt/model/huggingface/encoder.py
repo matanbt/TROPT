@@ -54,8 +54,8 @@ class EncoderHFModel(
         model_name: str = None,
         device: str = None,
         dtype: str| torch.dtype = None,
-        _forward_pass_batch_size: int = 512,
-        _backward_pass_batch_size: int = 28,
+        forward_pass_batch_size: int = 512,
+        backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
         set_model_to_eval: bool = True,
         **kwargs,
@@ -67,15 +67,15 @@ class EncoderHFModel(
             model_name (str): Name of the HuggingFace model. (irrelevant if `loaded_model` is provided)
             device (str): Device to load the model onto. If None, defaults to 'cuda' if available else 'cpu'.
             dtype (str or torch.dtype): Data type for the model. If None, uses the model's default dtype.
-            _forward_pass_batch_size (int): Batch size for forward passes.
-            _backward_pass_batch_size (int): Batch size for backward passes.
+            forward_pass_batch_size (int): Batch size for forward passes.
+            backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
             set_model_to_eval (bool): Whether to set the model to evaluation mode.
             **kwargs: Additional arguments for SentenceTransformer.
         """
         self._model_name = model_name
-        self._forward_pass_batch_size = _forward_pass_batch_size
-        self._backward_pass_batch_size = _backward_pass_batch_size
+        self._forward_pass_batch_size = forward_pass_batch_size
+        self._backward_pass_batch_size = backward_pass_batch_size
 
         if loaded_model is not None:
             assert isinstance(loaded_model, SentenceTransformer), "loaded_model must be a SentenceTransformer instance."

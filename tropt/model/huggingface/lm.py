@@ -84,8 +84,8 @@ class LMHFModel(
         model_name: str,
         device: str = None,
         dtype: str = None,
-        _forward_pass_batch_size: int = 512,
-        _backward_pass_batch_size: int = 32,
+        forward_pass_batch_size: int = 512,
+        backward_pass_batch_size: int = 32,
         # more args:
         use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
@@ -93,8 +93,8 @@ class LMHFModel(
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
         self._model_name = model_name
-        self._forward_pass_batch_size = _forward_pass_batch_size
-        self._backward_pass_batch_size = _backward_pass_batch_size
+        self._forward_pass_batch_size = forward_pass_batch_size
+        self._backward_pass_batch_size = backward_pass_batch_size
 
         if use_eager_attention:
             # required for to support attention-based losses
