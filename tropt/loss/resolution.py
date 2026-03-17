@@ -187,10 +187,6 @@ def _compute_combined_loss(
         )
         component_losses.append(component_loss_value)
 
-    # Combine with weights
-    combined = sum(
-        weight * loss_value
-        for weight, loss_value in zip(loss_func.weights, component_losses)
-    )
-
-    return combined
+    # Stack into (n_losses, bsz) and delegate weighting to the combine loss function
+    stacked = torch.stack(component_losses, dim=0)
+    return loss_func(stacked)
