@@ -58,11 +58,20 @@ class CombinedLoss(BaseLoss):
         Returns:
             Tensor of shape (bsz,), the combined loss for each element in the batch.
         """
+        self.last_component_losses = losses.detach()  # shape: (n_losses, bsz)
+
         weights = self.weights.to(losses).unsqueeze(-1)  # shape: (n_losses, 1)
         loss = losses * weights
         loss = loss.sum(dim=0)  # recude over n_losses
 
         return loss  # shape: (bsz,)
+
+    def get_component_losses_dict(self) -> dict[str, Float[Tensor, "bsz"]]:
+        """Returns {loss_class_name: loss_values} from the last __call__."""
+        return {
+            type(lf).__name__: val
+            for lf, val in zip(self.loss_funcs, self.last_component_losses)
+        }
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""

@@ -13,6 +13,7 @@ from tropt.common import (
     TextTemplates,
 )
 from tropt.loss import BaseLoss
+from tropt.loss.base import CombinedLoss
 from tropt.model import (
     BaseModel,
     GradientTokenAccessMixin,
@@ -68,6 +69,15 @@ class GCGOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
+
+    def _get_component_losses_log(self) -> dict:
+        """If using CombinedLoss, return a dict of sub-loss values for logging."""
+        if not isinstance(self.loss_func, CombinedLoss):
+            return {}
+        return {
+            f"loss/{name}": val.min().item()
+            for name, val in self.loss_func.get_component_losses_dict().items()
+        }
 
     def _sample_ids_from_grad(
         self,
@@ -159,7 +169,7 @@ class GCGOptimizer(BaseOptimizer):
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0), loss_func=self.loss_func
         ).item()
-        self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
+        self.tracker.log({"loss": current_loss, **self._get_component_losses_log(), **self.model.get_usage_stats()})
 
         pbar = tqdm(range(self.num_steps))
 
@@ -190,7 +200,7 @@ class GCGOptimizer(BaseOptimizer):
                 candidate_trigger_ids, loss_func=self.loss_func
             )  # shape: (n_templates, n_candidates)
             current_loss = losses.min().item()
-            self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, **self._get_component_losses_log(), **self.model.get_usage_stats()})
             trigger_ids = candidate_trigger_ids[losses.argmin()]
 
             # Update the buffer based on the loss
