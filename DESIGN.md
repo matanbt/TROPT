@@ -43,7 +43,7 @@ The invoke methods are **stateless**---they are not connected to any stored inpu
 
 Following the two flows, each flow has its own `InputsManager`:
 - `set_inputs_from_texts(templates, targets)` / `reset_inputs_from_texts()` — manages a `TextInputManager`.
-- `set_inputs_from_tokens(templates, targets)` / `reset_inputs_from_tokens()` — manages a `TokenInputManager`.
+- `set_inputs_from_tokens(templates, targets)` / `reset_inputs_from_tokens()` — manages a `DefaultTokenInputManager` (or a backend-specific subclass like `_HFTokenInputManager`).
 
 Input managers hold the user-provided templates and targets, and can craft on-the-fly the full inputs for any candidate trigger.
 The methods `set_inputs_from_{inputType}` update the _model_ state with the corresponding input manager. Then, each call for loss computation (see the next method family) will use the stored input manager to construct the full inputs for the candidate triggers, and will compute the loss wrt them.

@@ -4,7 +4,7 @@ from tropt.common import Targets
 from tropt.loss import PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
-from tropt.optimizer.beast_optimizer import BEASTOptimizer
+from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
 
 
 def run_beast(
@@ -27,7 +27,7 @@ def run_beast(
     )
     loss = PrefillCELoss()
 
-    optimizer = BEASTOptimizer(
+    optimizer = BeamSearchOptimizer(
         model=model,
         loss=loss,
 

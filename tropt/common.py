@@ -190,6 +190,11 @@ class ModelInput(pydantic.BaseModel):
     """
 
     # === Token-level inputs (TokenInputManager) ===
+    input_ids: Optional[Int[Tensor, "bsz seq_len"]] = None
+    """Token IDs of the full input sequence (prompt + trigger), plus optionally target tokens.
+    """
+
+
     input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
     """Token IDs of the trigger candidates. Shape: (batch_size, trigger_sequence_length).
 

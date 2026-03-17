@@ -74,24 +74,16 @@ class InvokeTokenAccessMixin(TokenAccessMixin):
     Adds the abstract invoke_from_tokens method. All compute-* mixins
     (LossTokenAccessMixin, GradientTokenAccessMixin, etc.) inherit from this.
     """
-    # TODO make it only input-ids here -- the rest is for implementer interpretation!
     @abstractmethod
     def invoke_from_tokens(
         self,
-        input_embeds: Float[Tensor, "bsz seq_len d_model"] = None,
-        input_attention_mask: Int[Tensor, "bsz seq_len"] = None,
-        input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
-        input_slices: Optional[Dict] = None,
+        input_ids: Float[Tensor, "bsz seq_len"] = None,
+        **kwargs
     ) -> ModelOutput:
         """Perform a forward pass from token-level (embedding) inputs.
 
         Args:
-            input_embeds: Input embeddings with trigger inserted.
-            input_attention_mask: Attention mask for the input.
-            input_prefix_cache_kwargs: Optional KV cache kwargs (HF models).
-            input_slices: Position slices for different input regions.
-            reference_loss_func: Optional loss function to conditionally disable/enable
-                expensive outputs (e.g., attentions, hidden states).
+            input_ids: Token IDs of the full input sequence (prompt + trigger), plus optionally target tokens. Shape: (batch_size, seq_len).
 
         Returns:
             ModelOutput with the fields this model can provide.

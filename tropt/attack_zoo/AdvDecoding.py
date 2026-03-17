@@ -10,7 +10,7 @@ from tropt.loss import CombinedLoss, InputReadabilityLoss, PrefillCELoss, Simila
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
-from tropt.optimizer.beast_optimizer import BEASTOptimizer
+from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
 
 
 def run_advdecoding_encoder(
@@ -68,7 +68,7 @@ def run_advdecoding_encoder(
     )
 
     # Initialize optimizer with AdvDecoding parameters
-    optimizer = BEASTOptimizer(
+    optimizer = BeamSearchOptimizer(
         model=model,
         loss=loss,
         util_lm=util_lm,

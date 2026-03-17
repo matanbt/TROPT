@@ -334,11 +334,13 @@ class LMHFModel(
 
     def invoke_from_tokens(
         self,
-        input_embeds: Float[Tensor, "bsz seq_len embd_dim"],
-        input_attention_mask: Float[Tensor, "bsz seq_len"],
+        input_embeds: Float[Tensor, "bsz seq_len embd_dim"] = None,
+        input_attention_mask: Float[Tensor, "bsz seq_len"] = None,
         input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
         input_slices: Optional[Dict[str, slice]] = None,
+        # TODO make input_ids a second-priority option
         reference_loss_func: BaseLoss = None,
+        **kwargs
     ) -> ModelOutput:
         """
         Performs a forward pass through the model given input embeddings and attention mask.
