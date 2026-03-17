@@ -6,8 +6,7 @@ https://arxiv.org/abs/2410.02163
 import torch
 from jaxtyping import Float
 
-from tropt.loss import CombinedLoss, PrefillCELoss, SimilarityLoss
-from tropt.loss import InputReadabilityLoss
+from tropt.loss import CombinedLoss, InputReadabilityLoss, PrefillCELoss, SimilarityLoss
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
@@ -47,7 +46,7 @@ def run_advdecoding_encoder(
     model =EncoderHFModel(
         model_name=model_name,
     )
-    util_lm = LMHFModel(
+    util_lm = LMHFModel(  # for per-step logits
         model_name=util_lm_name,
         device="cuda" if torch.cuda.is_available() else "cpu",
     )
@@ -55,14 +54,15 @@ def run_advdecoding_encoder(
     # Parameters (from the paper):
     beam_width: int = 30  # m in the paper; mostly use 30 [k1 in BEAST]
     max_length: int = 30  # Paper uses 30
-    top_k: int = 10  # Paper uses top_k=10 logits filtering [None in BEAST, sampling from full distr.]
+    top_k: int = 10  # Paper uses top_k=10 logits filtering
     temperature: float = 1.0  # as there is no sampling anyway
     prefix_prompt = "Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}"  # a prompt for util LM to compute logits of the trigger; prompt is taken from the paper
 
     loss = CombinedLoss(
         loss_funcs=[
             SimilarityLoss(),  # Main attack loss: align to target embedding
-            InputReadabilityLoss()
+            InputReadabilityLoss(),
+            # can add here additional "scorers" as losses
         ],
         weights=[1.0, 1.0],  # Weights for each loss component
     )
@@ -77,13 +77,14 @@ def run_advdecoding_encoder(
         top_k=top_k,
         branching_factor=top_k,
         temperature=temperature,
+        use_model_with_token_inputs=False,  # computes the target model loss in text-level
     )
 
     # Run optimization
     result = optimizer.optimize_trigger(
-        templates=[prefix_info],
+        templates=[prefix_info],  # templates for the target model
         targets=dict(target_vectors=target_vector.to(model.device)),
-        util_lm_texts=[prefix_prompt],
+        util_lm_templates=[prefix_prompt],  # templates for the LM logits
     )
 
     return result

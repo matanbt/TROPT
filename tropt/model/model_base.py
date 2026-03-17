@@ -97,25 +97,32 @@ class LMBaseModel(BaseModel):
 
     def __call__(
         self,
-        texts: List[str],
+        input_texts: List[str],
         return_full_output: bool = False,
         **kwargs
     ) -> List[str] | ModelOutput:
         """
         Generate text completions for the given input texts.
-        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+
+        Args:
+            input_texts (List[str]): List of input prompt strings to generate completions for.
+            return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the generated response strings.
         """
-        return self.generate(texts=texts, return_full_output=return_full_output, **kwargs)
+        result = self.invoke_from_texts(input_texts=input_texts, **kwargs)
+        if return_full_output:
+            return result
+        return result.generated_response_strs
 
     @abstractmethod
-    def generate(
+    def invoke_from_texts(
         self,
-        texts: List[str],
-        return_full_output: bool = False,
+        input_texts: List[str],
         **kwargs
-    ) -> List[str] | ModelOutput:
+    ) -> ModelOutput:
         """
         Generates text completions for the given input texts.
+
+        Always returns ModelOutput with at least `generated_response_strs` populated.
         This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
         """
         raise NotImplementedError
@@ -125,29 +132,36 @@ class EncoderBaseModel(BaseModel):
     """Encoder model base class."""
 
     def __call__(
-        self, texts: List[str],
+        self,
+        input_texts: List[str],
         return_full_output: bool = False,
         **kwargs
     ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
         """
         Computes encoder embeddings for the given input texts.
-        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+
+        Args:
+            input_texts (List[str]): List of input strings to compute embeddings for.
+            return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the output embeddings.
         """
-        return self.encode(texts=texts, return_full_output=return_full_output, **kwargs)
+        result = self.invoke_from_texts(input_texts=input_texts, **kwargs)
+        if return_full_output:
+            return result
+        return result.output_embeddings
 
     @abstractmethod
-    def encode(
+    def invoke_from_texts(
         self,
-        texts: List[str],
-        return_full_output: bool = False,
+        input_texts: List[str],
         **kwargs
-    ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
+    ) -> ModelOutput:
         """
         Computes encoder embeddings for the given input texts.
-        This method also updates the usage stats (e.g., token counts, forward call counts, etc.) based on the generated output.
+        Always returns ModelOutput with at least `output_embeddings` populated.
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
         """
         raise NotImplementedError
-    
+
     @property
     @abstractmethod
     def d_model(self) -> int:

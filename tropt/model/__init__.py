@@ -18,6 +18,7 @@ from .inputs_manager import (
 # Mixins:
 from .model_mixins import (
     GradientTokenAccessMixin,
+    InvokeTokenAccessMixin,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
@@ -27,7 +28,7 @@ from .model_mixins import (
 )
 
 # Import all OpenAI models:
-from .openai.encoder import EncoderOpenAIModel, OpenAITokenInputManager
+from .openai.encoder import EncoderOpenAIModel
 
 # Import all Google models:
 from .google.encoder import EncoderGeminiModel

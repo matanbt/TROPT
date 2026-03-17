@@ -68,7 +68,7 @@ def run_iris(
     )
     target_output = target_outputs[0]
 
-    # Create combined loss: CE + Steering (following Eq 8)
+    # Create combined loss: CE + Steering (following Eq 8 from IRIS paper)
     ce_loss = PrefillCELoss()
     steering_loss = SteeringActivationLoss(
         steer_away=True,
@@ -79,7 +79,7 @@ def run_iris(
     )
     combined_loss = CombinedLoss(
         [ce_loss, steering_loss],
-        weights=[0.25, 0.75]  # from paper
+        weights=[0.25, 0.75]  # from IRIS paper
     )
 
     # Create GCG optimizer with IRIS loss

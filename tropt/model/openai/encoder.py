@@ -11,7 +11,6 @@ from transformers import BatchEncoding
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    ModelInput,
     ModelOutput,
     Targets,
     TextTemplates,
@@ -129,86 +128,6 @@ class OpenAITokenizer(BaseTokenizer):
 
 
 # --------------------------------------------------------------------------
-## OpenAI Token Inputs Manager:
-# --------------------------------------------------------------------------
-class OpenAITokenInputManager(TokenInputManager):
-    """
-    Inputs manager for OpenAI models (or other black-box API models).
-    Instead of managing embeddings/tensors, this manages text reconstruction 
-    from token-level triggers to feed into the API.
-    """
-
-    def __init__(
-        self,
-        tokenizer: Any, # The OpenAITokenizer wrapper
-        tok_ids: List[List[int]],
-        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
-        targets: Targets = None,
-        **kwargs,
-    ):
-        self.tokenizer = tokenizer
-        
-        # 1. Prepare Text Templates
-        # We decode the input tokens back to text to split them by the placeholder.
-        # This allows us to insert the decoded trigger string later.
-        raw_texts = tokenizer.batch_decode(tok_ids)
-        self.before_texts = []
-        self.after_texts = []
-        
-        for text in raw_texts:
-            assert text.count(optimized_trigger_placeholder) == 1, f"Text must contain exactly one placeholder '{optimized_trigger_placeholder}'"
-
-            # Split only on the first occurrence
-            bef, aft = text.split(optimized_trigger_placeholder, 1)
-            self.before_texts.append(bef)
-            self.after_texts.append(aft)
-
-        self.n_templates = len(raw_texts)
-
-        # 2. Prepare Targets
-        self.targets = targets
-
-    @property
-    def vocab_size(self):
-        return self.tokenizer.vocab_size
-
-    def get_triggered_inputs(
-        self,
-        trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        chosen_template_idx: Optional[int],
-        **kwargs
-    ) -> ModelInput:
-        """
-        Constructs the full text inputs for the API by decoding the candidate trigger tokens
-        and inserting them into the templates.
-        """
-        # 1. Decode the candidates (Token IDs -> Strings)
-        # trigger_ids shape: (n_candidates, trigger_len)
-        trigger_strs = self.tokenizer.batch_decode(trigger_ids, skip_special_tokens=True)
-        n_candidates = len(trigger_strs)
-        
-        # 2. Construct the full texts
-        bef = self.before_texts[chosen_template_idx]
-        aft = self.after_texts[chosen_template_idx]
-        
-        # Create list of strings for this message across all candidates
-        curr_message_candidates = [
-            f"{bef}{trig}{aft}" for trig in trigger_strs
-        ]
-
-        # 3. Handle Targets (select chosen message)
-        targets = self.targets.select_message(chosen_template_idx)
-        
-        # 4. Build ModelInput
-        return ModelInput(
-            trigger_ids=trigger_ids,
-            trigger_strs=trigger_strs,
-            input_texts=curr_message_candidates,
-            targets=targets
-        )
-
-
-# --------------------------------------------------------------------------
 # OpenAI Encoder Model
 # --------------------------------------------------------------------------
 
@@ -273,24 +192,23 @@ class EncoderOpenAIModel(
         wait=wait_exponential(multiplier=1, min=4, max=60),
         stop=stop_after_attempt(5)
     )
-    def encode(
+    def invoke_from_texts(
         self,
-        texts: Annotated[List[str], "n_texts"],
-        return_full_output: bool = False,
+        input_texts: Annotated[List[str], "n_texts"],
         **kwargs
-    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
+    ) -> ModelOutput:
         """
         Compute embeddings for the given texts using the OpenAI API.
 
         Args:
-            texts: A list of strings to embed.
+            input_texts: A list of strings to embed.
 
         Returns:
-            A tensor containing the generated embeddings.
+            ModelOutput with output_embeddings populated.
         """
         # Note: OpenAI's API handles batches of texts
         response = self._client.embeddings.create(
-            input=texts,
+            input=input_texts,
             model=self.model_name,
             **kwargs
         )
@@ -302,17 +220,12 @@ class EncoderOpenAIModel(
         self._update_usage_stats(
             tokens=response.usage.total_tokens,
             forward_calls=1,
-            forward_samples=len(texts)
+            forward_samples=len(input_texts)
         )
 
-        if return_full_output:
-            return ModelOutput(
-                output_embeddings=result,
-            )
+        return ModelOutput(output_embeddings=result)
 
-        return result
-
-    def set_token_inputs(
+    def set_inputs_from_tokens(
         self,
         templates: TextTemplates,
         targets: Targets = None,
@@ -327,7 +240,7 @@ class EncoderOpenAIModel(
         tok_ids = tok_results["input_ids"]
 
         # 2. Build the Manager and store it
-        self._token_input_manager = OpenAITokenInputManager(
+        self._token_input_manager = TokenInputManager(
             tokenizer=self._tokenizer,
             tok_ids=tok_ids,
             optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,

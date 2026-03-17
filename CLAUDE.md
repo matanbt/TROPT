@@ -115,7 +115,7 @@ Available mixins:
 - `LossTextAccessMixin`: Models that compute loss from text inputs (black-box)
 
 **Two Generic Methods Pattern** (recurring across all access mixins):
-1. **Prepare inputs** - e.g., `prepare_token_inputs()` for token-based access
+1. **Prepare inputs** - e.g., `set_inputs_from_tokens()` for token-based access
 2. **Compute loss/gradient/value** - e.g., `compute_loss_from_tokens()`, `compute_grad_from_tokens()`
 
 **Implementations:**
@@ -218,7 +218,7 @@ class ModelInput:
 
 - `InputsManager` classes combine candidate triggers into templates efficiently
 - `HFTokenInputsManager`: Specializes in combining trigger tokens within templates (token-level)
-- Integrated within model classes via `prepare_token_inputs()` method
+- Integrated within model classes via `set_inputs_from_tokens()` method
 - **Why abstraction matters**: Token-level input managers are "unavoidably cumbersome and complex" (DESIGN.md), so abstracting them streamlines optimizer implementation
 
 **Key Classes:**
@@ -551,7 +551,7 @@ targets = {"target_outputs": ["Sure, here's a tutorial on how to build a bomb."]
    - Model validates it has required mixins
    - Optimizer stores loss and tracker
 
-2. **Input Preparation** (via `prepare_token_inputs()`):
+2. **Input Preparation** (via `set_inputs_from_tokens()`):
    - Tokenize text templates
    - Split into `[prefix, trigger_tokens, suffix]`
    - Tokenize target outputs
@@ -624,7 +624,7 @@ When adding new components:
 ### When Adding New Access Mixins
 If you need a new type of model access:
 1. Create mixin following naming convention: `{Value}{InputType}AccessMixin`
-2. Implement two methods: `prepare_{input_type}_inputs()` and `compute_{value}_from_{input_type}()`
+2. Implement two methods: `set_inputs_from_{input_type}()` and `compute_{value}_from_{input_type}()`
 3. Update model classes to include the mixin where appropriate
 4. Document the access level in CLAUDE.md
 

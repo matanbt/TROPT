@@ -10,11 +10,8 @@ or shows **Unsupported** if the model does not satisfy the optimizer's requireme
 | **BEASTOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **GASLITEOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **GASLITEPlusOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
-| **GBDAOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **GCGOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
-| **PGDOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **RASLITEPlusOptimizer** | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss` | `InputReadabilityLoss` |
-| **SoftPromptOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 
 ## Legend
 
@@ -25,11 +22,8 @@ or shows **Unsupported** if the model does not satisfy the optimizer's requireme
 | BEASTOptimizer | `LossTokenAccessMixin` | Grey-box |
 | GASLITEOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
 | GASLITEPlusOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
-| GBDAOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
 | GCGOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
-| PGDOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
 | RASLITEPlusOptimizer | `LossTextAccessMixin` | Black-box |
-| SoftPromptOptimizer | `GradientEmbedAccessMixin` | White-box (embedding) |
 
 ### Concrete loss functions
 
@@ -41,7 +35,7 @@ or shows **Unsupported** if the model does not satisfy the optimizer's requireme
 | `PrefillCWLoss` | `LogitBasedLoss` | `response_logits`, `target_response_toks` |
 | `PrefillMellowMaxLoss` | `LogitBasedLoss` | `response_logits`, `target_response_toks` |
 | `SimilarityLoss` | `EmbeddingBasedLoss` | `output_embeddings`, `target_vectors` |
-| `SteeringActivationLoss` | `HiddenStateBased` | `output_hidden_states`, `target_directions` |
+| `SteeringActivationLoss` | `HiddenStateBasedLoss` | `output_hidden_states`, `target_directions` |
 | `TriggerPerplexityLoss` | `TriggerLogitBasedLoss` | `output_logits`, `input_trigger_ids`, `input_slices` |
 
 ### Discovered fields per model (via source AST)

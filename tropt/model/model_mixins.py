@@ -9,6 +9,7 @@ from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import (
     ModelInput,
+    ModelOutput,
     Targets,
     TextTemplates,
     TokenTriggerCandidates,
@@ -22,19 +23,24 @@ from .inputs_manager import (
 )
 from .model_base import BaseTokenizer
 
-# ====================== Model Mixins =======================
+# ======================================================================
+# Token Access Flow
+# ======================================================================
 
-## -------- Token-level access mixins ------- ##
 class TokenAccessMixin(ABC):
-    """Mixin for models that can access token-level inputs."""
+    """Mixin for models that have a tokenizer and can prepare token-level inputs.
+
+    This is the base mixin for any model with token-level access (tokenizer,
+    set/reset inputs). Note that such models may note have access to _compute_ the loss from tokens (see LossTokenAccessMixin), but they must be able to at least prepare the token inputs (e.g., OpenAI models).
+    """
 
     _token_input_manager: Optional[TokenInputManager] = None
 
     @abstractmethod
-    def set_token_inputs(
+    def set_inputs_from_tokens(
         self,
         templates: TextTemplates,
-        targets: Targets = None,  # also n_templates, depends on the objective
+        targets: Targets = None,
     ) -> None:
         """Prepare and store the inputs manager as self._token_input_manager.
 
@@ -44,7 +50,7 @@ class TokenAccessMixin(ABC):
         """
         raise NotImplementedError
 
-    def reset_token_inputs(self) -> None:
+    def reset_inputs_from_tokens(self) -> None:
         """Clear self._token_input_manager."""
         self._token_input_manager = None
 
@@ -62,8 +68,39 @@ class TokenAccessMixin(ABC):
         raise NotImplementedError
 
 
+class InvokeTokenAccessMixin(TokenAccessMixin):
+    """Mixin for models that can perform a forward pass from token-level inputs.
+
+    Adds the abstract invoke_from_tokens method. All compute-* mixins
+    (LossTokenAccessMixin, GradientTokenAccessMixin, etc.) inherit from this.
+    """
+    # TODO make it only input-ids here -- the rest is for implementer interpretation!
+    @abstractmethod
+    def invoke_from_tokens(
+        self,
+        input_embeds: Float[Tensor, "bsz seq_len d_model"] = None,
+        input_attention_mask: Int[Tensor, "bsz seq_len"] = None,
+        input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
+        input_slices: Optional[Dict] = None,
+    ) -> ModelOutput:
+        """Perform a forward pass from token-level (embedding) inputs.
+
+        Args:
+            input_embeds: Input embeddings with trigger inserted.
+            input_attention_mask: Attention mask for the input.
+            input_prefix_cache_kwargs: Optional KV cache kwargs (HF models).
+            input_slices: Position slices for different input regions.
+            reference_loss_func: Optional loss function to conditionally disable/enable
+                expensive outputs (e.g., attentions, hidden states).
+
+        Returns:
+            ModelOutput with the fields this model can provide.
+        """
+        raise NotImplementedError
+
+
 ## "Grey-box" Model Mixins:
-class LossTokenAccessMixin(TokenAccessMixin):
+class LossTokenAccessMixin(InvokeTokenAccessMixin):
     """Mixin for models that can compute losses based on token-level inputs."""
 
     @abstractmethod
@@ -74,7 +111,7 @@ class LossTokenAccessMixin(TokenAccessMixin):
         raise NotImplementedError
 
 
-class LogitsTokenAccessMixin(TokenAccessMixin):
+class LogitsTokenAccessMixin(InvokeTokenAccessMixin):
     """Mixin for models that can compute logits based on token-level inputs."""
 
     @abstractmethod
@@ -86,7 +123,7 @@ class LogitsTokenAccessMixin(TokenAccessMixin):
 
 
 ## "White-box" Model Mixins:
-class GradientTokenAccessMixin(TokenAccessMixin):
+class GradientTokenAccessMixin(InvokeTokenAccessMixin):
     """Mixin for models that can compute gradients based on token-level inputs."""
 
     @abstractmethod
@@ -97,7 +134,7 @@ class GradientTokenAccessMixin(TokenAccessMixin):
         raise NotImplementedError
 
 ## "White-box" Model Mixins w/ embed access:
-class GradientEmbedAccessMixin(TokenAccessMixin):
+class GradientEmbedAccessMixin(InvokeTokenAccessMixin):
     """Mixin for models that can compute gradients based on token-level inputs."""
 
     @abstractmethod
@@ -109,14 +146,15 @@ class GradientEmbedAccessMixin(TokenAccessMixin):
         """Compute gradients w.r.t. `trigger` embeddings using stored token inputs."""
         raise NotImplementedError
 
-## -------- Text-level access mixins ------- ##
 
+# ======================================================================
+# Text Access Flow
+# ======================================================================
 
-## "Black-box" Model Mixins:
 class TextAccessMixin(ABC):
     _text_input_manager: Optional[TextInputManager] = None
 
-    def set_text_inputs(
+    def set_inputs_from_texts(
         self,
         templates: TextTemplates,
         targets: Targets = None,
@@ -127,7 +165,7 @@ class TextAccessMixin(ABC):
             targets=targets,
         )
 
-    def reset_text_inputs(self) -> None:
+    def reset_inputs_from_texts(self) -> None:
         """Clear the stored text input manager."""
         self._text_input_manager = None
 
@@ -144,9 +182,9 @@ class LossTextAccessMixin(TextAccessMixin):
     ) -> Float[Tensor, "n_candidates"]:
         """
         Computes the loss on all candidate string texts using the stored text inputs manager.
-        This computation is based on the __call__() method of the model, and the information it provides.
+        This computation is based on the invoke_from_texts() method of the model, and the information it provides.
         """
-        assert self._text_input_manager is not None, "Text input manager is not initialized. Please call set_text_inputs() first."
+        assert self._text_input_manager is not None, "Text input manager is not initialized. Please call set_inputs_from_texts() first."
 
         input_manager = self._text_input_manager
         n_templates = input_manager.n_templates
@@ -164,9 +202,8 @@ class LossTextAccessMixin(TextAccessMixin):
             )
 
             # Forward pass once per template bulk
-            model_output = self(
-                curr_texts,
-                return_full_output=True,
+            model_output = self.invoke_from_texts(
+                input_texts=curr_texts,
             )  # Returns ModelOutput with available data
 
             # Create ModelInput wrapper

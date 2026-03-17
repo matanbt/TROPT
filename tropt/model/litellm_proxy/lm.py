@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, List, Optional
+from typing import List, Optional
 
 import litellm
 
@@ -56,20 +56,19 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             # LiteLLM proxy uses OpenAI-compatible API
             self._client_kwargs['custom_llm_provider'] = 'openai'
 
-    def generate(
+    def invoke_from_texts(
         self,
-        texts: List[str],
+        input_texts: List[str],
         max_new_tokens: int = 128,
         temperature: float = 0.0,
-        return_full_output: bool = False,
         **kwargs,
-    ) -> List[str] | ModelOutput:
+    ) -> ModelOutput:
         """
         Generates text completions for the given input texts using parallel execution.
         """
 
         # Build prompts
-        prompts = [ [{"role": "user", "content": text}] for text in texts]
+        prompts = [ [{"role": "user", "content": text}] for text in input_texts]
         if self._system_prompt:
             # prepend system prompt, if provided
             for prompt in prompts:
@@ -97,7 +96,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             ]
         except Exception as e:
             logger.warning(f"LiteLLM batch completion failed: {e}")
-            responses = ["" for _ in texts]
+            responses = ["" for _ in input_texts]
 
         # Track usage
         total_tokens = sum(
@@ -107,14 +106,11 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         self._update_usage_stats(
             tokens=total_tokens,
             forward_calls=1, # One batch call
-            forward_samples=len(texts)
+            forward_samples=len(input_texts)
         )
 
-        if return_full_output:
-            return ModelOutput(
-                generated_response_strs=responses,
-            )
-
-        return responses
+        return ModelOutput(
+            generated_response_strs=responses,
+        )
 
 

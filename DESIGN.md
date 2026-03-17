@@ -21,111 +21,86 @@ In the final segment, I describe the two existing interfaces to run end-to-end o
 
 Each text optimization process is done w.r.t. a target model; such models may vary in the level of access we may have, and the API they expose. For instance, open-source models can be used with the rich HuggingFace API (e.g., Gemma LLMs), and proprietary models can be used with the mostly limited API provided by their maker (e.g., OpenAI's ChatGPT models).
 
-We wrap each model provider with a class that will be compatible with the text optimization process. These are mostly much more than a trivial wrapper to basic model calls, but rather implement logic (and specific methods) used by the optimizers. By implementing these classes, we significantly simplify the implementation of new optimizers, allowing them to focus on the pure, core optimization logic.
+We wrap each model provider with a class that will be compatible with the text optimization process. These are much more than a trivial wrapper to basic model calls---they implement the logic and specific methods used by the optimizers. This is intentional: **models absorb most of the heavy lifting** because each model backend only needs to be implemented once, whereas optimizers and losses---which this repo aims to make as simple, flexible, and hackable as possible---are extended frequently. The goal is to let the repo users to add new optimizers and objectives with minimal friction, at the cost of somewhat complex, one-time model implementations.
 
-Each model class also holds in its definition the type of the model, and the type of access level it assumes. For example, the code:
-```python
-    model = HuggingFaceLMModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
-
-```
-
-initializes a HuggingFace (HF) language model (LM). Since we can access HF models' tokens, gradients, and logits, this class (`LMHFModel`) implements the following **mixins** below. Similarly, the repo supports other text model types from HuggingFace, such as `EncoderHFModel`.
+Each model class holds in its definition the type of the model and the access level it assumes. For example:
 
 ```python
-[...]
     class LMHFModel(
         LMBaseModel,  # the type of the model is an LM
-        HuggingFaceModelMixins,  # adds common HF models methods
+        _HuggingFaceModelMixins,  # adds common HF model methods
 
         # token-level access mixins:
         LossTokenAccessMixin,  # we can query an arbitrary output-based loss on token inputs
         GradientTokenAccessMixin,  # we can access the gradient wrt a loss (a.k.a. white-box)
         LogitsTokenAccessMixin,  # we can access the logits
-        
+        GradientEmbedAccessMixin,  # we can access gradients wrt embeddings
+
         # text-level access mixins:
         LossTextAccessMixin,  # we can (also) access loss on text inputs (a.k.a. black-box)
-    )
+    ):
         ...
-[...]
-
 ```
 
-While `LMBaseModel` defines the type of the model (language model) and the signature of its inference, each of the above mixins require the implementation of the **methods** corresponding to this type of access. For example, `LossTokenAccessMixin` requires the implementation of the methods:
+While `LMBaseModel` defines the type of the model (language model), each **access mixin** declares a capability and requires the implementation of corresponding methods. The naming convention is: (a) mixins start with the *value* we can access (e.g., `Loss`, `Gradient`, `Logits`); (b) they end with the *input type* (e.g., `TokenAccess`, `TextAccess`). For example, `GradientTokenAccessMixin` → `compute_grad_from_tokens()`.
+
+Subsequently, classes for proprietary models are much simpler, due to the limited access to their internals. For instance, the Gemini embedding model has a single access mixin:
 
 ```python
-    def prepare_token_inputs([...]):
-        """Prepare the model's input template objects and initial trigger from raw texts."""
-        ...
-
-    def compute_loss_from_tokens([...]):
-        """Compute the loss on the given trigger-combined inputs with the given trigger merged in."""
-        ...
-
-```
-
-The first method of the `LossTokenAccessMixin` (`prepare_token_inputs`) is in charge of preparing the input template to be used during the optimization (more details below); this method corresponds to the type of access of that mixin---in this particular case, the input will be managed as tokens. The second method `compute_loss_from_tokens` uses the template token inputs, with the candidate trigger baked in them, to calculate the value of the loss w.r.t. the model.
-
-
-Similarly, other **access mixins** also include these types of **methods** - (i) prepare inputs (ii) compute loss w.r.t. these type of inputs, while (i) may overlap in some cases. For example, `GradientTokenAccessMixin` also has input token access, and requires the `prepare_token_inputs` method, *but* it requires the method `compute_grad_from_tokens`, which computes the loss's gradient w.r.t. the input tokens. This pattern of **access mixins** with (i) prepare inputs and (ii) compute loss is recurring in the project, and is heavily used by the optimizers.
-
-Subsequently, the classes of proprietary models, e.g. of `GeminiEncoderModel`, are much simpler, due to the limited access we have to their input/output/internals. In the Gemini embedding example, we have a single **access mixin**:
-
-```python
-    class GeminiEncoderModel(
-        EncoderBaseModel, 
+    class EncoderGeminiModel(
+        EncoderBaseModel,
         LossTextAccessMixin
     ):
         ...
-
 ```
-
-Note that, for consistency, we use the following convention to name these access mixins: (a) they start with the value we can access (e.g., the `Loss` in `LossTokenAccessMixin`); this will be the value we will compute (e.g., the loss: `compute_loss_from_tokens()`). (b) They end with the the type of input access (e.g., `TokenAccess` in ``LossTokenAccessMixin`), which will be the input type used in the two methods, and the input type that we will prepare in the first method (e.g., the token inputs in `prepare_token_inputs()`).
-
-**Specific naming conventions for creating new access mixins:**
-1. **Mixin class name**: Follow the pattern `{Value}{InputType}AccessMixin`
-   - `{Value}`: The output value that can be computed (Loss, Gradient, Logits, etc.)
-   - `{InputType}`: The input type accepted (Token, Text, etc.)
-   - Example: `LossTokenAccessMixin` computes loss from token inputs
-2. **Required methods** (all access mixins must implement exactly two methods):
-   - `prepare_{input_type}_inputs()`: Prepares and validates input data in the specified format
-   - `compute_{value}_from_{input_type}()`: Computes the value using the prepared inputs
-   - Example: `prepare_token_inputs()` and `compute_loss_from_tokens()`
-3. **Model integration**: Update model classes to inherit the mixin where the model's capabilities match the access level
 
 Also note that some models may have token input access, despite having limited loss access (e.g., a black-box proprietary model that accepts input tokens).
 
-The aforementioned two generic methods (*prepare input*, *compute loss*), interact with the two following pillars: **input managers** and **loss classes** accordingly.
+### Three Method Families
+
+Each model is composed of methods from three families, corresponding to the two **access flows** (text-based and token-based):
+
+**1. Invoke methods** — the raw forward pass of the model.
+
+Two variants exist, corresponding to the two flows:
+- `invoke_from_texts(input_texts, ...) -> ModelOutput` — accepts text, returns model outputs. All models implement this (every model has a text interface). `LMBaseModel` and `EncoderBaseModel` each require this as the abstract inference method.
+- `invoke_from_tokens(input_embeds, input_attention_mask, ...) -> ModelOutput` — accepts embedding-level inputs, returns model outputs. Only models with permissive access (e.g., HuggingFace) implement this.
+
+The invoke methods are **stateless**---they are not connected to any stored inputs or templates. They simply take input and return output. The convenience `__call__` delegates to `invoke_from_texts` and unwraps the default `ModelOutput` property for the model type (e.g., response strings for LMs, embeddings for encoders).
+
+**2. Input methods** — template setup and management.
+
+Following the two flows, each flow has its `InputsManager`:
+- `set_inputs_from_texts(templates, targets)` / `reset_inputs_from_texts()` — manages a `TextInputManager`.
+- `set_inputs_from_tokens(templates, targets)` / `reset_inputs_from_tokens()` — manages a `TokenInputManager`.
+
+A default `TokenInputManager` accepts any tokenizer inheriting `BaseTokenizer`, decodes trigger IDs to strings, and reconstructs full texts. Backends with richer access (like HuggingFace) use a custom `_HFTokenInputManager` that works at the embedding level with attention masks, prefix caching, and position slicing. This means the typical model implementer does not need to worry about input manager logic---unless they customize it for a specific backend.
+
+**3. Compute methods** — the methods actually called by optimizers.
+
+These are the most critical family: `compute_{value}_from_{input_type}()` (e.g., `compute_loss_from_tokens`, `compute_grad_from_tokens`). They are tightly coupled to the input methods---they operate on top of the stored triggered inputs from `set_inputs_from_{input_type}`. Internally, they are expected to use the corresponding `invoke` method.
+
+The compute methods are what optimizers call directly. Together with the input methods, they form the **setup-then-compute** pattern: the optimizer calls `set_inputs_from_tokens` once, then calls `compute_loss_from_tokens` or `compute_grad_from_tokens` repeatedly at each optimization step.
+
+### Future Design Direction
+
+The separation of `invoke` from `compute` is a deliberate design lead. Currently, the HuggingFace mixin (`_HuggingFaceModelMixins`) provides full default implementations of all token-based `compute_*` methods, relying on `invoke_from_tokens` as the single model-specific entry point. In the future, this pattern could be generalized: if new backends (e.g., token-accepting APIs) share the same compute logic, we could lift these default implementations from the HF mixin into more general mixins that operate on any backend---relying solely on `invoke_from_tokens`. We currently avoid this change to leave room for flexibility in the potentially complex logic of compute methods across different backends, but it is a natural evolution of the design.
+
+### Mixin Naming Convention
+
+For creating new access mixins:
+1. **Class name**: `{Value}{InputType}AccessMixin` — e.g., `LossTokenAccessMixin`
+2. **Required method**: `compute_{value}_from_{input_type}()` — e.g., `compute_loss_from_tokens()`
+3. **Model integration**: Update model classes to inherit the mixin where the model's capabilities match the access level
 
 
 ### Standardized Input/Output Interfaces
 
-**Design Motivation**: Prior to this refactoring, model inputs and outputs were passed as dictionaries with string keys, leading to inconsistent interfaces and requiring each model to implement its own loss resolution logic. This resulted in ~180 lines of duplicated code across 3 locations, making maintenance difficult and new model implementation error-prone.
+**ModelOutput** (`tropt/common.py`): A dataclass that standardizes all model outputs. All fields are optional---models populate only the fields they can provide (embeddings, logits, hidden states, attention weights, generated text, etc.). The fields a model populates determine which loss types are compatible with it; the loss resolution system validates this at runtime.
 
-**ModelOutput** (`tropt/models/outputs.py`): A dataclass that standardizes all model outputs. All fields are optional to accommodate diverse model capabilities (embeddings, logits, hidden states, attention weights, generated text, etc.). Models populate only the fields they can provide.
+**ModelInput** (`tropt/common.py`): A dataclass that standardizes inputs from `InputsManager.get_triggered_inputs()`. Contains text-level inputs, token-level inputs (embeddings, attention masks, prefix cache kwargs), position slices, and target artifacts.
 
-**ModelInput** (`tropt/models/inputs.py`): A dataclass that standardizes inputs from `InputsManager.get_triggered_inputs()`. Contains text-level inputs, token-level inputs (embeddings, attention masks, prefix cache kwargs), position slices, and target artifacts.
-
-**Benefits**:
-- **Type Safety**: Strong typing eliminates runtime errors from missing/misnamed keys
-- **Self-Documenting**: Field names and type annotations with shapes (via jaxtyping) make interfaces clear
-- **Maintainability**: Changes to interfaces are compiler-checked across the codebase
-- **Consistency**: All models use identical input/output contracts
-
-**Usage Pattern**:
-```python
-# Model __call__ returns ModelOutput when return_full_output=True
-output = model(texts, return_full_output=True)  # Returns ModelOutput
-embeddings = output.output_embeddings  # Type-safe attribute access
-
-# InputsManager returns ModelInput
-model_input = inputs_manager.get_triggered_inputs(trigger_ids)
-texts = model_input.input_texts  # Type-safe attribute access
-```
-
-This standardization enabled the unified loss resolution system described in Pillar 3.
+Both dataclasses provide type-safe, self-documenting interfaces with shape annotations (via jaxtyping), replacing ad-hoc dictionaries. All models and input managers use identical input/output contracts, which enables the unified loss resolution system described in Pillar 3.
 
 
 <!-- TODO fully document access levels (e.g., token level also assume prefilling; text-level only assume query, and sometime generated logits [different from prefilled logits]) -->
@@ -190,9 +165,9 @@ Thus, next, we detail how these are stored and managed during the optimization.
 
 During the optimization we repeatedly update the text trigger, and mostly consider and evaluate multiple such candidate triggers. These triggers are, naturally, evaluated as part of the text templates provided by the user.
 
-To streamline the repeated combination of new triggers into the templates we implement the `InputsManager` classes. Now these depend on the input type that we deal with, thus are strongly linked to the two key methods of the model. For instance, for token inputs we have the `HFTokenInputsManager`. This class specializes in combining trigger tokens within user text templates, and providing them as model input to the different methods of the model class (e.g., `compute_loss_from_tokens()`).
+To streamline the repeated combination of new triggers into the templates we implement the `InputsManager` classes. These depend on the input type, and are integrated within the model class via the input methods family (see Pillar 1). For text inputs, a `TextInputManager` reconstructs full texts by substituting triggers into template placeholders. For token inputs, the default `TokenInputManager` works with any `BaseTokenizer` by decoding trigger IDs to strings; the HuggingFace backend overrides this with `_HFTokenInputManager`, which operates at the embedding level with attention masks, prefix caching, and position slicing.
 
-These input managers are integrated within the model class. For example, `prepare_token_inputs(...)` returns an instance of the token inputs, suitable for the model, and with the user templates baked in. The model class's loss computation methods also integrate with the input manager, by accepting them upon loss computation.
+The model's `set_inputs_from_{input_type}()` stores the appropriate input manager, and the `compute_{value}_from_{input_type}()` methods use it to assemble full inputs for each candidate trigger at every optimization step.
 
 The implementations of the input managers, especially the token-level ones, are unavoidably cumbersome and complex. Thus the abstraction of them streamlines the implementation of the different text optimizers.
 
@@ -208,14 +183,7 @@ In this way, the model is able to call and compute only losses compatible with t
 
 ### Unified Loss Resolution
 
-**Problem**: Previously, loss computation logic was duplicated across three model implementations:
-1. `LMHFModel._loss_hook()` (~100 lines of isinstance checks for 5 loss types)
-2. `EncoderHFModel._loss_hook()` (~45 lines for 2 loss types)
-3. `LossTextAccessMixin.compute_loss_from_texts()` (~80 lines for 4 loss types)
-
-This duplication made it difficult to add new loss types and easy to introduce bugs when updating loss computation logic.
-
-**Solution** (`tropt/loss/resolution.py`): A single function `resolve_and_compute_loss(model_output, model_input, loss_func)` that:
+Loss computation is centralized in a single function, `resolve_and_compute_loss(model_output, model_input, loss_func)` in `tropt/loss/resolution.py`. This function:
 1. Accepts standardized `ModelOutput` and `ModelInput` dataclasses
 2. Performs type-based dispatch to specialized helper functions based on loss type
 3. Validates required data is present in model_output (raises `LossResolutionError` with clear messages if missing)
@@ -230,21 +198,14 @@ This duplication made it difficult to add new loss types and easy to introduce b
 - `_compute_text_based_loss()` - Text-based evaluation (LM-as-judge)
 - `_compute_combined_loss()` - Recursive handling of multi-objective losses
 
-**Impact on Model Implementation**: Model `_loss_hook` methods are now ~10 lines instead of ~100:
+Model implementations wrap their raw outputs into `ModelOutput` and `ModelInput`, then delegate to this single function:
 ```python
-# Create standardized wrappers from model-specific outputs
 model_output = ModelOutput(output_logits=outputs.logits, ...)
 model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets, ...)
-
-# Single line replaces all duplicated loss resolution logic
 return resolve_and_compute_loss(model_output, model_input, loss_func)
 ```
 
-**Benefits**:
-- **Single Source of Truth**: Loss computation logic exists in one location
-- **Easy Extension**: Adding a new loss type requires < 20 lines in one file
-- **Clear Error Messages**: Missing data raises exceptions with specific field names
-- **Reduced Model Complexity**: New models provide data, not loss implementation
+This keeps loss logic in one location, makes adding new loss types straightforward (< 20 lines), and means new models only provide data---not loss implementation.
 
 ## Pillar 4: Optimizers
 
@@ -328,28 +289,3 @@ In a personal note, I hope that this repository will be useful for researchers g
 > Matan Ben-Tov. 2025.
 
 
-----
-
-TODO add to the design doc the following:
-```
-Logic in the model design:
-The model is the most complicated logic in the code, and does most of the heavy lifting. It is intentional, as while models are only need to be implemented once per model backend / type. As oppoed to optimizers or losses, which this repo aims to make as simple, flexible and hackable as possible. The goal of the repo is to extend more optimizers and use new objectives. We are aware of the trade-off with model complexity, but the design aims to make it minimal.
-Each model is composed of three types of methods:
-- INVOKE METHOD FAMILY. We have two flows: "from_texts", "from_tokens"; the former makes all models (as they always have text-input to output of several properties of ModleOutput flow), tha latter makes modles with more permitive access, such as huggingface, and supports more permitive inputs: embedding, 
-	- call will return the defautl ModelOuput proeprty of the model type from invoke_text (eg the response string)
-	- The invoke method is required for imeplementation.
-	- The invoke methods is not connected to any state of inputs in the model!
-- INPUTS METHOD FAMILY. Follwing these flow, each flow has its input_manager -- we have such default input manager for each, and this implements the model's set_inputs_from_{intputType}. 
-	- For token input type, this default input manger accepts a tokenizer that inherits BaseTokenizer.
-	- Sometimes we may have a custom input manager, much like HF.
-	- So this measn that the average implementer should not worry about set_inputs, unless they customize the input-manager.
-- COMPUTE METHOD FAMILY. Finally the most crucial part is the compute_{value}_from_{inputType} metods.
-	- The compute mehtods are tightly connceted with the set_inputs methods, as they run ontop of their triggered inputs.
-    - The compute methods are expected to use the corresponding invoke methods.
-	- We may be able to craft default implementations for these token-based models, but currently there is no actual need (there are very few such). So this the reason we do include the invoke_from_tokens is for future backends (eg APIs that accepts tokens) that will share compute_loss logic---and, for them, we could include such implementations.
-        - Specifically, in the future we might consider taking some of the HFMixins methods up to be more general mixins that operates on other backends, relying on the `invoke` implementations --- which are the main things that are backend/model-specific.
-        - Currently we avoid such change to leave room for flexability in the potentially complicated logic of compute methods.
-        - we should highlight this future design lead in the design document.
-
---> we should also make sure the more concrete practical ideas here are included in adding_a_model
-```

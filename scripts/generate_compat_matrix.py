@@ -24,6 +24,8 @@ from typing import Dict, List, Set, Tuple, Type
 import tropt.loss as loss_pkg
 import tropt.model as model_pkg
 import tropt.optimizer as optimizer_pkg
+from tropt.common import MessageTargets
+from tropt.loss import BaseLoss, CombinedLoss
 from tropt.model import (
     BaseModel,
     GradientEmbedAccessMixin,
@@ -32,8 +34,6 @@ from tropt.model import (
     LossTokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer
-from tropt.loss import BaseLoss, CombinedLoss
-from tropt.common import MessageTargets
 
 # ---------------------------------------------------------------------------
 # Auto-discovery from package exports
@@ -88,14 +88,14 @@ def _discover_concrete_losses() -> List[Type[BaseLoss]]:
 #
 # Both ModelOutput and ModelInput are constructed in model source files.
 # The same file may build them differently in token-path methods (e.g.
-# token_forward_pass, get_triggered_inputs) vs text-path methods (generate,
-# encode, compute_loss_from_texts). We classify methods by name keywords and
+# invoke_from_tokens, get_triggered_inputs) vs text-path methods (invoke_from_texts,
+# compute_loss_from_texts). We classify methods by name keywords and
 # extract the keyword arguments from each constructor call.
 #
 # Methods matching neither set are conservatively assigned to both paths.
 
-_TOKEN_PATH_KEYWORDS = {"token", "forward", "loss_hook", "triggered"}
-_TEXT_PATH_KEYWORDS = {"generate", "encode", "text"}
+_TOKEN_PATH_KEYWORDS = {"token", "invoke_from_tokens", "loss_hook", "triggered"}
+_TEXT_PATH_KEYWORDS = {"invoke_from_texts", "text"}
 
 
 def _extract_constructor_fields(

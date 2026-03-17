@@ -173,8 +173,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).
         # The evaluation operates on `texts` via `model` (text space of target model).
 
-        self.model.set_text_inputs(templates=templates, targets=targets)
-        self.util_model.set_token_inputs(templates=templates, targets=targets)
+        self.model.set_inputs_from_texts(templates=templates, targets=targets)
+        self.util_model.set_inputs_from_tokens(templates=templates, targets=targets)
         util_tokenizer = self.util_model.tokenizer
         util_trigger_ids = (
             util_tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -418,6 +418,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str, **model_stats_diff})
         logger.info(f"Best loss: {result.best_loss}| Usage stats: {model_stats_diff}")
-        self.model.reset_text_inputs()
-        self.util_model.reset_token_inputs()
+        self.model.reset_inputs_from_texts()
+        self.util_model.reset_inputs_from_tokens()
         return result

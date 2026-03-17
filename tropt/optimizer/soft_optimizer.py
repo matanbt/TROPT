@@ -72,7 +72,7 @@ class SoftPromptOptimizer(BaseOptimizer):
         super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
 
         # Initialization
-        self.model.set_token_inputs(templates=templates, targets=targets)
+        self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
         trigger_ids = (
             tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
@@ -131,5 +131,5 @@ class SoftPromptOptimizer(BaseOptimizer):
             "best_loss": result.best_loss,
             "best_trigger_embeds": result.best_trigger
         })
-        self.model.reset_token_inputs()
+        self.model.reset_inputs_from_tokens()
         return result

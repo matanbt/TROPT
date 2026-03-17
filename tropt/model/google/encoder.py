@@ -1,8 +1,6 @@
 from typing import List
 
 import torch
-from jaxtyping import Float
-from torch import Tensor
 
 from tropt.common import ModelOutput
 from tropt.model import EncoderBaseModel, LossTextAccessMixin
@@ -43,21 +41,20 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
     def d_model(self) -> int:
         return self._d_model
 
-    def encode(
+    def invoke_from_texts(
         self,
-        texts: List[str],
+        input_texts: List[str],
         text_type: str = None,
-        return_full_output: bool = False,
-    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
+    ) -> ModelOutput:
         """
         Generates embeddings for the given texts using the Gemini API.
 
         Args:
-            texts: A list of strings to embed.
+            input_texts: A list of strings to embed.
             text_type: The type of text (e.g., "document" or "query") to guide the embedding generation.
 
         Returns:
-            A tensor containing the generated embeddings.
+            A ModelOutput containing the generated embeddings.
         """
         assert text_type in (
             None,
@@ -69,7 +66,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         import google.genai as genai  # optional dependency
 
         response = self._client.models.embed_content(
-            contents=texts,
+            contents=input_texts,
             model=self.model_name,
             config=genai.types.EmbedContentConfig(
                 task_type=task_type,
@@ -89,12 +86,9 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         self._update_usage_stats(
             tokens=total_tokens,
             forward_calls=1,
-            forward_samples=len(texts)
+            forward_samples=len(input_texts)
         )
 
-        if return_full_output:
-            return ModelOutput(
-                output_embeddings=result,
-            )
-
-        return result
+        return ModelOutput(
+            output_embeddings=result,
+        )

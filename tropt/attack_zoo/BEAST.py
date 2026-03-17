@@ -23,7 +23,6 @@ def run_beast(
     """
     model = LMHFModel(
         model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
         use_prefix_cache=False,
     )
     loss = PrefillCELoss()
@@ -31,13 +30,15 @@ def run_beast(
     optimizer = BEASTOptimizer(
         model=model,
         loss=loss,
+
         # Set parameters from the paper:
-        # L = 40 (suffix length), k1 = k2 = 15, temperature = 1.0
-        num_steps=40,  # L in paper: number of tokens in adversarial suffix
+        num_steps=40,  # L in paper: number of tokens in suffix trigger
         beam_size=15,  # k1 in paper: number of beams to maintain
         branching_factor=15,  # k2 in paper: number of candidates per beam
         top_k=None,  # Paper uses full distribution multinomial sampling
         temperature=1.0,  # As specified in paper
+        # We can use token-level loss computation for this attack, per the original implementation
+        use_model_with_token_inputs=True,
     )
 
     result = optimizer.optimize_trigger(

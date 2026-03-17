@@ -17,6 +17,7 @@ import pandas as pd
 import requests
 import torch
 from datasets import load_dataset
+from jaxtyping import Float
 from sklearn.model_selection import train_test_split
 
 from tropt.model.huggingface.lm import LMHFModel
@@ -119,10 +120,9 @@ def extract_activations(
             )
 
         # Extract activations from all layers
-        # hidden_states is tuple: (embeddings, layer1, layer2, ..., layerN)
-        hidden_states = outputs.hidden_states[1:]  # Skip embeddings, keep transformer layers
+        hidden_states = outputs.hidden_states[1:]  # Skip input embeddings, keep hidden layers
 
-        if position == "last":
+        if position == "last":  # the `INPUT_LAST_TOKEN` position
             # Take last token from each layer
             activations = torch.stack([h[0, -1, :] for h in hidden_states])  # (n_layers, d_model)
         elif position == "mean":
@@ -140,9 +140,9 @@ def compute_refusal_directions(
     model: LMHFModel,
     harmful_prompts: Optional[List[str]] = None,
     harmless_prompts: Optional[List[str]] = None,
-    n_samples: int = 400,
+    n_samples: int = 128,
     position: str = "last",
-) -> torch.Tensor:
+) -> Float[torch.Tensor, "n_layers d_model"]:
     """
     Compute refusal directions for all layers using difference-in-means.
 
@@ -150,8 +150,8 @@ def compute_refusal_directions(
         model: LMHFModel instance
         harmful_prompts: List of harmful prompts (if None, loads from AdvBench)
         harmless_prompts: List of harmless prompts (if None, loads from Alpaca)
-        n_samples: Number of samples to use per category
-        position: Which position to extract ("last" or "mean")
+        n_samples: Number of samples to use per category; Arditi et al. (2024) used 128
+        position: Which position to extract ("last" or "mean"); it's common to use the last token's activations.
 
     Returns:
         Refusal directions tensor of shape (n_layers, d_model), normalized per layer
@@ -342,6 +342,7 @@ def generate_jailbroken_responses(
             skip_special_tokens=True,
         )
         responses.append(response)
+        # TODO optionally return the "jailbroken" logits
 
         # Remove hooks
         remove_hooks()
