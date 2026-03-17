@@ -1,7 +1,7 @@
 """
 General loss functions.
 
-Imporant note: The losses arguments must match the fields in ModelOutput and ModelInput
+Important note: The losses arguments must match the fields in ModelOutput and ModelInput
 for unified loss resolution to work properly.
 """
 import logging
@@ -24,11 +24,12 @@ logger = logging.getLogger(__name__)
 class TextBasedLoss(BaseLoss):
     """Loss computed based on text inputs (useful for black-box models)."""
 
+    @abstractmethod
     def __call__(
         self,
         input_texts: Annotated[List[str], "bsz"],
     ) -> Float[torch.Tensor, "bsz"]:
-        raise NotImplementedError()
+        pass
 
 
 @dataclass
@@ -186,7 +187,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 
             return torch.cat(all_scores, dim=0)
 
-        return _compute_scores_batched()  # TODO make sure callers `to.device & dtype`
+        return _compute_scores_batched()  # TODO make sure the callers `to.device & dtype` !!!!!!!!!!
 
 
 @dataclass

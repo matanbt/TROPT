@@ -6,7 +6,7 @@ from .losses import (
     AttentionBasedLoss,
     AttentionEnhLoss,
     EmbeddingBasedLoss,
-    HiddenStateBased,
+    HiddenStateBasedLoss,
     LogitBasedLoss,
 
     # Concrete losses:

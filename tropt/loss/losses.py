@@ -1,7 +1,7 @@
 """
 General loss functions.
 
-Imporant note: The losses arguments must match the fields in ModelOutput and ModelInput
+Important note: The losses arguments must match the fields in ModelOutput and ModelInput
 for unified loss resolution to work properly.
 """
 import logging
@@ -27,12 +27,13 @@ class LogitBasedLoss(BaseLoss):
     These losses required target tokens (i.e. `target_response_toks`); commonly automatically derived from `target_response_strs` strings.
     """
 
+    @abstractmethod
     def __call__(
         self,
         response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
     ) -> Float[Tensor, "bsz"]:
-        raise NotImplementedError()
+        pass
 
 
 @dataclass
@@ -180,13 +181,14 @@ class TriggerLogitBasedLoss(BaseLoss):
     and must slice them using input_slices to extract trigger-specific logits.
     """
 
+    @abstractmethod
     def __call__(
         self,
         output_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "trigger_seq_len"],
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
-        raise NotImplementedError()
+        pass
 
 
 @dataclass
@@ -245,12 +247,13 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 class AttentionBasedLoss(BaseLoss):
     """Loss is computed based on model attention weights."""
 
+    @abstractmethod
     def __call__(
         self,
         output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
-        raise NotImplementedError()
+        pass
 
 
 @dataclass
@@ -297,7 +300,13 @@ class EmbeddingBasedLoss(BaseLoss):
     Requires the target vectors (shape: (n_templates, d_model)) to be provided in the targets dict.
     """
 
-    pass
+    @abstractmethod
+    def __call__(
+        self,
+        output_embeddings: Float[Tensor, "bsz d_model"],
+        **kwargs,
+    ) -> Float[Tensor, "bsz"]:
+        pass
 
 @dataclass
 class SimilarityLoss(EmbeddingBasedLoss):
@@ -327,14 +336,20 @@ class SimilarityLoss(EmbeddingBasedLoss):
 
 ############################
 @dataclass
-class HiddenStateBased(BaseLoss):
+class HiddenStateBasedLoss(BaseLoss):
     """Loss computed based on model hidden states."""
 
-    pass
+    @abstractmethod
+    def __call__(
+        self,
+        output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        **kwargs,
+    ) -> Float[Tensor, "bsz"]:
+        pass
 
 
 @dataclass
-class SteeringActivationLoss(HiddenStateBased):
+class SteeringActivationLoss(HiddenStateBasedLoss):
     """
     Encourages hidden activations at specific layers/positions to align with a target direction.
     - Each message has a target direction vector (optionally its own unique one).

@@ -21,7 +21,7 @@ from tropt.common import (
 from tropt.loss import (
     AttentionBasedLoss,
     BaseLoss,
-    HiddenStateBased,
+    HiddenStateBasedLoss,
     LogitBasedLoss,
 )
 from tropt.model import (
@@ -357,7 +357,7 @@ class LMHFModel(
             inputs_embeds=model_input.input_embeds,
             attention_mask=model_input.input_attention_mask,
             output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss) if reference_loss_func else False,
-            output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBased) if reference_loss_func else False,
+            output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBasedLoss) if reference_loss_func else False,
             **(model_input.input_prefix_cache_kwargs or {})
         )
         self._update_usage_stats(

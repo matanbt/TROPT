@@ -43,7 +43,7 @@ def resolve_and_compute_loss(
         resolve which data to provide to the loss function by inspecting its __call__
         signature.
 
-        - In case insufficient arguments are avaialble (e.g., becasue the model does not provide the required access),
+        - In case insufficient arguments are available (e.g., because the model does not provide the required access),
         a LossResolutionError is raised with details on what is missing.
 
         - **Parameter Naming Convention:**

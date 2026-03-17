@@ -41,34 +41,13 @@ from tropt.common import MessageTargets
 
 def _discover_optimizers() -> List[Type[BaseOptimizer]]:
     """Find all concrete BaseOptimizer subclasses exported by tropt.optimizer."""
-    result = []
-    for name in dir(optimizer_pkg):
-        obj = getattr(optimizer_pkg, name)
-        if (
-            isinstance(obj, type)
-            and issubclass(obj, BaseOptimizer)
-            and obj is not BaseOptimizer
-            and not inspect.isabstract(obj)
-        ):
-            result.append(obj)
-    # Also check non-exported optimizer modules for completeness
-    opt_dir = Path(inspect.getfile(optimizer_pkg)).parent
-    for py_file in opt_dir.glob("*_optimizer.py"):
-        mod_name = f"tropt.optimizer.{py_file.stem}"
-        try:
-            mod = __import__(mod_name, fromlist=[py_file.stem])
-        except ImportError:
-            continue
-        for name in dir(mod):
-            obj = getattr(mod, name)
-            if (
-                isinstance(obj, type)
-                and issubclass(obj, BaseOptimizer)
-                and obj is not BaseOptimizer
-                and not inspect.isabstract(obj)
-                and obj not in result
-            ):
-                result.append(obj)
+    result = [
+        obj for name in dir(optimizer_pkg)
+        if isinstance(obj := getattr(optimizer_pkg, name), type)
+        and issubclass(obj, BaseOptimizer)
+        and obj is not BaseOptimizer
+        and not inspect.isabstract(obj)
+    ]
     return sorted(result, key=lambda c: c.__name__)
 
 
@@ -90,24 +69,7 @@ def _discover_models() -> List[Tuple[type, str]]:
 
 
 def _is_concrete_loss(cls: type) -> bool:
-    """A loss is concrete if its __call__ chain doesn't just raise NotImplementedError."""
-    if cls is BaseLoss or cls is CombinedLoss:
-        return False
-    if inspect.isabstract(cls):
-        return False
-    for klass in cls.__mro__:
-        if "__call__" not in klass.__dict__:
-            continue
-        if klass is BaseLoss or klass is object:
-            return False
-        try:
-            src = inspect.getsource(klass.__call__)
-            if "raise NotImplementedError" in src:
-                return False
-        except (OSError, TypeError):
-            pass
-        return True
-    return False
+    return cls is not BaseLoss and cls is not CombinedLoss and not inspect.isabstract(cls)
 
 
 def _discover_concrete_losses() -> List[Type[BaseLoss]]:

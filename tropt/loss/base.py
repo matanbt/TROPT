@@ -1,7 +1,7 @@
 """
 Base classes for loss functions.
 
-Imporant note: The losses arguments must match the fields in ModelOutput and ModelInput
+Important note: The losses arguments must match the fields in ModelOutput and ModelInput
 for unified loss resolution to work properly.
 """
 

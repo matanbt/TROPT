@@ -100,7 +100,24 @@ def build_docs():
                     print(f"  Skipping {file}: {e}")
 
     # ---------------------------------------------------------
-    # 3. Run Sphinx
+    # 3. Generate compatibility matrix
+    # ---------------------------------------------------------
+    print("Generating compatibility matrix...")
+    try:
+        from scripts.generate_compat_matrix import generate_markdown
+        md = generate_markdown()
+        compat_path = os.path.join(docs_copy, "compatibility_matrix.md")
+        with open(compat_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        # Also write to original docs so it's available outside builds
+        with open(os.path.join(docs_original, "compatibility_matrix.md"), "w", encoding="utf-8") as f:
+            f.write(md)
+        print("  Compatibility matrix generated.")
+    except Exception as e:
+        print(f"  Warning: Could not generate compatibility matrix: {e}")
+
+    # ---------------------------------------------------------
+    # 4. Run Sphinx
     # ---------------------------------------------------------
     print("Running Sphinx...")
     build_cmd = [
@@ -117,7 +134,7 @@ def build_docs():
         return
 
     # ---------------------------------------------------------
-    # 4. Copy Artifacts Back
+    # 5. Copy Artifacts Back
     # ---------------------------------------------------------
     print(f"Copying build artifacts to {final_build_dir}...")
     
@@ -135,7 +152,7 @@ def build_docs():
         print(f"You can find the raw build at: {os.path.join(docs_copy, '_build', 'html')}")
 
     # ---------------------------------------------------------
-    # 5. Cleanup Temp Dir
+    # 6. Cleanup Temp Dir
     # ---------------------------------------------------------
     robust_cleanup(temp_root)
     
@@ -144,7 +161,7 @@ def build_docs():
         robust_cleanup(path)
 
     # ---------------------------------------------------------
-    # 6. Open in Browser (Optional)
+    # 7. Open in Browser (Optional)
     # ---------------------------------------------------------
     index_path = os.path.join(final_build_dir, "index.html")
     if os.path.exists(index_path):
