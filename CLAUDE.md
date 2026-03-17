@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Prefer concise modifications for tasks, with minimal changes to existing code -- so these can be later easily reviewed and integrated. However, if such minimal changes result in creating technical debt or code that is hard to read, prefer clarity and maintainability!
 - Any temporary script or markdown you (Claude) create, must be located under the `/claude_stuff/` directory. Don't make a mess! 
 - Avoid over-commenting code. The code should be as self-explanatory as possible. Use clear variable and function names, and only add comments where the intent is not obvious.
+- **Documentation maintenance**: When writing or editing docs (especially in `docs/`), avoid enumerating specific classes, fields, or method signatures that will need manual updates when the code changes. Instead, describe concepts and point to the source code. Prefer "see `tropt/loss/` for the full set" over listing every loss class. This applies to tables, lists, and inline references — if it would go stale when someone adds a new class, don't hardcode it.
 
 ## Project Overview
 

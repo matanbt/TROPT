@@ -326,3 +326,30 @@ In a personal note, I hope that this repository will be useful for researchers g
 
 
 > Matan Ben-Tov. 2025.
+
+
+----
+
+TODO add to the design doc the following:
+```
+Logic in the model design:
+The model is the most complicated logic in the code, and does most of the heavy lifting. It is intentional, as while models are only need to be implemented once per model backend / type. As oppoed to optimizers or losses, which this repo aims to make as simple, flexible and hackable as possible. The goal of the repo is to extend more optimizers and use new objectives. We are aware of the trade-off with model complexity, but the design aims to make it minimal.
+Each model is composed of three types of methods:
+- INVOKE METHOD FAMILY. We have two flows: "from_texts", "from_tokens"; the former makes all models (as they always have text-input to output of several properties of ModleOutput flow), tha latter makes modles with more permitive access, such as huggingface, and supports more permitive inputs: embedding, 
+	- call will return the defautl ModelOuput proeprty of the model type from invoke_text (eg the response string)
+	- The invoke method is required for imeplementation.
+	- The invoke methods is not connected to any state of inputs in the model!
+- INPUTS METHOD FAMILY. Follwing these flow, each flow has its input_manager -- we have such default input manager for each, and this implements the model's set_inputs_from_{intputType}. 
+	- For token input type, this default input manger accepts a tokenizer that inherits BaseTokenizer.
+	- Sometimes we may have a custom input manager, much like HF.
+	- So this measn that the average implementer should not worry about set_inputs, unless they customize the input-manager.
+- COMPUTE METHOD FAMILY. Finally the most crucial part is the compute_{value}_from_{inputType} metods.
+	- The compute mehtods are tightly connceted with the set_inputs methods, as they run ontop of their triggered inputs.
+    - The compute methods are expected to use the corresponding invoke methods.
+	- We may be able to craft default implementations for these token-based models, but currently there is no actual need (there are very few such). So this the reason we do include the invoke_from_tokens is for future backends (eg APIs that accepts tokens) that will share compute_loss logic---and, for them, we could include such implementations.
+        - Specifically, in the future we might consider taking some of the HFMixins methods up to be more general mixins that operates on other backends, relying on the `invoke` implementations --- which are the main things that are backend/model-specific.
+        - Currently we avoid such change to leave room for flexability in the potentially complicated logic of compute methods.
+        - we should highlight this future design lead in the design document.
+
+--> we should also make sure the more concrete practical ideas here are included in adding_a_model
+```
