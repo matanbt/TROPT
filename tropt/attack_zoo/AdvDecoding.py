@@ -52,7 +52,7 @@ def run_advdecoding_encoder(
     )
 
     # Parameters (from the paper):
-    beam_width: int = 30  # m in the paper; mostly use 30 [k1 in BEAST]
+    beam_width: int = 30  # m in the paper; mostly use 30
     max_length: int = 30  # Paper uses 30
     top_k: int = 10  # Paper uses top_k=10 logits filtering
     temperature: float = 1.0  # as there is no sampling anyway

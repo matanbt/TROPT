@@ -119,12 +119,10 @@ class BeamSearchOptimizer(BaseOptimizer):
         """
 
         # Prepare inputs for both target model and util LM
-        use_model_with_token_inputs = isinstance(self.model, LossTokenAccessMixin)
         util_lm_templates = util_lm_templates if util_lm_templates is not None else templates
-        if use_model_with_token_inputs:
-            assert util_lm_templates is None, "Cannot provide util_lm_templates when use_model_with_token_inputs is True."
 
-        if use_model_with_token_inputs:
+        if self.use_model_with_token_inputs:
+            assert util_lm_templates == templates, "Cannot provide different util_lm_templates when use_model_with_token_inputs is True."
             # If model has token-level loss access, we use token-level inputs
             self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         else:
@@ -205,7 +203,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             )  # append candidate tokens -> (beam * branching_factor, len+1)
 
             # 5. Compute losses for all beam x branching_factor candidate triggers
-            if not use_model_with_token_inputs:
+            if not self.use_model_with_token_inputs:
                 # Model computes loss in text-level
                 candidate_triggers_text = [self.util_lm.tokenizer.decode(trigger, skip_special_tokens=True) for trigger in candidate_triggers]
                 losses = self.model.compute_loss_from_texts(
