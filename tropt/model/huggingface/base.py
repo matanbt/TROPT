@@ -604,6 +604,7 @@ class _HuggingFaceModelMixins:
         loss_func: BaseLoss,
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
         return_loss: bool = False,
+        normalize_grads: bool = True,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"]:
         """Compute gradients of loss w.r.t. trigger embeddings.
 
@@ -690,9 +691,9 @@ class _HuggingFaceModelMixins:
         # Execute batched computation
         all_grads, avg_loss = _compute_grad__batched()
 
-        # Normalize gradients (L2 norm along the embedding dimension)
-        # TODO ?? MAKE IT OPTIONAL!!!!
-        all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
+        # normalize each token's gradient vector (over the embed_dim dim)
+        if normalize_grads:
+            all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         if return_loss:
             return all_grads, avg_loss

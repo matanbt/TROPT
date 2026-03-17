@@ -206,7 +206,8 @@ def create_ablation_hook(
     def hook(module, args, output):
         # Handle both tuple and non-tuple outputs
         if isinstance(output, tuple):
-            act, cache = output
+            act = output[0]
+            cache = output[1:]
         else:
             act = output
             cache = None
@@ -228,7 +229,7 @@ def create_ablation_hook(
 
         # Return in same format as input
         if cache is not None:
-            return act, cache
+            return (act, *cache)
         return act
 
     return hook
