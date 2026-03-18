@@ -21,7 +21,8 @@ def run_rasliteplus(
     ),  # random target vector for demo purposes
     # util_lm_name: str = "google/gemma-3-270m-it",
     initial_trigger: str = DEFAULT_INIT_TRIGGER,
-    log_to_wandb: bool = False,
+    model_obj=None,
+    tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
     """
     Run the RASLITEPlus (GASLITEPlus + Black-box) attack on a given embedding model.
@@ -30,23 +31,22 @@ def run_rasliteplus(
     Args:
         model_name (str): The name of the HuggingFace model to attack;
             - prefixed with "openai/" to use OpenAI embedding models.
-        util_lm_name (str): The name of the HuggingFace LM model to use for logits calculation.
         prefix_info (str): The string prefixing the passage with a placeholder for the trigger.
         target_vector (Tensor, (d_model)): The target vector.
+        model_obj: Pre-loaded model to use instead of creating from `model_name`.
+        tracker: Optional tracker for logging.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    if model_name.startswith("openai/"):
-        from tropt.model.openai.encoder import EncoderOpenAIModel
-        model_name = model_name.replace("openai/", "")
-        model = EncoderOpenAIModel(
-            model_name=model_name,
-        )
-    else:
-        model = EncoderHFModel(
-            model_name=model_name,
-        )  # or any black-box-access encoder model
-        device = model.device
+    if model_obj is None:
+        if model_name.startswith("openai/"):
+            from tropt.model.openai.encoder import EncoderOpenAIModel
+            model_name = model_name.replace("openai/", "")
+            model_obj = EncoderOpenAIModel(model_name=model_name)
+        else:
+            model_obj = EncoderHFModel(model_name=model_name)
+            device = model_obj.device
+    model = model_obj
 
     util_lm = None  # we dont use logits
 
@@ -54,14 +54,11 @@ def run_rasliteplus(
 
     loss = SimilarityLoss()
 
-    if log_to_wandb:
-        from tropt.tracker import WandbTracker
-        tracker = WandbTracker("raslite+", "tropt-runs")
-
     optimizer = RASLITEPlusOptimizer(
         model=model,
         util_lm=util_lm,
         loss=loss,
+        tracker=tracker,
         # Set parameters (combining RASLITE defaults with GASLITEPlus enhancements):
         num_steps=1500,
         token_constraints=TokenConstraints(
@@ -83,24 +80,15 @@ def run_rasliteplus(
         # decline_n_flip_from_step=0.5, # Optional
         # early_stopping_patience=None, # Optional
         # n_grad=1, # Default to 1 (no averaging) unless specified, as RASLITE uses logits directly
-
-        tracker=tracker if log_to_wandb else None,
     )
 
-    result = optimizer.optimize_trigger(
+    return optimizer.optimize_trigger(
         templates=[prefix_info],
         targets=Targets(
             target_vectors=target_vector.to(device),
         ),
         initial_trigger=initial_trigger,
     )
-
-    if log_to_wandb:
-        usage_stats = model.get_usage_stats()
-        tracker.log(usage_stats)
-        tracker.finish()
-
-    return result
 
 
 def run_rasliteplus_llm(

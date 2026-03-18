@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 from jaxtyping import Float
 
@@ -7,6 +9,7 @@ from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.tracker import BaseTracker
 
 
 def run_gaslite(
@@ -15,6 +18,8 @@ def run_gaslite(
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
         1, 384
     ),  # random target vector for demo purposes
+    model_obj: Optional[EncoderHFModel] = None,
+    tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
     """
     Run the GASLITE's attack recipe on a given embedding model.
@@ -24,17 +29,21 @@ def run_gaslite(
         model_name (str): The name of the HuggingFace model to attack.
         prefix_info (str): The string prefixing the passage with a placeholder for the trigger (i.e., the "malicious information").
         target_vector (Tensor, (d_model)): The target vector the passage's embedding is aligned (the centroid of the target query set).
+        model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
+        tracker: Optional tracker for logging.
     """
-
-    model = EncoderHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
+    if model_obj is None:
+        model_obj = EncoderHFModel(
+            model_name=model_name,
+            device="cuda" if torch.cuda.is_available() else "cpu",
+        )
+    model = model_obj
     loss = SimilarityLoss()
 
     optimizer = GASLITEOptimizer(
         model=model,
         loss=loss,
+        tracker=tracker,
         # Set parameters from the paper:
         n_candidates=128,
         n_grad=50,
