@@ -97,9 +97,10 @@ class EncoderHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self._tokenizer.add_special_tokens(
-            {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-        )
+        if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
+            self._tokenizer.add_special_tokens(
+                {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
+            )
 
         ## warning and checks:
         if self._model.dtype in (torch.float32, torch.float64):

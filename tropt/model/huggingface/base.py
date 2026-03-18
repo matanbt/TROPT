@@ -795,37 +795,38 @@ class _HuggingFaceModelMixins:
         """
         pass
 
-    @staticmethod
-    def cast_to_model_tokenizer(
-        old_ids: Float[Tensor, "bsz seq_len"],
-        model_from: "_HuggingFaceModelMixins",
-        model_to: "_HuggingFaceModelMixins",
-    ) -> Tuple[Float[Tensor, "bsz len_old"], Float[Tensor, "bsz len_new"]]:
-        """
-        Given `ids` in the `model_from` tokenizer, heurisically casts them to the
-        `model_to` tokenizer, while filtering out mismatches.
-        """
-        # a. decode w/ util-model tokenizer
-        strs = model_from.tokenizer.batch_decode(old_ids)
+    # A heuristic to transform tokens from one tokenizer to another [Currently disabled]
+    # @staticmethod
+    # def cast_to_model_tokenizer(
+    #     old_ids: Float[Tensor, "bsz seq_len"],
+    #     model_from: "_HuggingFaceModelMixins",
+    #     model_to: "_HuggingFaceModelMixins",
+    # ) -> Tuple[Float[Tensor, "bsz len_old"], Float[Tensor, "bsz len_new"]]:
+    #     """
+    #     Given `ids` in the `model_from` tokenizer, heurisically casts them to the
+    #     `model_to` tokenizer, while filtering out mismatches.
+    #     """
+    #     # a. decode w/ util-model tokenizer
+    #     strs = model_from.tokenizer.batch_decode(old_ids)
 
-        # b. encode w/ model tokenizer
-        new_ids = [
-            model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
-            .to(model_to.device)
-            .squeeze(0)
-            for s in strs
-        ]
+    #     # b. encode w/ model tokenizer
+    #     new_ids = [
+    #         model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
+    #         .to(model_to.device)
+    #         .squeeze(0)
+    #         for s in strs
+    #     ]
 
-        # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
-        lengths = [ids.shape[-1] for ids in new_ids]
-        counts = np.bincount(lengths)
-        _min_len = np.argmax(counts)  # so most ids will be kept as fully
-        # smaller than min -> drop
-        to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
-        old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
-        new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
-        # longer than min -> trim
-        new_ids = [ids[..., :_min_len] for ids in new_ids]
-        new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
+    #     # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
+    #     lengths = [ids.shape[-1] for ids in new_ids]
+    #     counts = np.bincount(lengths)
+    #     _min_len = np.argmax(counts)  # so most ids will be kept as fully
+    #     # smaller than min -> drop
+    #     to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
+    #     old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
+    #     new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
+    #     # longer than min -> trim
+    #     new_ids = [ids[..., :_min_len] for ids in new_ids]
+    #     new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
 
-        return old_ids, new_ids.to(model_to.device, torch.int64)
+    #     return old_ids, new_ids.to(model_to.device, torch.int64)

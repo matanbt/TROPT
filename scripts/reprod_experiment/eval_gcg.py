@@ -8,6 +8,7 @@ from typing import List
 
 import pandas as pd
 import torch
+from tropt.attack_zoo.AdvDecoding import run_advdecoding_jailbreak
 from tropt.attack_zoo.BEAST import run_beast
 from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
 from tropt.attack_zoo.GCGHij import run_gcghij
@@ -253,7 +254,7 @@ def tropt(
 
     
 # All LLM attack zoo methods available for tropt_zoo
-_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm"]
+_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm", "adv_jailbreak"]
 
 
 @app.command()
@@ -277,13 +278,15 @@ def tropt_zoo(
     df = pd.read_csv(DATASET_PATH)
     df["message_id"] = range(len(df))
 
-    # Load model once; use_prefix_cache=False for broad attack compatibility
+    # Load model once; use_prefix_cache=False for broad attack compatibility.
+    # gcg_hij requires eager attention — enable it upfront if needed.
     model = LMHFModel(
         model_name=model_name,
         device=device,
         forward_pass_batch_size=1024,
         use_prefix_cache=False,
         dtype="bfloat16",
+        use_eager_attention="gcg_hij" in methods,
     )
 
     for message_id in sample_indices:
@@ -329,6 +332,8 @@ def tropt_zoo(
                 run_gcg_perplexity(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "rasliteplus_llm":
                 run_rasliteplus_llm(instruction=instruction, model_obj=model, tracker=tracker)
+            elif method == "adv_jailbreak":
+                run_advdecoding_jailbreak(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             else:
                 raise typer.BadParameter(f"Unknown method '{method}'. Available: {_LLM_ZOO_METHODS}")
 

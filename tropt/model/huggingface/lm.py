@@ -90,25 +90,31 @@ class LMHFModel(
         use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
         use_eager_attention: bool = False,
+        loaded_model: Optional[AutoModelForCausalLM] = None,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
         self._model_name = model_name
         self._forward_pass_batch_size = forward_pass_batch_size
         self._backward_pass_batch_size = backward_pass_batch_size
 
-        if use_eager_attention:
-            # required for to support attention-based losses
-            model_kwargs["attn_implementation"] = "eager"
-            logger.info(
-                f"Using eager attention for model {model_name} to support attention-based loss."
+        if loaded_model is not None:
+            logger.info(f"Using provided loaded model for {model_name}.")
+            self._model = loaded_model
+        else:
+            if use_eager_attention:
+                # required for to support attention-based losses
+                model_kwargs["attn_implementation"] = "eager"
+                logger.info(
+                    f"Using eager attention for model {model_name} to support attention-based loss."
+                )
+
+            self._model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                device_map=device or "auto",
+                dtype=dtype or "auto",
+                **model_kwargs
             )
 
-        self._model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            device_map=device or "auto",
-            dtype=dtype or "auto",
-            **model_kwargs
-        )
         self.dtype = self._model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -122,9 +128,10 @@ class LMHFModel(
                 param.requires_grad = False
 
         # To make sure the placeholder will be tokenizer as is
-        self._tokenizer.add_special_tokens(
-            {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-        )
+        if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
+            self._tokenizer.add_special_tokens(
+                {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
+            )
 
         ## warning and checks:
         if self._model.dtype in (torch.float32, torch.float64):

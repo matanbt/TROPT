@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 class BeamSearchOptimizer(BaseOptimizer):
     """
     A Beam Search-based optimizer.
-        The general idea is to sample tokens while generating from a util LM, and 
-        steer the generation towards the desired objective(s).
+        The general idea is to sample tokens while generating from a util LM, and
+        steer the generation towards the desired objective(s) on the target model.
 
     Combines the implementations of BEAST and AdvDecoding optimizers:
     - BEAST optimizer: https://arxiv.org/abs/2402.15570
@@ -36,6 +36,8 @@ class BeamSearchOptimizer(BaseOptimizer):
     """
 
     model_requirements = (LossTextAccessMixin,)
+    # Optimizer also have optional flow for token-level loss access (`use_model_with_token_inputs`)
+    # [TODO consider decouple to two different optimizers (`TokenBeamSearchOptimizer`) for clarity (according to the `use_model_with_token_inputs` flows)]
 
     def __init__(
         self,
@@ -45,7 +47,7 @@ class BeamSearchOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         util_lm: LMBaseModel = None,  # if None, use the same as `model`
-        util_loss: Optional[BaseLoss] = None,
+        util_lm_prefix: Optional[TextTemplates] = None,
         num_steps: int = 40,
         beam_size: int = 15,
         branching_factor: int = 15,
@@ -61,8 +63,11 @@ class BeamSearchOptimizer(BaseOptimizer):
             model (HuggingFaceModel): The model to be attacked.
             loss (BaseLoss): The loss function to be optimized.
             seed (int, optional): Random seed for reproducibility.
+
             util_lm (LMBaseModel, optional): Utility LM for generating candidates.
-                If None, uses the same as `model` (as in original BEAST paper).
+                If None, internally uses the same as `model` (as in original BEAST paper).
+            util_lm_prefix (TextTemplates, optional): A prefix to seed the util LM for next-token computation of the trigger.
+                If None, defaults to the same `templates` provided to `optimize_trigger()`.
 
             num_steps (int): Number of optimization iterations (L in paper); also represents the length of the crafted trigger. Default: 40
             beam_size (int): Number of beams to maintain (k1 in paper). Default: 15
@@ -78,11 +83,16 @@ class BeamSearchOptimizer(BaseOptimizer):
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
         # define the util LM model (defaults to the attacked model)
-        self.util_lm = util_lm if util_lm is not None else model
+        if util_lm is None:
+            # shallow copies the model object:
+            # (we do this so each model will have its own state, specifically for inputmanagement)
+            import copy
+            util_lm = copy.copy(model)
+        self.util_lm = util_lm
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
             self.util_lm, LogitsTokenAccessMixin
         ), "BEAST requires util_lm to be LM with token logits access"
-        self.util_loss_func = util_loss
+
         self.num_steps = num_steps
         self.beam_size = beam_size
         self.branching_factor = branching_factor
@@ -100,7 +110,6 @@ class BeamSearchOptimizer(BaseOptimizer):
         self,
         templates: TextTemplates,
         targets: Optional[Targets] = None,
-        util_lm_templates: Optional[TextTemplates] = None,
     ) -> OptimizerResult:
         """
         Optimize the trigger using BEAST algorithm.
@@ -119,18 +128,15 @@ class BeamSearchOptimizer(BaseOptimizer):
         """
 
         # Prepare inputs for both target model and util LM
-        util_lm_templates = util_lm_templates if util_lm_templates is not None else templates
-
+        self.util_lm.set_inputs_from_tokens(
+            templates=[self.util_lm_prefix] * len(templates) if self.util_lm_prefix is not None else templates,
+            targets=targets,
+        )
         if self.use_model_with_token_inputs:
-            assert util_lm_templates == templates, "Cannot provide different util_lm_templates when use_model_with_token_inputs is True."
             # If model has token-level loss access, we use token-level inputs
             self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         else:
             self.model.set_inputs_from_texts(templates=templates, targets=targets)
-            self.util_lm.set_inputs_from_tokens(
-                templates=util_lm_templates,
-                targets=targets,
-            )
 
         util_tokenizer = self.util_lm.tokenizer
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
@@ -211,38 +217,12 @@ class BeamSearchOptimizer(BaseOptimizer):
                     loss_func=self.loss_func
                 )
             else:
-                # If models share tokenizer, we can directly compute loss without decoding
-                if self.util_lm.tokenizer == self.model.tokenizer:
-                    model_candidate_triggers = candidate_triggers
-                    losses = self.model.compute_loss_from_tokens(
-                        model_candidate_triggers, loss_func=self.loss_func
-                    )
-                # Otherwise, cast to the targeted model tokenizer (for cross-model attacks)
-                else:  # TODO remove this opton and remove cast_to_model_tok method
-                    raise NotImplementedError("Casting candidate triggers between different tokenizers is not yet supported. Please set use_model_with_token_inputs to False to compute loss in text-level for this case.")
-                    # new_candidate_triggers, model_candidate_triggers = (
-                    #     # TODO move method to tokInputs? utils? anyway should be integrated better, as we might want to use it on other models too (that have tokenizer)
-                    #    LMHFModel.cast_to_model_tokenizer(
-                    #         candidate_triggers,
-                    #         model_from=self.util_lm,
-                    #         model_to=self.model,
-                    #     )
-                    # )
-                    ## update with the narrowed down candidates after casting to model tokenizer
-                    # candidate_triggers = new_candidate_triggers
-                    ## compuate the loss 
-                    losses = self.model.compute_loss_from_tokens(
-                        model_candidate_triggers, loss_func=self.loss_func
-                    )
-
-            # 5'. If util_loss_func is provided, also compute util LM loss for the candidates
-            if self.util_loss_func is not None:
-                # Also compute util loss and combine
-                util_losses = self.util_lm.compute_loss_from_tokens(
-                    candidate_triggers, loss_func=self.util_loss_func
+                # In that case, models share tokenizer, we can directly compute loss without decoding
+                assert self.util_lm.tokenizer == self.model.tokenizer, "Models must share tokenizer to compute loss in token-level."
+                model_candidate_triggers = candidate_triggers
+                losses = self.model.compute_loss_from_tokens(
+                    model_candidate_triggers, loss_func=self.loss_func
                 )
-                # Combine losses (simple sum)  # TODO make this more flexible? weights?
-                losses = losses + util_losses
 
             # 6. Select top beam_size candidates with lowest loss, keep their trigger ids
             top_losses, top_indices = torch.topk(losses, self.beam_size, largest=False)
