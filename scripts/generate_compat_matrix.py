@@ -4,14 +4,18 @@ Lightweight script — no GPU, no model loading. Uses:
   - Auto-discovery of optimizers, models, and losses from __init__.py exports
   - Python introspection for optimizer requirements and loss signatures
   - AST parsing to discover which ModelOutput/ModelInput fields each model
-    populates in its token-path vs text-path methods
+    populates in its invoke_from_tokens vs invoke_from_texts implementations
 
-The compatibility check mirrors what happens at runtime in resolve_and_compute_loss():
-  1. Does the model satisfy the optimizer's mixin requirements?
-  2. For the optimizer's access path, which ModelOutput/ModelInput fields does
-     the model populate? (discovered via AST on the model's source + MRO)
-  3. Combined with the user-provided target fields, can all required parameters
-     of the loss function's __call__ be resolved?
+Compatibility logic (mirroring runtime resolve_and_compute_loss()):
+  1. For each optimizer, derive the distinct input-type flows from its
+     model_requirements: TokenAccess mixins → "token" flow,
+     TextAccess mixins → "text" flow.
+  2. If an optimizer requires both flows, it gets two rows in the table.
+  3. Per (optimizer-flow, model) cell:
+       a. Does the model satisfy all mixins for this flow?
+       b. What ModelOutput/ModelInput fields does invoke_from_{flow} populate?
+       c. Combined with user-supplied target fields, can all required loss
+          parameters be resolved?
 
 Output: docs/compatibility_matrix.md
 """
@@ -32,6 +36,8 @@ from tropt.model import (
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
+    TextAccessMixin,
+    TokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer
 
@@ -83,16 +89,48 @@ def _discover_concrete_losses() -> List[Type[BaseLoss]]:
 
 
 # ---------------------------------------------------------------------------
+# Optimizer flow analysis
+# ---------------------------------------------------------------------------
+
+def _get_optimizer_flows(opt_cls: Type[BaseOptimizer]) -> List[str]:
+    """Return distinct input-type flows from model_requirements.
+
+    Each mixin maps to a flow: TokenAccess variants → "token",
+    TextAccess variants → "text". Returns deduplicated, sorted list.
+    Defaults to ["token"] when there are no requirements.
+    """
+    flows: Set[str] = set()
+    for mixin in (opt_cls.model_requirements or []):
+        if issubclass(mixin, TokenAccessMixin):
+            flows.add("token")
+        elif issubclass(mixin, TextAccessMixin):
+            flows.add("text")
+    return sorted(flows) if flows else ["token"]
+
+
+def _model_satisfies_flow(
+    opt_cls: Type[BaseOptimizer], model_cls: type, flow: str
+) -> bool:
+    """Check if model satisfies all optimizer requirements belonging to this flow."""
+    for mixin in (opt_cls.model_requirements or []):
+        mixin_flow = "text" if issubclass(mixin, TextAccessMixin) else "token"
+        if mixin_flow == flow and not issubclass(model_cls, mixin):
+            return False
+    return True
+
+
+# ---------------------------------------------------------------------------
 # AST-based field discovery
 # ---------------------------------------------------------------------------
 #
-# Both ModelOutput and ModelInput are constructed in model source files.
-# The same file may build them differently in token-path methods (e.g.
-# invoke_from_tokens, get_triggered_inputs) vs text-path methods (invoke_from_texts,
-# compute_loss_from_texts). We classify methods by name keywords and
-# extract the keyword arguments from each constructor call.
+# We scan source files for ModelOutput(...) and ModelInput(...) constructor
+# calls, classifying them by the enclosing method name:
+#   - methods containing "token" keywords → token flow
+#   - methods containing "text" keywords  → text flow
+#   - unclassified methods                → both flows (conservative)
 #
-# Methods matching neither set are conservatively assigned to both paths.
+# The keywords cover invoke_from_tokens and its helpers (e.g. _loss_hook),
+# and invoke_from_texts and its helpers.
 
 _TOKEN_PATH_KEYWORDS = {"token", "invoke_from_tokens", "loss_hook", "triggered"}
 _TEXT_PATH_KEYWORDS = {"invoke_from_texts", "text"}
@@ -101,7 +139,7 @@ _TEXT_PATH_KEYWORDS = {"invoke_from_texts", "text"}
 def _extract_constructor_fields(
     source_file: str, class_name: str,
 ) -> Tuple[Set[str], Set[str]]:
-    """Find all `class_name(...)` calls in source_file, split by access path."""
+    """Find all `class_name(...)` calls in source_file, split by access flow."""
     tree = ast.parse(Path(source_file).read_text(encoding="utf-8"))
 
     token_fields: Set[str] = set()
@@ -176,31 +214,24 @@ def _can_resolve_loss(loss_cls: Type[BaseLoss], available_fields: Set[str]) -> b
     return all(p in available_fields for p in _get_loss_required_params(loss_cls))
 
 
-def _optimizer_supports_model(opt_cls: Type[BaseOptimizer], model_cls: type) -> bool:
-    reqs = opt_cls.model_requirements
-    return all(issubclass(model_cls, m) for m in reqs) if reqs else True
-
-
-def _get_access_path(opt_cls: Type[BaseOptimizer]) -> str:
-    reqs = opt_cls.model_requirements
-    if reqs and any(issubclass(m, LossTextAccessMixin) for m in reqs):
-        return "text"
-    return "token"
-
-
-def get_supported_losses(
+def get_supported_losses_for_flow(
     opt_cls: Type[BaseOptimizer],
     model_cls: type,
     field_cache: Dict[type, Dict[str, Set[str]]],
     concrete_losses: List[Type[BaseLoss]],
+    flow: str,
 ) -> List[str] | None:
-    if not _optimizer_supports_model(opt_cls, model_cls):
+    """Return supported loss names for a given (optimizer flow, model) pair.
+
+    Returns None if the model does not satisfy the optimizer's requirements
+    for this flow.
+    """
+    if not _model_satisfies_flow(opt_cls, model_cls, flow):
         return None
 
-    access = _get_access_path(opt_cls)
     available = (
-        field_cache[model_cls][f"output_{access}"]
-        | field_cache[model_cls][f"input_{access}"]
+        field_cache[model_cls][f"output_{flow}"]
+        | field_cache[model_cls][f"input_{flow}"]
         | _TARGET_FIELDS
     )
 
@@ -241,24 +272,37 @@ def generate_markdown() -> str:
     lines.append("")
     lines.append("Each cell lists the concrete loss functions supported for the given optimizer-model pair,")
     lines.append("or shows **Unsupported** if the model does not satisfy the optimizer's requirements.")
+    lines.append("Optimizers with both token and text flows appear as two rows, one per flow.")
     lines.append("")
+
+    # Build row specs: list of (row_label, opt_cls, flow)
+    row_specs: List[Tuple[str, Type[BaseOptimizer], str]] = []
+    for opt_cls in optimizers:
+        flows = _get_optimizer_flows(opt_cls)
+        if len(flows) == 1:
+            row_specs.append((opt_cls.__name__, opt_cls, flows[0]))
+        else:
+            for flow in flows:
+                row_specs.append((f"{opt_cls.__name__} ({flow})", opt_cls, flow))
 
     # Main table
     model_names = [name for _, name in models]
     lines.append("| Optimizer | " + " | ".join(model_names) + " |")
     lines.append("|---|" + "|".join(["---"] * len(models)) + "|")
 
-    for opt_cls in optimizers:
+    for row_label, opt_cls, flow in row_specs:
         cells = []
         for model_cls, _ in models:
-            losses = get_supported_losses(opt_cls, model_cls, field_cache, concrete_losses)
+            losses = get_supported_losses_for_flow(
+                opt_cls, model_cls, field_cache, concrete_losses, flow
+            )
             if losses is None:
                 cells.append("**Unsupported**")
             elif not losses:
                 cells.append("*No matching losses*")
             else:
                 cells.append(", ".join(f"`{l}`" for l in losses))
-        lines.append(f"| **{opt_cls.__name__}** | " + " | ".join(cells) + " |")
+        lines.append(f"| **{row_label}** | " + " | ".join(cells) + " |")
 
     # Legend: optimizer access levels
     lines.append("")
@@ -266,10 +310,11 @@ def generate_markdown() -> str:
     lines.append("")
     lines.append("### Access levels required by each optimizer")
     lines.append("")
-    lines.append("| Optimizer | Required Mixins | Access Level |")
-    lines.append("|---|---|---|")
+    lines.append("| Optimizer | Required Mixins | Flows | Access Level |")
+    lines.append("|---|---|---|---|")
     for opt_cls in optimizers:
         reqs = opt_cls.model_requirements
+        flows = _get_optimizer_flows(opt_cls)
         if not reqs:
             mixin_str, level = "*(none)*", "Any"
         else:
@@ -284,7 +329,8 @@ def generate_markdown() -> str:
                 level = "Black-box"
             else:
                 level = "Custom"
-        lines.append(f"| {opt_cls.__name__} | {mixin_str} | {level} |")
+        flows_str = ", ".join(f"`{f}`" for f in flows)
+        lines.append(f"| {opt_cls.__name__} | {mixin_str} | {flows_str} | {level} |")
 
     # Legend: loss functions
     lines.append("")
@@ -308,14 +354,14 @@ def generate_markdown() -> str:
     lines.append("")
     lines.append("### Discovered fields per model (via source AST)")
     lines.append("")
-    lines.append("| Model | Path | ModelOutput fields | ModelInput fields |")
+    lines.append("| Model | Flow | ModelOutput fields | ModelInput fields |")
     lines.append("|---|---|---|---|")
     for model_cls, name in models:
         f = field_cache[model_cls]
-        for path in ("token", "text"):
-            out_str = ", ".join(f"`{x}`" for x in sorted(f[f"output_{path}"])) or "*(none)*"
-            in_str = ", ".join(f"`{x}`" for x in sorted(f[f"input_{path}"])) or "*(none)*"
-            lines.append(f"| {name} | {path} | {out_str} | {in_str} |")
+        for flow in ("token", "text"):
+            out_str = ", ".join(f"`{x}`" for x in sorted(f[f"output_{flow}"])) or "*(none)*"
+            in_str = ", ".join(f"`{x}`" for x in sorted(f[f"input_{flow}"])) or "*(none)*"
+            lines.append(f"| {name} | {flow} | {out_str} | {in_str} |")
 
     lines.append("")
     return "\n".join(lines)

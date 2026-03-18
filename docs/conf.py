@@ -24,6 +24,7 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx_autodoc_typehints',
+    'myst_parser',
 ]
 
 autodoc_mock_imports = ['runner', 'sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'torch', 'tqdm', 'jaxtyping', 'numpy', 'transformers', 'accelerate', 'hydra', 'omegaconf']

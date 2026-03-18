@@ -4,10 +4,11 @@
 
 Each cell lists the concrete loss functions supported for the given optimizer-model pair,
 or shows **Unsupported** if the model does not satisfy the optimizer's requirements.
+Optimizers with both token and text flows appear as two rows, one per flow.
 
 | Optimizer | EncoderGeminiModel | EncoderHFModel | EncoderOpenAIModel | LMHFModel | LiteLLMModel |
 |---|---|---|---|---|---|
-| **BEASTOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
+| **BeamSearchOptimizer** | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss`, `SimilarityLoss` | `InputReadabilityLoss` | `InputReadabilityLoss` |
 | **GASLITEOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **GASLITEPlusOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
 | **GCGOptimizer** | **Unsupported** | `SimilarityLoss` | **Unsupported** | `AttentionEnhLoss`, `PrefillCELoss`, `PrefillCWLoss`, `PrefillMellowMaxLoss`, `SteeringActivationLoss`, `TriggerPerplexityLoss` | **Unsupported** |
@@ -17,13 +18,13 @@ or shows **Unsupported** if the model does not satisfy the optimizer's requireme
 
 ### Access levels required by each optimizer
 
-| Optimizer | Required Mixins | Access Level |
-|---|---|---|
-| BEASTOptimizer | `LossTokenAccessMixin` | Grey-box |
-| GASLITEOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
-| GASLITEPlusOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
-| GCGOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | White-box |
-| RASLITEPlusOptimizer | `LossTextAccessMixin` | Black-box |
+| Optimizer | Required Mixins | Flows | Access Level |
+|---|---|---|---|
+| BeamSearchOptimizer | `LossTextAccessMixin` | `text` | Black-box |
+| GASLITEOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | `token` | White-box |
+| GASLITEPlusOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | `token` | White-box |
+| GCGOptimizer | `LossTokenAccessMixin`, `GradientTokenAccessMixin` | `token` | White-box |
+| RASLITEPlusOptimizer | `LossTextAccessMixin` | `text` | Black-box |
 
 ### Concrete loss functions
 
@@ -40,13 +41,13 @@ or shows **Unsupported** if the model does not satisfy the optimizer's requireme
 
 ### Discovered fields per model (via source AST)
 
-| Model | Path | ModelOutput fields | ModelInput fields |
+| Model | Flow | ModelOutput fields | ModelInput fields |
 |---|---|---|---|
 | EncoderGeminiModel | token | *(none)* | *(none)* |
 | EncoderGeminiModel | text | `output_embeddings` | `input_texts`, `targets` |
 | EncoderHFModel | token | `output_embeddings` | `input_attention_mask`, `input_embeds`, `input_prefix_cache_kwargs`, `input_slices`, `input_trigger_ids`, `targets` |
 | EncoderHFModel | text | `output_embeddings` | `input_texts`, `targets` |
-| EncoderOpenAIModel | token | *(none)* | `input_texts`, `targets`, `trigger_ids`, `trigger_strs` |
+| EncoderOpenAIModel | token | *(none)* | *(none)* |
 | EncoderOpenAIModel | text | `output_embeddings` | `input_texts`, `targets` |
 | LMHFModel | token | `output_attentions`, `output_hidden_states`, `output_logits`, `response_logits` | `input_attention_mask`, `input_embeds`, `input_prefix_cache_kwargs`, `input_slices`, `input_trigger_ids`, `targets` |
 | LMHFModel | text | `full_template_ids`, `full_template_strs`, `generated_response_ids`, `generated_response_logits`, `generated_response_strs` | `input_texts`, `targets` |
