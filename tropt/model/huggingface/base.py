@@ -558,7 +558,6 @@ class _HuggingFaceModelMixins:
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
-                    # TODO somehow ensure gradient flew throughout the last three function?  / add a respecitve test for that  !!!!!!!!!!!
 
                 # collect losses for the batch & take avg over texts
                 batch_losses = torch.stack(

@@ -19,11 +19,11 @@ from .losses import (
 )
 
 from .text_losses import (
-    TextBasedLoss,
     BinaryLMJudgeLoss,
-
     # Concrete text losses
     InputReadabilityLoss,
+    ResponseHarmfulnessLoss,
+    TextBasedLoss,
 )
 
 from .resolution import (

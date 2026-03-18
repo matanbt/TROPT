@@ -10,7 +10,10 @@ import pandas as pd
 import torch
 from tropt.attack_zoo.AdvDecoding import run_advdecoding_llm
 from tropt.attack_zoo.BEAST import run_beast
+from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
+from tropt.attack_zoo.GCGHij import run_gcghij
 from tropt.attack_zoo.IRIS import run_iris
+from tropt.attack_zoo.RASLITEPlus import run_rasliteplus_llm
 import typer
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -24,6 +27,7 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import WandbTracker
+from tropt.utils.refusal_dir import compute_refusal_directions
 
 # Default list from original script
 DEFAULT_INDICES = [ 
@@ -278,6 +282,89 @@ def tropt(
         tracker.finish()
 
     
+# All LLM attack zoo methods available for tropt_zoo
+_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm"]
+
+
+@app.command()
+def tropt_zoo(
+    model_name: str = typer.Option("google/gemma-2-2b-it", help="HuggingFace model identifier"),
+    sample_indices: List[int] = typer.Option(
+        DEFAULT_INDICES,
+        help="Specific indices to run. Usage: --sample-indices 225 --sample-indices 89",
+    ),
+    methods: List[str] = typer.Option(
+        _LLM_ZOO_METHODS,
+        help=f"Attack methods to run. Available: {_LLM_ZOO_METHODS}",
+    ),
+    seed: int = typer.Option(RANDOM_SEED, help="Random seed for reproducibility"),
+):
+    """
+    Run multiple LLM attack-zoo recipes on advbench samples.
+    """
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    df = pd.read_csv(DATASET_PATH)
+    df["message_id"] = range(len(df))
+
+    # Load model once; use_prefix_cache=False for broad attack compatibility
+    model = LMHFModel(
+        model_name=model_name,
+        device=device,
+        forward_pass_batch_size=1024,
+        use_prefix_cache=False,
+        dtype="bfloat16",
+    )
+
+    for message_id in sample_indices:
+        row = df.loc[df.message_id == message_id].iloc[0]
+        instruction = row["message_template"]
+        target = row["target_response_prefix"]
+
+        for method in methods:
+            run_name = f"tropt[{method},{model_name.split('/')[-1]},m={message_id}]"
+            if seed != RANDOM_SEED:
+                run_name += f"_s={seed}"
+
+            tracker = WandbTracker(
+                run_name,
+                tags=["tropt", method],
+                project_name=WANDB_PROJECT,
+                entity=WANDB_ENTITY,
+                config_dump=dict(
+                    optimized_message_id=message_id,
+                    name=run_name,
+                    model_name=model_name,
+                    implementation="tropt",
+                    method=method,
+                    random_seed=seed,
+                ),
+            )
+
+            print(f"Running: {run_name}")
+            if method == "gcg":
+                run_gcg(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "beast":
+                run_beast(instruction=instruction, target_output=target, model_obj=model, tracker=tracker)
+            elif method == "iris":
+                run_iris(
+                    instruction=instruction,
+                    model_obj=model,
+                    tracker=tracker,
+                    initial_trigger=INITIAL_TRIGGER,
+                )
+            elif method == "gcg_hij":
+                run_gcghij(instruction=instruction, target_output=target, model_obj=model, tracker=tracker)
+            elif method == "gcg_perplexity":
+                run_gcg_perplexity(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "rasliteplus_llm":
+                run_rasliteplus_llm(instruction=instruction, model_obj=model, tracker=tracker)
+            else:
+                raise typer.BadParameter(f"Unknown method '{method}'. Available: {_LLM_ZOO_METHODS}")
+
+            tracker.finish()
+
+
 @app.command()
 def eval_jailbreak_results(
     model_name: str = typer.Option("google/gemma-2-2b-it", help="HuggingFace model identifier"),

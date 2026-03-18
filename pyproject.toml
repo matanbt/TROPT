@@ -94,6 +94,7 @@ dev = [
   "sphinx_rtd_theme>=1.0.0",
   "pydata_sphinx_theme>=0.13.0",
   "sphinx-autodoc-typehints>=1.20.0",
+  "myst-parser>=0.18.0",
 ]
 
 # Evaluation tools
