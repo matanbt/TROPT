@@ -28,6 +28,7 @@ def run_iris(
     model_obj: Optional[LMHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     initial_trigger: str = ("! " * 20).strip(),
+    refusal_dirs: Optional[torch.Tensor] = None,
 ) -> OptimizerResult:
     """
     Run the IRIS attack recipe.

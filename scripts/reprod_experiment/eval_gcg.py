@@ -8,7 +8,6 @@ from typing import List
 
 import pandas as pd
 import torch
-from tropt.attack_zoo.AdvDecoding import run_advdecoding_llm
 from tropt.attack_zoo.BEAST import run_beast
 from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
 from tropt.attack_zoo.GCGHij import run_gcghij
@@ -249,35 +248,6 @@ def tropt(
                     disallow_non_ascii=True, disallow_special_tokens=True
                 ),
                 use_retokenize=True,
-            )
-        elif method == 'iris':
-            run_iris(
-                model_obj=model,
-                tracker=tracker,
-                instruction = messages,
-                initial_trigger=INITIAL_TRIGGER,
-            )
-        elif method == 'beast':
-            run_beast(
-                model_obj=model,
-                tracker=tracker,
-                instruction = messages,
-                target_output = target,
-            )
-        # elif method == 'advdecoding':
-        #     run_advdecoding_llm(
-        #         instruction =messages,
-        #         target_output=target,
-
-        #         model_obj=model, 
-        #         tracker=tracker,
-        #     )
-
-        if method not in ['iris', 'beast', 'advdecoding']:
-            result = optimizer.optimize_trigger(
-                templates=[messages],
-                targets=Targets(target_response_strs=[target]),
-                initial_trigger=INITIAL_TRIGGER,
             )
         tracker.finish()
 

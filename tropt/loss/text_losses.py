@@ -22,13 +22,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class TextBasedLoss(BaseLoss):
-    """Loss computed based on text inputs (useful for black-box models)."""
+    """Marker base for losses that operate on text fields (e.g. input_texts, generated_response_strs)."""
 
     @abstractmethod
-    def __call__(
-        self,
-        input_texts: Annotated[List[str], "bsz"],
-    ) -> Float[torch.Tensor, "bsz"]:
+    def __call__(self, *args, **kwargs) -> Float[torch.Tensor, "bsz"]:
         pass
 
 
@@ -45,29 +42,15 @@ class ResponseLMScoreLoss(TextBasedLoss):
 
 @dataclass
 class BinaryLMJudgeLoss(TextBasedLoss):
-    """
-    Abstract base for losses based on LLM binary judgment (Yes/No questions).
+    """Abstract base for Yes/No LLM judge losses.
 
-    Computes a soft score in [-1, 1] (positive = YES likely) by prompting an LLM
-    and using the logit ratio between affirmative and negative responses.
-
-    Subclasses must implement:
-    - `_create_prompt`: define the Yes/No question
-    - `__call__`: define the parameter name (for loss resolution) and sign convention
-
-    Use ``_compute_scores(texts)`` in `__call__` to get the raw YES-leaning scores,
-    then negate as needed (`-scores` to make minimizing = maximizing YES).
-
-    Args:
-        model_name_or_path: HuggingFace model name/path
-        positive_words: Set of words indicating positive response (default: {"Yes", "yes"})
-        negative_words: Set of words indicating negative response (default: {"No", "no"})
+    Subclasses implement _create_prompt and __call__. The latter's implementations should use _compute_scores for batched scoring; return -scores to make minimizing = maximizing YES.
     """
 
-    model_name_or_path: str = "HuggingFaceTB/SmolLM2-135M"
     positive_words: Set[str] = field(default_factory=lambda: {"Yes", "yes", " Yes", " yes"})
     negative_words: Set[str] = field(default_factory=lambda: {"No", "no", " No", " no"})
-    judge_lm_batch_size: int = 512
+    model_name_or_path: str = "HuggingFaceTB/SmolLM2-135M-Instruct"
+    judge_lm_batch_size: int = 256
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # the loaded model and tokenizer
@@ -101,10 +84,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 
     @abstractmethod
     def _create_prompt(self, text: str) -> str:
-        """
-        Create the evaluation prompt. Override in subclasses.
-        E.g., f'Is this text readable? {text} Just answer Yes or No.'
-        """
+        """Override to return the Yes/No prompt for a given text."""
         raise NotImplementedError("Subclasses must implement _create_prompt")
 
     def _compute_batch_scores(
@@ -112,22 +92,28 @@ class BinaryLMJudgeLoss(TextBasedLoss):
         texts: List[str]
     ) -> Float[torch.Tensor, "bsz"]:
         """
-        Compute scores for a batch of texts.
+        Compute 'yes'-leaning scores for a batch of `texts`.
+
+        Args:
+            texts: List of string texts to score.
 
         Returns:
             Tensor of shape (bsz,) with scores for each text
         """
         # Create prompts for all texts
         prompts = [self._create_prompt(text) for text in texts]
-        messages_batch = [[{"role": "user", "content": prompt}] for prompt in prompts]
-        formatted_prompts = [
-            self._tokenizer.apply_chat_template(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
-            )
-            for messages in messages_batch
-        ]
+        if self._tokenizer.chat_template is not None:
+            messages_batch = [[{"role": "user", "content": prompt}] for prompt in prompts]
+            formatted_prompts = [
+                self._tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True
+                )
+                for messages in messages_batch
+            ]
+        else:
+            formatted_prompts = prompts
 
         # Tokenize and pad the batch
         inputs = self._tokenizer(
@@ -192,7 +178,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 @dataclass
 class InputReadabilityLoss(BinaryLMJudgeLoss):
     """
-    Loss that encourages readable/fluent trigger text.
+    Loss that encourages readable/fluent trigger text (operates on the whole trigger-combined prompt).
     Minimizing this loss maximizes readability.
 
     https://arxiv.org/abs/2410.02163
@@ -211,15 +197,7 @@ class InputReadabilityLoss(BinaryLMJudgeLoss):
 @dataclass
 class ResponseHarmfulnessLoss(BinaryLMJudgeLoss):
     """
-    Text-based loss for black-box LLM jailbreaking via a harmfulness judge.
-
-    Scores generated model responses for harmfulness; minimizing this loss
-    encourages the model to produce harmful responses. Designed for use with
-    RASLITEPlusOptimizer (LossTextAccessMixin) on LMHFModel.
-
-    The loss is computed on generated_response_strs (from ModelOutput), which
-    the unified loss resolution system automatically matches by parameter name.
-    Minimizing increases the YES (harmful) score (default BinaryLMJudgeLoss convention).
+    Loss that encourages harmful model responses (operates on generated response string).
     """
 
     def _create_prompt(self, response_text: str) -> str:
@@ -234,3 +212,63 @@ class ResponseHarmfulnessLoss(BinaryLMJudgeLoss):
     ) -> Float[torch.Tensor, "bsz"]:
         return -self._compute_scores(generated_response_strs)  # minimizing = maximizing YES (harmful)
 
+
+############################
+
+@dataclass
+class ExternalTriggerPerplexityLoss(BaseLoss):
+    """Perplexity of the trigger under an external LM (operates on the trigger strings).
+
+    Wraps each trigger with naturalness_prefix and compuates the perplexity wrt model_name_or_path.
+    """
+
+    naturalness_prefix: str = "Here is a readable sentence: {text}"
+
+    model_name_or_path: str = "HuggingFaceTB/SmolLM2-135M"
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    max_batch_size: int = 256
+    _model: Any = field(default=None, init=False, repr=False)
+    _tokenizer: Any = field(default=None, init=False, repr=False)
+
+    def __post_init__(self):
+        logger.info(f"Loading external LM for perplexity loss: {self.model_name_or_path}")
+        self._model = AutoModelForCausalLM.from_pretrained(
+            self.model_name_or_path,
+            torch_dtype=torch.bfloat16,
+        ).eval().to(self.device)
+        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        if self._tokenizer.pad_token is None:
+            self._tokenizer.pad_token = self._tokenizer.eos_token
+
+    def __call__(
+        self,
+        input_trigger_strs: Annotated[List[str], "bsz"],
+    ) -> Float[torch.Tensor, "bsz"]:
+        texts = [self.naturalness_prefix.format(text=t) for t in input_trigger_strs]
+        n = len(texts)
+
+        @find_executable_batch_size(starting_batch_size=self.max_batch_size)
+        def _compute_all(batch_size: int) -> Float[torch.Tensor, "n"]:
+            if batch_size < self.batch_size:
+                self.batch_size = batch_size
+
+            self._tokenizer.padding_side = "left"
+            all_nlls = []
+            for i in range(0, n, batch_size):
+                inputs = self._tokenizer(
+                    texts[i : i + batch_size], return_tensors="pt", padding=True, truncation=True
+                ).to(self.device)
+                with torch.no_grad():
+                    logits = self._model(**inputs).logits
+                ids, mask = inputs["input_ids"], inputs["attention_mask"].float()
+                shift_logits, shift_labels, shift_mask = logits[:, :-1], ids[:, 1:], mask[:, 1:]
+                nll = torch.nn.functional.cross_entropy(
+                    shift_logits.reshape(-1, shift_logits.size(-1)),
+                    shift_labels.reshape(-1),
+                    reduction="none",
+                ).reshape(shift_labels.size())
+                all_nlls.append((nll * shift_mask).sum(1) / shift_mask.sum(1).clamp(min=1))
+
+            return torch.cat(all_nlls)
+
+        return _compute_all()
