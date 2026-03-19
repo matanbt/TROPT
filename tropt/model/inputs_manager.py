@@ -36,6 +36,7 @@ class InputsManager(ABC):
     def get_triggered_inputs(self, *args, **kwargs) -> ModelInput:
         raise NotImplementedError
 
+
 ## Text inputs manager ##
 class TextInputManager(InputsManager):
     """
@@ -99,12 +100,12 @@ class TextInputManager(InputsManager):
             input_texts.append(curr_text)
 
         # select only the chosen template's targets
-        targets = self.targets.select_message(chosen_template_idx)
+        message_targets = self.targets.select_message(chosen_template_idx)
 
         return ModelInput(
             input_texts=input_texts,
             input_trigger_strs=trigger_strs,
-            targets=targets
+            message_targets=message_targets
         )
 
 ## Token inputs manager ##

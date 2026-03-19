@@ -11,7 +11,7 @@ from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
-from tropt.common import DEFAULT_INIT_TRIGGER, ModelOutput, Targets
+from tropt.common import DEFAULT_INIT_TRIGGER, MessageTargets, ModelOutput, Targets
 from tropt.model.inputs_manager import (
     TextInputManager,
 )
@@ -107,7 +107,7 @@ class LMBaseModel(BaseModel):
             input_texts (List[str]): List of input prompt strings to generate completions for.
             return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the generated response strings.
         """
-        result = self.invoke_from_texts(input_texts=input_texts, **kwargs)
+        result = self.invoke_from_texts(input_texts=input_texts, do_generate=True, **kwargs)
         if return_full_output:
             return result
         return result.generated_response_strs
@@ -116,10 +116,20 @@ class LMBaseModel(BaseModel):
     def invoke_from_texts(
         self,
         input_texts: List[str],
+
+        message_targets: Optional[MessageTargets] = None,
+        do_prefill_target_response: bool = False,
+        do_generate: bool = False,
         **kwargs
     ) -> ModelOutput:
         """
         Generates text completions for the given input texts.
+
+        Args:
+            input_texts (List[str]): List of input strings.
+            message_targets (Optional[MessageTargets]): Targets for the messages.
+            do_prefill_target_response (bool): Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
+            do_generate (bool): Whether to perform autoregressive generation after the forward pass (for LMs).
 
         Always returns ModelOutput with at least `generated_response_strs` populated.
         This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
@@ -181,7 +191,7 @@ class BaseTokenizer(ABC):
     def vocab_size(self) -> int:
         """Returns the size of the vocabulary."""
         pass
-    
+
     @abstractmethod
     def __call__(
         self,
@@ -209,7 +219,7 @@ class BaseTokenizer(ABC):
     def batch_decode(self, ids: List[int] | List[List[int]] | torch.Tensor, **kwargs) -> List[str]:
         """Converts a batch of token IDs back to a list of strings."""
         pass
-    
+
     @property
     def name_or_path(self) -> str:
         return "unknown"

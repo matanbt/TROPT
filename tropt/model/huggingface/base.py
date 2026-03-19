@@ -19,7 +19,13 @@ from tropt.common import (
     SliceKey,
     Targets,
 )
-from tropt.loss import BaseLoss
+from tropt.loss import (
+    AttentionBasedLoss,
+    BaseLoss,
+    HiddenStateBasedLoss,
+    PrefillBasedLoss,
+    GeneratedResponseBasedLoss,
+)
 from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
@@ -157,6 +163,7 @@ class _HFTokenInputManager(TokenInputManager):
         trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"] = None,
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
         append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_templates
+        do_append_embeds: bool = False,
         chosen_template_idx: Optional[int] = None,
     ) -> ModelInput:
         """
@@ -178,6 +185,7 @@ class _HFTokenInputManager(TokenInputManager):
                 If provided, it is used for input computation instead of `trigger_ids`.
             append_embeds: n_templates-long List of tensors, each of shape = (n_app_ids, embd_dim)
                 optional embeddings to append at the end of each message (e.g., for planting response in LMs)
+            do_append_embeds: If True, the provided `append_embeds` will be used and appended at the end of the input.
             chosen_template_idx: int (required)
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
 
@@ -189,7 +197,7 @@ class _HFTokenInputManager(TokenInputManager):
                     if the provided input_embds required grad, then this tensor will also require grad.
                 - attention_mask: Tensor, shape = (n_candidates, seq_len)
                     the attention mask matching the input embeddings
-                - targets: MessageTargets
+                - message_targets: MessageTargets
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
         # assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
@@ -199,6 +207,8 @@ class _HFTokenInputManager(TokenInputManager):
         if trigger_embeds is None:
             # embed the trigger-ids, if trigger embeddings are not provided
             trigger_embeds = self.embed_func(trigger_ids)
+        if do_append_embeds:
+            assert append_embeds is not None, "`append_embeds` must be provided if `do_append_embeds` is True."
 
         n_candidates = trigger_embeds.shape[0]
         template_idx = chosen_template_idx
@@ -209,7 +219,7 @@ class _HFTokenInputManager(TokenInputManager):
         curr_after = self.after_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
         curr_append = (
             append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
-            if append_embeds is not None
+            if do_append_embeds
             else None
         )
 
@@ -267,7 +277,7 @@ class _HFTokenInputManager(TokenInputManager):
         }
 
         ## Prepare the targets repeated for each candidate
-        targets: MessageTargets = self.targets.select_message(chosen_template_idx)
+        message_targets: MessageTargets = self.targets.select_message(chosen_template_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs = {}
@@ -284,7 +294,7 @@ class _HFTokenInputManager(TokenInputManager):
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
             input_attention_mask=attention_mask.to(self.device, torch.int64),
             input_slices=input_slices,
-            targets=targets,
+            message_targets=message_targets,
             input_prefix_cache_kwargs=prefix_cache_kwargs,
         )
 
@@ -403,7 +413,7 @@ class _HuggingFaceModelMixins:
             inputs: Token inputs manager containing templates and tokenization info.
                 Created by `prepare_token_inputs()`.
             loss_func: Loss function to optimize. Must be compatible with model outputs
-                (e.g., LogitBasedLoss for LMs, EmbeddingBasedLoss for encoders).
+                (e.g., PrefillBasedLoss for LMs, EmbeddingBasedLoss for encoders).
 
             candidate_trigger_ids: Discrete token IDs for hard triggers.
                 Shape: (n_candidates, trigger_seq_len)
@@ -548,13 +558,19 @@ class _HuggingFaceModelMixins:
                     model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
                         chosen_template_idx=template_idx,
+                        trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
-                        # Also pass trigger ids as a reference
-                        trigger_ids=ref_trigger_ids,
+                        # loss-conditional flags:
+                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
                     )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
-                        reference_loss_func=loss_func,
+
+                        # loss-conditional flags:
+                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
+                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
+                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
@@ -653,12 +669,20 @@ class _HuggingFaceModelMixins:
                     model_input = input_manager.get_triggered_inputs(
                         trigger_embeds=candidate_embeds,
                         chosen_template_idx=template_idx,
+
+                        # loss-conditional flags:
+                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
                     )
 
                     # 3. Forward pass
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
-                        reference_loss_func=loss_func,
+
+                        # loss-conditional flags:
+                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
+                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
+                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
                     )
 
                     # 4. Compute Loss
@@ -754,10 +778,18 @@ class _HuggingFaceModelMixins:
                 model_input = input_manager.get_triggered_inputs(
                     trigger_ids=batch_candidate_trigger_ids,
                     chosen_template_idx=template_idx,
+
+                    # loss-conditional flags:
+                    do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
                 )
                 model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
-                        reference_loss_func=loss_func,
+
+                        # loss-conditional flags:
+                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
+                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
+                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
                     )
                 loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)
@@ -776,7 +808,11 @@ class _HuggingFaceModelMixins:
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
         input_attention_mask: Int[Tensor, "bsz seq_len"],
-        reference_loss_func: BaseLoss = None,
+
+        do_prefill_target_response: bool = False,
+        do_generate: bool = False,
+        return_hidden_states: bool = False,
+        return_attentions: bool = False,
         **kwargs,
     ) -> ModelOutput:
         """Performs a forward pass with the given token-based model input. Forward pass is expected to be done on `input_embeds`.
@@ -786,8 +822,14 @@ class _HuggingFaceModelMixins:
                 the input embeddings with the trigger merged in; if provided, used instead of any other potential input.
             input_attention_mask: Int[Tensor, "bsz seq_len"]
                 the attention mask matching the input embeddings
-            reference_loss_func: BaseLoss
-                the loss function to use for reference (some models may need it for special handling)
+            do_prefill_target_response: bool
+                whether to prefill the target response, and return the corresponding logits (e.g., for LMs).
+            do_generate: bool
+                whether to perform autoregressive generation after the forward pass (for LMs).
+            return_hidden_states: bool
+                whether to return the hidden states from the model output.
+            return_attentions: bool
+                whether to return the attention weights from the model output.
 
         Returns:
             ModelOutput

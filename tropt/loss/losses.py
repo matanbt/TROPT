@@ -21,23 +21,24 @@ logger = logging.getLogger(__name__)
 
 ############################
 @dataclass
-class LogitBasedLoss(BaseLoss):
+class PrefillBasedLoss(BaseLoss):
     """
-    Loss is computed based on model output (response) logits.
-    These losses required target tokens (i.e. `target_response_toks`); commonly automatically derived from `target_response_strs` strings.
+    Loss computed on prefilled response logits (`prefill_response_logits`).
+    Requires target tokens (`target_response_toks`); commonly derived from `target_response_strs`.
+    Using this loss usually implies that the model will prefill the response with these target tokens.
     """
 
     @abstractmethod
     def __call__(
         self,
-        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
     ) -> Float[Tensor, "bsz"]:
         pass
 
 
 @dataclass
-class PrefillCELoss(LogitBasedLoss):
+class PrefillCELoss(PrefillBasedLoss):
     """
     Encourages (=maximize likelihood) the model to produce the target output (mostly an affirmative response).
     """
@@ -46,22 +47,22 @@ class PrefillCELoss(LogitBasedLoss):
 
     def __call__(
         self,
-        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
-            response_logits.shape[0], -1
+            prefill_response_logits.shape[0], -1
         )  # (bsz, response_seq_len)
-        response_logits = response_logits / self.temperature
+        prefill_response_logits = prefill_response_logits / self.temperature
         assert (
-            response_logits.ndim == 3
+            prefill_response_logits.ndim == 3
             and target_response_toks.ndim == 2
-            and response_logits.shape[1] == target_response_toks.shape[1]
-        ), f"Shape mismatch: response_logits {response_logits.shape}, target_response_toks {target_response_toks.shape}"
+            and prefill_response_logits.shape[1] == target_response_toks.shape[1]
+        ), f"Shape mismatch: prefill_response_logits {prefill_response_logits.shape}, target_response_toks {target_response_toks.shape}"
 
         loss = torch.nn.functional.cross_entropy(
-            response_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
+            prefill_response_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
             target_response_toks,
             reduction="none",
             ignore_index=ignore_index,
@@ -71,7 +72,7 @@ class PrefillCELoss(LogitBasedLoss):
 
 
 @dataclass
-class PrefillMellowMaxLoss(LogitBasedLoss):
+class PrefillMellowMaxLoss(PrefillBasedLoss):
     """
     Encourages the model to produce the target output by maximizing the mellowmax of the target logits.
     https://arxiv.org/pdf/1612.05628, http://confirmlabs.org/posts/TDC2023
@@ -82,15 +83,15 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
-            response_logits.shape[0], -1
+            prefill_response_logits.shape[0], -1
         )  # (bsz, response_seq_len)
-        response_logits = response_logits / self.temperature
-        assert response_logits.shape[:-1] == target_response_toks.shape, "Shape mismatch"
+        prefill_response_logits = prefill_response_logits / self.temperature
+        assert prefill_response_logits.shape[:-1] == target_response_toks.shape, "Shape mismatch"
 
         # 1. Create mask
         mask = target_response_toks != ignore_index
@@ -98,7 +99,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
         target_response_toks = target_response_toks.masked_fill(~mask, 0)
 
         # 2. Gather the logits corresponding to the target IDs
-        target_logits = response_logits.gather(-1, target_response_toks.unsqueeze(-1)).squeeze(-1)
+        target_logits = prefill_response_logits.gather(-1, target_response_toks.unsqueeze(-1)).squeeze(-1)
         # Mellowmax maximizes its input, so to maximize the target_logits,
         # we minimize the negative of the target_logits.
         target_logits = -target_logits
@@ -125,7 +126,7 @@ class PrefillMellowMaxLoss(LogitBasedLoss):
 
 
 @dataclass
-class PrefillCWLoss(LogitBasedLoss):
+class PrefillCWLoss(PrefillBasedLoss):
     """
     Encourages (=maximize likelihood) the model to produce the target output (mostly an affirmative response).
     CW-inspired hinge loss on the difference between the largest and the target logits.
@@ -136,14 +137,14 @@ class PrefillCWLoss(LogitBasedLoss):
 
     def __call__(
         self,
-        response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
-            response_logits.shape[0], -1
+            prefill_response_logits.shape[0], -1
         )  # (bsz, response_seq_len)
-        assert response_logits.shape[:2] == target_response_toks.shape, (response_logits.shape, target_response_toks.shape)
+        assert prefill_response_logits.shape[:2] == target_response_toks.shape, (prefill_response_logits.shape, target_response_toks.shape)
         vocab_dim: int = -1  # dimension of vocab size
 
         # Create mask and safe indices
@@ -151,10 +152,10 @@ class PrefillCWLoss(LogitBasedLoss):
         target_response_toks = target_response_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
-        tgt_logits = response_logits.gather(vocab_dim, target_response_toks.unsqueeze(-1)).squeeze(-1)
+        tgt_logits = prefill_response_logits.gather(vocab_dim, target_response_toks.unsqueeze(-1)).squeeze(-1)
 
         # Set logits of target tok to -inf so it cannot be the largest
-        tmp_logits = response_logits.clone()
+        tmp_logits = prefill_response_logits.clone()
         tmp_logits.scatter_(vocab_dim, target_response_toks.unsqueeze(-1), -torch.inf)
 
         # pick the largest logit among the non-target tokens
@@ -174,17 +175,14 @@ class PrefillCWLoss(LogitBasedLoss):
 @dataclass
 class TriggerLogitBasedLoss(BaseLoss):
     """
-    Loss is computed based on model output logits *on the trigger tokens*.
+    Loss computed on full-sequence logits (`full_logits`) sliced to trigger positions.
     Useful for optimizing properties of the triggers directly.
-
-    Note: Loss functions inheriting from this class receive full output_logits
-    and must slice them using input_slices to extract trigger-specific logits.
     """
 
     @abstractmethod
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz seq_len vocab_size"],
+        full_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "trigger_seq_len"],
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
@@ -203,14 +201,14 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 
     def __call__(
         self,
-        output_logits: Float[Tensor, "bsz seq_len vocab_size"],
+        full_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
         input_slices: dict[SliceKey, slice],
         ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         """
         Compute perplexity loss on the trigger tokens.
-        Perplexity is computed wrt to the trigger logits in `output_logits` and the target ids in `input_trigger_ids`.
+        Perplexity is computed wrt to the trigger logits in `full_logits` and the target ids in `input_trigger_ids`.
         """
 
         # Extract trigger logits
@@ -219,7 +217,7 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
             f"TriggerPerplexityLoss requires the trigger slice to start after position 0 "
             f"(got slc.start={slc.start}). This could happen since loss is incompatible with `use_prefix_cache=True` -- try setting it to `False`."
         )
-        trigger_logits = output_logits[:, slc.start - 1 : slc.stop - 1, :]  # (bsz, trigger_seq_len, vocab_size)
+        trigger_logits = full_logits[:, slc.start - 1 : slc.stop - 1, :]  # (bsz, trigger_seq_len, vocab_size)
         trigger_logits = trigger_logits / self.temperature
 
         assert (
@@ -245,12 +243,12 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 #############################
 @dataclass
 class AttentionBasedLoss(BaseLoss):
-    """Loss is computed based on model attention weights."""
+    """Loss computed on model attention weights (`full_attentions`)."""
 
     @abstractmethod
     def __call__(
         self,
-        output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
+        full_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         pass
@@ -272,7 +270,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
 
     def __call__(
         self,
-        output_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
+        full_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         if SliceKey.INPUT_AFTER in (self.src_slc_name, self.dst_slc_name):
@@ -281,7 +279,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
         slc_dst = input_slices.get(self.dst_slc_name, slice(None))
 
         # Extract attention weights for target slices and layers
-        attn_subset = output_attentions[
+        attn_subset = full_attentions[
             :, self.targeted_layers, :, slc_dst, slc_src
         ]  # (bsz, n_targeted_layers, n_heads, dst_len, src_len)
 
@@ -337,12 +335,12 @@ class SimilarityLoss(EmbeddingBasedLoss):
 ############################
 @dataclass
 class HiddenStateBasedLoss(BaseLoss):
-    """Loss computed based on model hidden states."""
+    """Loss computed on model hidden states (`full_hidden_states`)."""
 
     @abstractmethod
     def __call__(
         self,
-        output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         **kwargs,
     ) -> Float[Tensor, "bsz"]:
         pass
@@ -381,7 +379,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
 
     def __call__(
         self,
-        output_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "d_model"],
         input_slices: dict[str, slice] = None,
     ) -> Float[Tensor, "bsz"]:
@@ -396,9 +394,9 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         Returns:
             Loss tensor of shape (bsz,).
         """
-        target_directions = target_directions.to(output_hidden_states.device)
+        target_directions = target_directions.to(full_hidden_states.device)
         target_directions = target_directions.unsqueeze(0).expand(
-            output_hidden_states.shape[0], -1
+            full_hidden_states.shape[0], -1
         )  # (bsz, d_model)
 
         # Normalize target directions
@@ -411,7 +409,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
             slc = slice(None)  # Use all positions if no slices provided
 
         # (bsz, n_targeted_layers, slc_seq_len, d_model)
-        h = output_hidden_states[:, self.targeted_layers, slc, :]
+        h = full_hidden_states[:, self.targeted_layers, slc, :]
 
         if self.do_cosine_sim:
             h = h / h.norm(dim=-1, keepdim=True)

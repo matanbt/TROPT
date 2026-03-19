@@ -61,11 +61,18 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         input_texts: List[str],
         max_new_tokens: int = 128,
         temperature: float = 0.0,
+
+        do_generate: bool = False,
+        do_prefill_target_response: bool = False,
         **kwargs,
     ) -> ModelOutput:
         """
         Generates text completions for the given input texts using parallel execution.
         """
+        if do_prefill_target_response:
+            raise ValueError("Prefill target response is not supported in LiteLLMModel.")
+        if not do_generate:
+            raise ValueError("Currently LiteLLMModel only supports generation (do_generate=True).")
 
         # Build prompts
         prompts = [ [{"role": "user", "content": text}] for text in input_texts]

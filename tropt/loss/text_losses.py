@@ -29,16 +29,20 @@ class TextBasedLoss(BaseLoss):
         pass
 
 
-@dataclass
-class ResponseLMScoreLoss(TextBasedLoss):
-    """A loss based on an LM-as-a-judge score of the model's response.
-
-    TODO: Implement this loss function.
-    """
-
-    pass
 
 ############################
+
+@dataclass
+class GeneratedResponseBasedLoss(TextBasedLoss):
+    """Marker base for losses that operate on `generated_response_strs`."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        generated_response_strs: Annotated[List[str], "bsz"],
+    ) -> Float[torch.Tensor, "bsz"]:
+        pass
+
 
 @dataclass
 class BinaryLMJudgeLoss(TextBasedLoss):
@@ -195,7 +199,7 @@ class InputReadabilityLoss(BinaryLMJudgeLoss):
 
 
 @dataclass
-class ResponseHarmfulnessLoss(BinaryLMJudgeLoss):
+class ResponseHarmfulnessLoss(BinaryLMJudgeLoss, GeneratedResponseBasedLoss):
     """
     Loss that encourages harmful model responses (operates on generated response string).
     """

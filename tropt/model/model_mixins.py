@@ -8,6 +8,7 @@ from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import (
+    MessageTargets,
     ModelInput,
     ModelOutput,
     Targets,
@@ -78,12 +79,20 @@ class InvokeTokenAccessMixin(TokenAccessMixin):
     def invoke_from_tokens(
         self,
         input_ids: Float[Tensor, "bsz seq_len"] = None,
+
+        message_targets: Optional[MessageTargets] = None,
+        do_prefill_target_response: bool = False,
+        do_generate: bool = False,
         **kwargs
     ) -> ModelOutput:
         """Perform a forward pass from token-level (embedding) inputs.
 
         Args:
-            input_ids: Token IDs of the full input sequence (prompt + trigger), plus optionally target tokens. Shape: (batch_size, seq_len).
+            input_ids: Token IDs of the full input sequence (incl. trigger), plus optionally target tokens. Shape: (batch_size, seq_len).
+
+            message_targets: Optional MessageTargets object containing the targets for the messages.
+            do_prefill_target_response: Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
+            do_generate: Whether to perform autoregressive generation after the forward pass (for LMs).
 
         Returns:
             ModelOutput with the fields this model can provide.
@@ -190,7 +199,7 @@ class LossTextAccessMixin(TextAccessMixin):
             )
             curr_texts, curr_targets = (
                 curr_model_input.input_texts,
-                curr_model_input.targets,
+                curr_model_input.message_targets,
             )
 
             # Forward pass once per template bulk
@@ -201,7 +210,7 @@ class LossTextAccessMixin(TextAccessMixin):
             # Create ModelInput wrapper
             model_input = ModelInput(
                 input_texts=curr_texts,
-                targets=curr_targets,
+                message_targets=curr_targets,
             )
 
             # Use unified loss resolution

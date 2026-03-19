@@ -120,7 +120,7 @@ def run_advdecoding_jailbreak(
 
     loss = CombinedLoss(
         loss_funcs=[
-            PrefillCELoss(),        # Main jailbreak loss (token-level)
+            PrefillCELoss(),        # Main jailbreak loss
 
             InputReadabilityLoss(),  # Naturalness scorer: keep trigger fluent
             # InputReadabilityLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
@@ -141,8 +141,6 @@ def run_advdecoding_jailbreak(
         top_k=10,
         branching_factor=10,
         temperature=1.0,
-
-        use_model_with_token_inputs=True,  # necessary for calculating the CE loss
     )
 
     return optimizer.optimize_trigger(

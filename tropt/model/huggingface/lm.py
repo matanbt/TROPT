@@ -17,13 +17,9 @@ from tropt.common import (
     SliceKey,
     Targets,
     TextTemplates,
+    MessageTargets,
 )
-from tropt.loss import (
-    AttentionBasedLoss,
-    BaseLoss,
-    HiddenStateBasedLoss,
-    LogitBasedLoss,
-)
+from tropt.loss import BaseLoss
 from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -40,28 +36,32 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputManager(_HFTokenInputManager):
     targets: Targets
-    # includes `target_response_toks` (n_templates, target_seq_len) if target outputs are provided;
-    # to optimize towards an output per message
-
-    @property
-    def _do_prefill_targets(self) -> bool:
-        return self.targets.target_response_toks is not None
+    """
+    optioanlly includes `target_response_toks` (n_templates, target_seq_len) if target outputs are provided;
+    these are used to prefill the response per message
+    """
 
     @cached_property
     def _prefill_embeds(self) -> List[Float[Tensor, "target_seq_len embd_dim"]]:
-        if self._do_prefill_targets:
-            return [self.embed_func(target_output) for target_output in self.targets.target_response_toks]
-        return None
+        return [self.embed_func(target_output) for target_output in self.targets.target_response_toks]
 
-    def get_triggered_inputs(self, *args, **kwargs):
+    def get_triggered_inputs(
+        self,
+        do_append_embeds: bool = False,
+        do_prefill_target_response: bool = False,
+        **kwargs,
+    ):
         assert (
             kwargs.get("append_embeds", None) is None
         ), "append_embeds should not be passed directly to LM models. Use `target_embeds` property instead."
+        do_append_embeds = do_append_embeds or do_prefill_target_response
+        if do_append_embeds:
+            assert self.targets.target_response_toks is not None, "target_response_toks must be provided in targets to append prefill_embeds to inputs."
 
         return super().get_triggered_inputs(
-            *args,
             **kwargs,
-            append_embeds=self._prefill_embeds if self._do_prefill_targets else None,
+            append_embeds=self._prefill_embeds if do_append_embeds else None,
+            do_append_embeds=do_append_embeds,
         )
 
 
@@ -86,6 +86,7 @@ class LMHFModel(
         dtype: str = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 32,
+        do_prefill_response: bool = False,  # TODO go over model instantiations and set true where needed!
         # more args:
         use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
@@ -120,6 +121,7 @@ class LMHFModel(
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._embedding_layer = self._model.get_input_embeddings()
         self._use_prefix_cache = use_prefix_cache
+        self.do_prefill_response = do_prefill_response
 
         # Set model to eval mode
         if set_model_to_eval:
@@ -150,11 +152,13 @@ class LMHFModel(
                 "{% for message in messages %}{{ message['content'] }}{% endfor %}"
             )
         if self._tokenizer.padding_side != "left":
+            # Left padding is required for causal LM generation (tokenizer.pad() in generate_from_tokens/text)
+            # so that sequences are right-aligned and generation continues from the last real token.
             logger.warning(
-                "Tokenizer padding side is not 'left'. Our code currently assumes left padding."
+                "Tokenizer padding side is not 'left'. Overriding to 'left' (required for causal LM generation)."
             )
             # TODO is it true that we need it? where do we assume it?? maybe it's not needed anymore?
-            # !!!!!!!!!!!!!!!!!!!!!!!!
+            # !!!!!!!!!
             self._tokenizer.padding_side = "left"
 
         if not self._tokenizer.pad_token:
@@ -185,6 +189,10 @@ class LMHFModel(
     ) -> None:
         """
         Prepares and stores the inputs manager for the model, including tokenization and target processing.
+
+        Args:
+            templates: List of input templates containing the trigger placeholder.
+            targets: Optional Targets object containing target response strings to optimize towards.
         """
         # To make sure the placeholder will be tokenizer as is
         self._tokenizer.add_special_tokens(
@@ -222,6 +230,9 @@ class LMHFModel(
 
         # Move targets to device
         targets = targets.to_device(self._model.device)
+
+        # Pass `do_prefill_response` and the token input manager fully handles the prefilling
+        do_prefill_response = self.do_prefill_response and targets.target_response_toks is not None
 
         # Build the input manager, that will allow combining with different triggers
         self._token_input_manager = LMHFTokenInputManager(
@@ -274,7 +285,7 @@ class LMHFModel(
         # Compute the logits (in batches)
         @find_executable_batch_size(starting_batch_size=self._forward_pass_batch_size)
         def _compute_logits_batched(batch_size):
-            all_logits = [[] for _ in range(n_templates)]
+            full_logits = [[] for _ in range(n_templates)]
             slices: List[Dict[str, slice]] = [None for _ in range(n_templates)]
 
             for template_idx, cand_idx in itertools.product(
@@ -292,13 +303,13 @@ class LMHFModel(
                 # Compute the logits
                 logits_batch = self.invoke_from_tokens(
                     **model_input.to_dict(),
-                ).output_logits
+                ).full_logits
 
-                all_logits[template_idx].append(logits_batch)
+                full_logits[template_idx].append(logits_batch)
                 slices[template_idx] = model_input.input_slices
 
             # Stack all logits per message
-            logits_per_message = [torch.cat(msg_logits, dim=0) for msg_logits in all_logits]
+            logits_per_message = [torch.cat(msg_logits, dim=0) for msg_logits in full_logits]
             logits = torch.stack(logits_per_message, dim=0)  # (n_templates, n_candidates, seq_len, vocab_size)
 
             return logits, slices
@@ -346,7 +357,12 @@ class LMHFModel(
         input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
         input_slices: Optional[Dict[str, slice]] = None,
         # TODO make input_ids a second-priority option
-        reference_loss_func: BaseLoss = None,
+
+        # computation flags:
+        do_prefill_target_response: bool = False,
+        do_generate: bool = False,
+        return_hidden_states: bool = False,
+        return_attentions: bool = False,
         **kwargs
     ) -> ModelOutput:
         """
@@ -357,25 +373,31 @@ class LMHFModel(
             input_attention_mask: Attention mask tensor of shape (bsz, seq_len).
             input_prefix_cache_kwargs: Optional dict of prefix cache kwargs to pass to the model.
             input_slices: Optional dict mapping slice keys to slices for extracting specific parts of the output.
-            reference_loss_func: Optional loss function used to determine which outputs to compute
-                (e.g., attentions for AttentionBasedLoss, hidden states for HiddenStateBasedLoss).
+
+            do_prefill_target_response: Whether the input includes a prefixed target, of which indices are marked by the input_slices, and we should extract it logits.
+            do_generate: Whether to perform generation, in addition to forward pass.
+            return_hidden_states: Whether to return hidden states in the output.
+            return_attentions: Whether to return attentions in the output.
 
         Returns:
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
         """
-        if reference_loss_func is not None and reference_loss_func.contains_loss_type(AttentionBasedLoss) and self._model.config._attn_implementation != "eager":
+        if return_attentions and self._model.config._attn_implementation != "eager":
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
+        if do_generate:
+            # TODO implement
+            raise NotImplementedError("Generation is not yet implemented in `invoke_from_tokens`.")
 
         assert input_embeds is not None, "input_embeds must be provided in HF's invoke_from_tokens."
 
         outputs = self._model(
             inputs_embeds=input_embeds,
             attention_mask=input_attention_mask,
-            output_attentions=reference_loss_func.contains_loss_type(AttentionBasedLoss) if reference_loss_func else False,
-            output_hidden_states=reference_loss_func.contains_loss_type(HiddenStateBasedLoss) if reference_loss_func else False,
+            output_attentions=return_attentions,
+            output_hidden_states=return_hidden_states,
             **(input_prefix_cache_kwargs or {})
         )
         self._update_usage_stats(
@@ -384,16 +406,17 @@ class LMHFModel(
             tokens=input_attention_mask.sum().item(),
         )
 
-        response_logits = None
-        if reference_loss_func is not None and reference_loss_func.contains_loss_type(LogitBasedLoss):
+        prefill_response_logits = None
+        if do_prefill_target_response:
+            assert input_slices is not None, "input_slices must be provided to extract prefill logits when `do_prefill_target_response` is True."
             response_slc = input_slices[SliceKey.APPENDED]
-            response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
+            prefill_response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
 
         return ModelOutput(
-            output_logits=outputs.logits,
-            response_logits=response_logits,
-            output_attentions=torch.stack(outputs.attentions, dim=1) if outputs.attentions else None,
-            output_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if outputs.hidden_states else None,  # (skips input embedding (layer 0)
+            full_logits=outputs.logits,
+            prefill_response_logits=prefill_response_logits,
+            full_attentions=torch.stack(outputs.attentions, dim=1) if return_attentions else None,
+            full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if return_hidden_states else None,  # (skips input embedding (layer 0))
         )
 
     # ======================= Text-access methods =======================
@@ -401,27 +424,32 @@ class LMHFModel(
     def invoke_from_texts(
         self,
         input_texts: Optional[List[str]] = None,
-
-        # [Optional] Embedding input:
-        inputs_embeds: Optional[Float[Tensor, "bsz seq_len embd_dim"]] = None,
-        attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
+        message_targets: Optional[MessageTargets] = None,
 
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
+
+        do_prefill_target_response: bool = False,
+        do_generate: bool = True,
     ) -> ModelOutput:
         """
         Generate text completions. Always returns a ModelOutput.
-
-        Accepts either plain texts or input embeddings.
+        - If self.do_prefill_response is True, and the relevant target response prefix is available, the generation starts after the prefilled response, and the returned logits will include the prefilled response portion.
 
         Args:
-            input_texts: list of plain-text prompts.  Mutually exclusive with ``inputs_embeds``.
-            inputs_embeds: pre-built prompt embeddings (bsz, seq_len, embd_dim).
-                Note that in the case of input_embedding the full_template_strs and full_template_ids will not be returned in the output, as we don't have access to the text/tokenized input.
-            attention_mask: Only relevant if ``inputs_embeds`` is provided. Attention mask matching ``inputs_embeds``.
+            input_texts: list of plain-text prompts.
+            message_targets: Optional MessageTargets object. Only relevant if `do_prefill_response` is True, in which case the target responses will be prefixed to the model output.
+
+            greedy_decode: Whether to use greedy decoding (vs. sampling) for generation.
+            max_new_tokens: The maximum number of new tokens to generate.
+            do_prefill_target_response: Whether to prefill the target response in the model input (if provided in `message_targets`) and return the corresponding logits.
+            do_generate: Whether to perform generation. If False, performs only the forward pass.
         """
-        assert (input_texts is None) ^ (inputs_embeds is None), \
-            "Exactly one of `input_texts` or `inputs_embeds` must be provided."
+
+        assert input_texts is not None, "input_texts must be provided."
+        if do_prefill_target_response:
+            assert message_targets is not None, "message_targets must be provided if do_prefill_target_response is True."
+            assert message_targets.target_response_toks is not None and message_targets.target_response_strs is not None, "message_targets must include target_response_toks and target_response_strs if do_prefill_target_response is True."
 
         hf_gen_kwargs = {
             "max_new_tokens": max_new_tokens,
@@ -431,88 +459,106 @@ class LMHFModel(
             "return_dict_in_generate": True,
         }
 
-        if inputs_embeds is not None:
-            # --- Embed flow ----------------------------------
-            n = inputs_embeds.shape[0]
-            generation_output = self._model.generate(
-                inputs_embeds=inputs_embeds,
-                attention_mask=attention_mask,
-                **hf_gen_kwargs
-            )
+        # 1. Setup prefill lengths
+        prefill_len = 0
+        if do_prefill_target_response:
+            prefill_len = message_targets.target_response_toks.shape[0]
 
-            full_toks = generation_output.sequences
-            generation_logits = torch.stack(generation_output.scores, dim=1)
-
-            # HF returns only generated token IDs when inputs_embeds is used
-            generated_toks = [full_toks[i] for i in range(n)]
-            n_prompt_tokens = inputs_embeds.shape[0] * inputs_embeds.shape[1]
-
-        else:
-            # --- Text flow ----------------------------------
-            # Note: apply_chat_template handles special tokens (BOS, EOS) according to the model's template
-            assert isinstance(input_texts, list), "input_texts must be a list of strings."
-            template_tok_ids: List[List[int]] = [
+        # 2. Apply chat template (user turn only; generation prompt adds assistant role marker)
+        assert isinstance(input_texts, list), "input_texts must be a list of strings."
+        template_tok_ids = []
+        for text in input_texts:
+            template_tok_ids.append(
                 self._tokenizer.apply_chat_template(
                     [{"role": "user", "content": text}],
                     tokenize=True,
                     add_generation_prompt=True,
                 )
-                for text in input_texts
-            ]
-
-            inputs = self._tokenizer.pad(
-                {"input_ids": template_tok_ids},
-                padding=True,
-                return_tensors="pt"
-            ).to(self.device)
-
-            prompt_lengths = [len(toks) for toks in inputs.input_ids]
-
-            generation_output = self._model.generate(
-                **inputs,
-                **hf_gen_kwargs
             )
 
-            full_toks = generation_output.sequences
-            generation_logits = torch.stack(generation_output.scores, dim=1)
+        # 3. Append prefill tokens to the prompt
+        if prefill_len > 0:
+            prefill_list = message_targets.target_response_toks.tolist()
+            for prompt_toks in template_tok_ids:
+                prompt_toks.extend(prefill_list)
 
-            generated_toks = [
-                full_toks[i][prompt_lengths[i]:] for i in range(len(full_toks))
-            ]
-            n_prompt_tokens = inputs.input_ids.numel()
+        # 4. Pad and prep inputs
+        assert self._tokenizer.padding_side == "left", "Tokenizer must use left padding for correct prefiling and generation. Please set `tokenizer.padding_side = 'left'`."
+        inputs = self._tokenizer.pad(
+            {"input_ids": template_tok_ids},
+            padding=True,
+            return_tensors="pt"
+        ).to(self.device)
+        padded_seq_len = inputs.input_ids.shape[1]
 
-        # --- Shared post-processing ------------------------------------
-        generation_strs = self._tokenizer.batch_decode(
-            generated_toks,
-            skip_special_tokens=True
+        # 5. Forward pass (optionally w/ prefill toks)
+        with torch.no_grad():
+            fwd_out = self._model(**inputs, use_cache=True)
+
+        # 5a. Slice prefill logits
+        prefill_response_logits = None
+        if prefill_len > 0:
+            start = padded_seq_len - prefill_len - 1
+            end   = padded_seq_len - 1
+            prefill_response_logits = torch.stack(
+                [fwd_out.logits[i, start:end]
+                    for i in range(len(input_texts))],
+                dim=0
+            )  # (bsz, response_seq_len, vocab_size)
+
+
+        # 5b. Early return if generation not requested
+        n_prompt_tokens = inputs.input_ids.numel()
+        if not do_generate:
+            self._update_usage_stats(
+                tokens=n_prompt_tokens,
+                forward_calls=1,
+                forward_samples=len(input_texts),
+            )
+            return ModelOutput(
+                prefill_response_logits=prefill_response_logits,
+                # (full logits / full ids can be not aligned, so we currently don't provide them)
+                # TODO also populate with other available properties?
+            )
+
+        # 5c. Generate, reusing KV cache from the forward pass above
+        generation_output = self._model.generate(
+            **inputs,
+            past_key_values=fwd_out.past_key_values,
+            output_logits=True,
+            **hf_gen_kwargs,
         )
 
+        generation_logits = torch.stack(generation_output.logits, dim=1)  # (bsz, gen_seq_len, vocab_size)
+
+        # 6. Slice generated toks
+        # generate()'s `.sequences` is a list of tensors of shape (bsz, padded_seq_len [incl. prefill]+ gen_len);
+        full_toks = generation_output.sequences
+        generated_toks = [full_toks[i][padded_seq_len:] for i in range(len(full_toks))]
+
+        # 7. Post-processing & stats
+        generation_strs = self._tokenizer.batch_decode(
+            generated_toks,
+            skip_special_tokens=True,
+        )
         n_gen_tokens = sum(len(t) for t in generated_toks)
+
         self._update_usage_stats(
             tokens=n_prompt_tokens + n_gen_tokens,
             forward_calls=1,
             forward_samples=len(generated_toks),
         )
 
-        # Trim logits per-sample to match actual generated length
-        # (scores are already prompt-excluded, but samples may differ due to EOS)
-        generation_logits = [
-            generation_logits[i, :len(generated_toks[i])]
-            for i in range(len(generated_toks))
-        ]
-
-        if inputs_embeds is None:
-            full_strs = self._tokenizer.batch_decode(full_toks, skip_special_tokens=False)
-            full_toks_out = full_toks
-        else:
-            # Prompt was given as embeddings; no prompt token IDs to reconstruct
-            full_strs = None
-            full_toks_out = None
+        full_strs = self._tokenizer.batch_decode(
+            full_toks,
+            skip_special_tokens=False,
+        )
 
         return ModelOutput(
+            prefill_response_logits=prefill_response_logits,
             generated_response_strs=generation_strs,
             generated_response_ids=generated_toks,
             generated_response_logits=generation_logits,
-            full_template_strs=full_strs,
-            full_template_ids=full_toks_out,
+            full_strs=full_strs,
+            full_ids=full_toks,
         )

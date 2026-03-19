@@ -7,7 +7,8 @@ from .losses import (
     AttentionEnhLoss,
     EmbeddingBasedLoss,
     HiddenStateBasedLoss,
-    LogitBasedLoss,
+    PrefillBasedLoss,
+    TriggerLogitBasedLoss,
 
     # Concrete losses:
     PrefillCELoss,
@@ -20,6 +21,7 @@ from .losses import (
 
 from .text_losses import (
     TextBasedLoss,
+    GeneratedResponseBasedLoss,
     BinaryLMJudgeLoss,
 
     # Concrete text losses

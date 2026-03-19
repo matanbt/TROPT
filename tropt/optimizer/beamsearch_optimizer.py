@@ -92,6 +92,7 @@ class BeamSearchOptimizer(BaseOptimizer):
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
             self.util_lm, LogitsTokenAccessMixin
         ), "BEAST requires util_lm to be LM with token logits access"
+        self.util_lm_prefix = util_lm_prefix
 
         self.num_steps = num_steps
         self.beam_size = beam_size
@@ -117,8 +118,6 @@ class BeamSearchOptimizer(BaseOptimizer):
         Args:
             templates (TextTemplates): List of text templates to optimize the trigger against.
             targets (Optional[Targets], optional): Target values for the loss function.
-            util_lm_templates (Optional[TextTemplates], optional): Templates for the util LM to compute logits.
-                This is useful as a seed prompt for the util LM. If None, defaults to `templates`.
 
         Implementation notes:
         - We use the auxiliary LM (`util_lm`) to samples candidate tokens for the trigger.
@@ -134,7 +133,10 @@ class BeamSearchOptimizer(BaseOptimizer):
         )
         if self.use_model_with_token_inputs:
             # If model has token-level loss access, we use token-level inputs
-            self.model.set_inputs_from_tokens(templates=templates, targets=targets)
+            self.model.set_inputs_from_tokens(
+                templates=templates,
+                targets=targets,
+            )
         else:
             self.model.set_inputs_from_texts(templates=templates, targets=targets)
 

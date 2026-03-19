@@ -168,13 +168,13 @@ class ModelInput(pydantic.BaseModel):
         ...     input_trigger_ids=torch.randint(0, 1000, (4, 20)),
         ...     input_embeds=torch.randn(4, 100, 768),
         ...     input_attention_mask=torch.ones(4, 100),
-        ...     targets=MessageTargets(target_response_toks=target_ids)
+        ...     message_targets=MessageTargets(target_response_toks=target_ids)
         ... )
 
         >>> # Text-level input
         >>> text_input = ModelInput(
         ...     input_texts=["Text with trigger 1", "Text with trigger 2"],
-        ...     targets=MessageTargets(target_response_strs="Response 1")
+        ...     message_targets=MessageTargets(target_response_strs="Response 1")
         ... )
     """
 
@@ -238,7 +238,7 @@ class ModelInput(pydantic.BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    targets: Optional[MessageTargets] = None
+    message_targets: Optional[MessageTargets] = None  # TODO --> message_targets ? this is way clearer!
     """Target data required by loss functions.
 
     A `MessageTargets` instance containing the target data for a single message.
@@ -277,15 +277,15 @@ class ModelOutput(pydantic.BaseModel):
 
         >>> # Language model output with logits
         >>> lm_output = ModelOutput(
-        ...     output_logits=torch.randn(2, 50, 32000),
+        ...     full_logits=torch.randn(2, 50, 32000),
         ...     generated_response_strs=["Response 1", "Response 2"]
         ... )
 
         >>> # Full output with hidden states and attentions
         >>> full_output = ModelOutput(
-        ...     output_logits=logits,
-        ...     output_hidden_states=hidden_states,
-        ...     output_attentions=attentions,
+        ...     full_logits=logits,
+        ...     full_hidden_states=hidden_states,
+        ...     full_attentions=attentions,
         ...     generated_response_strs=responses
         ... )
     """
@@ -299,16 +299,17 @@ class ModelOutput(pydantic.BaseModel):
     """
 
     # === Logits (Language models) ===
-    output_logits: Optional[Float[Tensor, "bsz seq_len vocab_size"]] = None
-    """Full sequence logits from language models (including both inputs and outputs).
+    # LM legend: all = input (incl trigger) + prefilled response + generated response tokens
+    full_logits: Optional[Float[Tensor, "bsz seq_len vocab_size"]] = None
+    """Full sequence logits from language models; including both inputs and outputs (prefilled and generated).
     """
 
-    response_logits: Optional[Float[Tensor, "bsz response_seq_len vocab_size"]] = None
-    """Logits corresponding to the prefilled response portion of the sequence.
+    prefill_response_logits: Optional[Float[Tensor, "bsz response_seq_len vocab_size"]] = None
+    """Logits corresponding to the *prefilled* response portion of the sequence.
     """
 
     # === Hidden states (Transformer models with output_hidden_states=True) ===
-    output_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
+    full_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
     """Hidden states from all layers.
 
     Note: Typically requires stacking tuple outputs from HuggingFace models:
@@ -316,7 +317,7 @@ class ModelOutput(pydantic.BaseModel):
     """
 
     # === Attention weights (Transformer models with output_attentions=True) ===
-    output_attentions: Optional[Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]] = None
+    full_attentions: Optional[Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]] = None
     """Attention weights from all layers.
 
     Note: Typically requires stacking tuple outputs from HuggingFace models:
@@ -334,16 +335,17 @@ class ModelOutput(pydantic.BaseModel):
     """
 
     generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]]] = None
-    """Logits for generated tokens from language model generation. Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response.
+    """Logits for generated tokens from language model generation. 
+    Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
     Response lengths may vary across samples.
     """
 
     # === Full template ===
-    full_template_ids: Optional[Int[Tensor, "bsz full_seq_len"]] = None
+    full_ids: Optional[Int[Tensor, "bsz full_seq_len"]] = None
     """Full template token IDs (prompt + generation; includes optional padding).
     """
 
-    full_template_strs: Optional[List[str]] = None
+    full_strs: Optional[List[str]] = None
     """Full template strings (prompt + generation).
     """
 

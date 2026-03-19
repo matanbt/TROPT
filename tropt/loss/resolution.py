@@ -21,7 +21,7 @@ class LossResolutionError(Exception):
 
     Examples:
         >>> raise LossResolutionError(
-        ...     "Loss function requires parameter 'output_logits' but it was not "
+        ...     "Loss function requires parameter 'full_logits' but it was not "
         ...     "found in model_output or model_input."
         ... )
     """
@@ -49,17 +49,17 @@ def resolve_and_compute_loss(
         - **Parameter Naming Convention:**
             Loss functions should name their parameters exactly as they appear in
             ModelOutput and ModelInput:
-            - output_logits: From ModelOutput
+            - full_logits: From ModelOutput
             - output_embeddings: From ModelOutput
-            - output_attentions: From ModelOutput
+            - full_attentions: From ModelOutput
             - input_trigger_ids: From ModelInput
             - input_slices: From ModelInput
-            - targets: From ModelInput
+            - message_targets: From ModelInput
             - etc.
 
     Args:
         model_output: Standardized model output containing available data
-        model_input: Standardized model input containing triggers, slices, targets
+        model_input: Standardized model input containing triggers, slices, message targets
         loss_func: The loss function to compute (must have proper __call__ signature)
 
     Returns:
@@ -73,14 +73,14 @@ def resolve_and_compute_loss(
         >>> from tropt.common import MessageTargets
         >>> # Encoder model with SimilarityLoss(output_embeddings, target_embeddings)
         >>> output = ModelOutput(output_embeddings=torch.randn(4, 768))
-        >>> input_data = ModelInput(targets=MessageTargets(target_vectors=target_vecs))
+        >>> input_data = ModelInput(message_targets=MessageTargets(target_vectors=target_vecs))
         >>> loss = resolve_and_compute_loss(output, input_data, SimilarityLoss())
 
-        >>> # Language model with PrefillCELoss(response_logits, input_slices, targets)
-        >>> output = ModelOutput(response_logits=torch.randn(2, 50, 32000))
+        >>> # Language model with PrefillCELoss(prefill_response_logits, message_targets)
+        >>> output = ModelOutput(prefill_response_logits=torch.randn(2, 50, 32000))
         >>> input_data = ModelInput(
         ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
-        ...     targets=MessageTargets(target_response_toks=target_ids)
+        ...     message_targets=MessageTargets(target_response_toks=target_ids)
         ... )
         >>> loss = resolve_and_compute_loss(output, input_data, PrefillCELoss())
 
@@ -127,9 +127,9 @@ def resolve_and_compute_loss(
                 continue
             # If value is None but parameter is required, fall through to error
 
-        # Special handling for target fields from model_input.targets
-        if model_input.targets is not None and hasattr(model_input.targets, param_name):
-            value = getattr(model_input.targets, param_name)
+        # Special handling for target fields from model_input.message_targets
+        if model_input.message_targets is not None and hasattr(model_input.message_targets, param_name):
+            value = getattr(model_input.message_targets, param_name)
             if value is not None:
                 kwargs[param_name] = value
                 continue
@@ -142,7 +142,7 @@ def resolve_and_compute_loss(
                 f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
-                f"Available in targets: {list(type(model_input.targets).model_fields) if model_input.targets else []}"
+                f"Available in message_targets: {list(type(model_input.message_targets).model_fields) if model_input.message_targets else []}"
             )
 
     # Call the loss function with matched arguments
