@@ -192,7 +192,7 @@ class TriggerLogitBasedLoss(BaseLoss):
 @dataclass
 class TriggerPerplexityLoss(TriggerLogitBasedLoss):
     """
-    Calculates perplexity, which is exp(cross_entropy).
+    Calculates perplexity wrt to the target model logits themselves.
     Useful for penalizing non-fluent triggers.
     """
 
@@ -224,21 +224,16 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
             trigger_logits.ndim == 3 and trigger_logits.shape[:2] == input_trigger_ids.shape[:2]
         ), f"Shape mismatch: trigger_logits {trigger_logits.shape}, input_trigger_ids {input_trigger_ids.shape}"
 
-        # Compute cross-entropy for each sample in batch
-        # NOTE: PrefillCELoss expects unbatched targets, but we have batched input_trigger_ids
-        # So we compute CE for each sample separately and stack
-        ce_losses = []
-        for i in range(trigger_logits.shape[0]):
-            ce_loss_fn = PrefillCELoss(temperature=self.temperature)
-            ce_loss_i = ce_loss_fn(
-                trigger_logits[i:i+1],  # (1, trigger_seq_len, vocab_size)
-                input_trigger_ids[i],    # (trigger_seq_len,) - unbatched for this sample
-                ignore_index=ignore_index
-            )  # (1,)
-            ce_losses.append(ce_loss_i)
+        loss = torch.nn.functional.cross_entropy(
+            trigger_logits.transpose(-1, -2),  # (bsz, vocab_size, trigger_seq_len)
+            input_trigger_ids,  # (bsz, trigger_seq_len)
+            reduction="none",
+            ignore_index=ignore_index,
+        )  # (bsz, trigger_seq_len)
 
-        ce_loss = torch.cat(ce_losses, dim=0)  # (bsz,)
-        return torch.exp(ce_loss)
+        ce_loss = masked_mean(loss, (input_trigger_ids != ignore_index).float())
+
+        return ce_loss
 
 #############################
 @dataclass

@@ -120,7 +120,7 @@ def run_rasliteplus_llm(
             device=device,
         )
 
-    loss = ResponseHarmfulnessLoss()
+    loss = PrefillCELoss()
 
     optimizer = RASLITEPlusOptimizer(
         model=model_obj,

@@ -8,6 +8,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Annotated, Any, List, Optional, Set
+from tropt.loss.utils import masked_mean
 
 import torch
 from accelerate.utils.memory import find_executable_batch_size
@@ -219,60 +220,96 @@ class ResponseHarmfulnessLoss(BinaryLMJudgeLoss, GeneratedResponseBasedLoss):
 
 ############################
 
+from dataclasses import dataclass, field
+from typing import Any, Annotated, List
+import torch
+from jaxtyping import Float
+import logging
+
+logger = logging.getLogger(__name__)
+
 @dataclass
 class ExternalTriggerPerplexityLoss(BaseLoss):
     """Perplexity of the trigger under an external LM (operates on the trigger strings).
 
-    Wraps each trigger with naturalness_prefix and compuates the perplexity wrt model_name_or_path.
+    Wraps each trigger with naturalness_prefix and computes the perplexity wrt model_name_or_path.
     """
 
-    naturalness_prefix: str = "Here is a readable sentence: {text}"
+    naturalness_prefix: str = "Here is a readable sentence: "
 
     model_name_or_path: str = "HuggingFaceTB/SmolLM2-135M"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     max_batch_size: int = 256
     _model: Any = field(default=None, init=False, repr=False)
     _tokenizer: Any = field(default=None, init=False, repr=False)
+    _prefix_tok_len: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self):
         logger.info(f"Loading external LM for perplexity loss: {self.model_name_or_path}")
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
         ).eval().to(self.device)
         self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        self._tokenizer.padding_side = "left"
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
+
+        # Store prefix length to mask it out later
+        self._prefix_tok_len = len(self._tokenizer(self.naturalness_prefix, add_special_tokens=False).input_ids)
 
     def __call__(
         self,
         input_trigger_strs: Annotated[List[str], "bsz"],
     ) -> Float[torch.Tensor, "bsz"]:
-        texts = [self.naturalness_prefix.format(text=t) for t in input_trigger_strs]
-        n = len(texts)
+        texts = [(self.naturalness_prefix + t) for t in input_trigger_strs]
+        ignore_index = -100
 
         @find_executable_batch_size(starting_batch_size=self.max_batch_size)
-        def _compute_all(batch_size: int) -> Float[torch.Tensor, "n"]:
-            if batch_size < self.batch_size:
-                self.batch_size = batch_size
+        def _compute_all(batch_size: int) -> Float[torch.Tensor, "bsz"]:
+            if batch_size < self.max_batch_size:
+                self.max_batch_size = batch_size
 
-            self._tokenizer.padding_side = "left"
-            all_nlls = []
-            for i in range(0, n, batch_size):
+            all_losses = []
+            for i in range(0, len(texts), batch_size):
+
+                # Tokenize:
                 inputs = self._tokenizer(
                     texts[i : i + batch_size], return_tensors="pt", padding=True, truncation=True
                 ).to(self.device)
-                with torch.no_grad():
-                    logits = self._model(**inputs).logits
-                ids, mask = inputs["input_ids"], inputs["attention_mask"].float()
-                shift_logits, shift_labels, shift_mask = logits[:, :-1], ids[:, 1:], mask[:, 1:]
-                nll = torch.nn.functional.cross_entropy(
-                    shift_logits.reshape(-1, shift_logits.size(-1)),
-                    shift_labels.reshape(-1),
-                    reduction="none",
-                ).reshape(shift_labels.size())
-                all_nlls.append((nll * shift_mask).sum(1) / shift_mask.sum(1).clamp(min=1))
+                trigger_ids = [
+                    self._tokenizer(t, add_special_tokens=False).input_ids for t in input_trigger_strs[i : i + batch_size]
+                ]
 
-            return torch.cat(all_nlls)
+                # Get trigger logits:
+                with torch.no_grad():
+                    logits = self._model(**inputs).logits  # (bsz, seq_len, vocab_size)
+
+                # pad logits & ids with ignore index, to unify lengths:
+                max_trigger_len = max(len(ids) for ids in trigger_ids)
+                # Left pad trigger_ids to max_trigger_len with -100 for ignore index in loss:
+                trigger_ids = [  # left-pad with -100 for ignore index in loss
+                    torch.tensor([ignore_index] * (max_trigger_len - len(ids)) + ids) for ids in trigger_ids
+                ]
+                # Extract the logits corresponding to the trigger tokens (accounting for prefix length and padding):
+                trigger_logits = [
+                    logits[j, -max_trigger_len - 1 : -1, :]
+                    for j, ids in enumerate(trigger_ids)
+                ]  # list of (max_trigger_len, vocab_size)
+
+                trigger_logits = torch.stack(trigger_logits, dim=0).to(self.device)  # (bsz, trigger_len, vocab_size)
+                trigger_ids = torch.stack(trigger_ids, dim=0).to(self.device)  # (bsz, trigger_len)
+
+                log_perp = torch.nn.functional.cross_entropy(
+                    trigger_logits.transpose(1, 2),  # (bsz, vocab_size, trigger_len)
+                    trigger_ids,  # (bsz, trigger_len)
+                    reduction="none",
+                )  # (bsz, trigger_len)
+
+                all_losses.append(
+                    masked_mean(log_perp, (trigger_ids != ignore_index).float())  # mean over trigger tokens
+                )
+
+            return torch.cat(all_losses, dim=0)  # (bsz,)
 
         return _compute_all()

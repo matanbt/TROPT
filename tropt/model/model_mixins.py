@@ -215,6 +215,7 @@ class LossTextAccessMixin(TextAccessMixin):
             # Create ModelInput wrapper
             model_input = ModelInput(
                 input_texts=curr_texts,
+                input_trigger_strs=candidate_trigger_strs,
                 message_targets=curr_targets,
             )
 

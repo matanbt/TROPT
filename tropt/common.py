@@ -86,8 +86,9 @@ class Targets(pydantic.BaseModel):
     """Raw text target outputs, one per template.
 
     List is of length n_templates.
-    Used by: Language models for target matching. Will be tokenized
-    internally to produce `target_response_toks` if not provided directly.
+    - Used by: Language models for target matching. Will be tokenized
+               internally to produce `target_response_toks` if not provided directly.
+    - If used with prefill-based losses, it will automatically run model computations with a the prefilled target response
     """
 
     target_response_toks: Optional[Int[Tensor, "n_templates target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_templates"]] = None

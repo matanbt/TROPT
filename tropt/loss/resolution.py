@@ -2,6 +2,7 @@
 """
 
 import inspect
+import logging
 from typing import Any, Dict
 
 import torch
@@ -11,6 +12,7 @@ from torch import Tensor
 from tropt.common import ModelInput, ModelOutput
 from tropt.loss.base import BaseLoss, CombinedLoss
 
+logger = logging.getLogger(__name__)
 
 class LossResolutionError(Exception):
     """Raised when required data is missing for loss computation.
@@ -142,17 +144,16 @@ def resolve_and_compute_loss(
                 f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
-                f"Available in message_targets: {list(type(model_input.message_targets).model_fields) if model_input.message_targets else []}"
+                f"Available in message_targets: {_get_non_none_fields(model_input.message_targets)}"
             )
 
     # Call the loss function with matched arguments
     try:
         return loss_func(**kwargs)
     except Exception as e:
-        raise RuntimeError(
-            f"Error calling {type(loss_func).__name__}.__call__ with arguments "
-            f"{list(kwargs.keys())}: {e}"
-        ) from e
+        logger.error(f"Error while calling loss {type(loss_func).__name__} with arguments "
+            f"{list(kwargs.keys())}")
+        raise e
 
 
 def _get_non_none_fields(obj: ModelOutput | ModelInput) -> list[str]:

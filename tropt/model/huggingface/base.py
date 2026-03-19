@@ -171,8 +171,8 @@ class _HFTokenInputManager(TokenInputManager):
 
         Notes:
         - We do not support varying trigger lengths in the same candidate batch
-        (they must share `trigger_seq_len`).
-        - for specific use cases, the following method can be optimized; however,
+            (they must share `trigger_seq_len`).
+        - for *specific* use cases, the following method is suboptimal; however,
             currently generality and support for different input types/shapes are prioritized.
 
         Args:
@@ -191,18 +191,19 @@ class _HFTokenInputManager(TokenInputManager):
 
         Returns: A ModelInput object containing:
                 - input_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
-                    the token ids of the trigger(s) inserted (detached, for reference)
+                    the token ids of the trigger(s) inserted (detached from grad graph; for reference)
                 - inputs_embeds: Tensor, shape = (n_candidates, seq_len, embd_dim)
                     the input embeddings with the trigger merged in;
                     if the provided input_embds required grad, then this tensor will also require grad.
                 - attention_mask: Tensor, shape = (n_candidates, seq_len)
                     the attention mask matching the input embeddings
+                - input_prefix_cache_kwargs: Dict, optional
+                    the kwargs to pass to the model forward pass for using the prefix cache on `chosen_template_idx`, if applicable.
                 - message_targets: MessageTargets
                     the targets dict for the chosen message, expanded to match n_candidates dimension
         """
         # assert trigger_ids is not None, "`trigger_ids` must be provided to `get_triggered_inputs()`."
         assert chosen_template_idx is not None, "`chosen_template_idx` must be provided to `get_triggered_inputs()`. Multi-message calls should loop over messages."
-        # TODO re-read and test this critical code !!!!!!!!!!!
 
         if trigger_embeds is None:
             # embed the trigger-ids, if trigger embeddings are not provided
@@ -227,30 +228,33 @@ class _HFTokenInputManager(TokenInputManager):
         embeds_parts = []
         attn_parts = []
 
+        # add before part
         if not self.use_prefix_cache:
-            # only add 'before' part if not using prefix cache
+            # add 'before' part only if not using prefix cache
             embeds_parts.append(curr_before)
         # always add 'before' part attention (even with prefix cache)
         attn_parts.append(torch.ones((n_candidates, curr_before.shape[-2])))
 
+        # add trigger and after trigger parts
         embeds_parts.extend([curr_trigger, curr_after])
         attn_parts.extend([
             torch.ones((n_candidates, curr_trigger.shape[-2])),
             torch.ones((n_candidates, curr_after.shape[-2])),
         ])
 
+        # optionally add the appended part (e.g., target prefiling in LMs)
         if curr_append is not None:
             embeds_parts.append(curr_append)
             attn_parts.append(torch.ones((n_candidates, curr_append.shape[-2])))
 
-        # Concatenate parts
+        # concatenate parts
         inputs_embeds = torch.cat(embeds_parts, dim=-2)  # (n_candidates, seq_len, embd_dim)
         attention_mask = torch.cat(attn_parts, dim=-1)  # (n_candidates, seq_len)
         attention_mask = attention_mask.to(self.device, torch.int64)
 
         # Calculate slices for different regions
-        # Since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
-        # (this "removal" will be reflected in the model outputs, which is where we use the slicing info)
+        # Note: since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
+        # (this "removal" will be reflected in HF model outputs, which is where we use the slicing info)
         before_offset = curr_before.shape[-2] if not self.use_prefix_cache else 0
 
         input_slices = {
@@ -287,15 +291,16 @@ class _HFTokenInputManager(TokenInputManager):
                 template_idx=chosen_template_idx,
             )
 
+        print("self.tokenizer.batch_decode(trigger_ids)", self.tokenizer.batch_decode(trigger_ids))
         return ModelInput(
-            # input_texts=TODO
-            # input_trigger_strs=TODO   !!!!!!!!!!!!!
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
             input_attention_mask=attention_mask.to(self.device, torch.int64),
             input_slices=input_slices,
             message_targets=message_targets,
             input_prefix_cache_kwargs=prefix_cache_kwargs,
+
+            input_trigger_strs=self.tokenizer.batch_decode(trigger_ids) if trigger_ids is not None else None,
         )
 
     def _get_prefix_cache_kwargs(
@@ -409,13 +414,15 @@ class _HuggingFaceModelMixins:
         It computes the gradient of the loss with respect to the one-hot token matrix for each candidate
         trigger, enabling gradient-guided token selection.
 
+        This method supports two possible flows:
+            (i) the "hard" trigger flow, starting from discrete token ids (attacks like GCG),
+            (ii) the ~"soft" trigger flow, starting from probability distributions over the vocabulary (attacks like GBDA).
+
         Args:
-            inputs: Token inputs manager containing templates and tokenization info.
-                Created by `prepare_token_inputs()`.
             loss_func: Loss function to optimize. Must be compatible with model outputs
                 (e.g., PrefillBasedLoss for LMs, EmbeddingBasedLoss for encoders).
 
-            candidate_trigger_ids: Discrete token IDs for hard triggers.
+            candidate_trigger_ids: Discrete token IDs for hard triggers. Can accepts multiple candidates.
                 Shape: (n_candidates, trigger_seq_len)
                 Mutually exclusive with `candidate_trigger_probs`.
 
@@ -431,7 +438,7 @@ class _HuggingFaceModelMixins:
             gumbel_softmax_temp: Temperature for Gumbel-softmax sampling.
                 Lower values → more discrete (sharper), higher values → more uniform.
                 Only used when `do_gumbel_softmax=True`.
-            
+
             normalize_grads: If True, L2-normalize the gradients along the vocab dimension.
                 Defaults to True, as this is usually desirable for fair comparison across token positions.
 
@@ -532,9 +539,8 @@ class _HuggingFaceModelMixins:
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
                     candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
-                    # TODO move to this check to the tests, to avoid slowing down this function
+                    # TODO move to this check to the tests, to avoid slowing down this function (keeping it for now for safety)
                     # Only check when using discrete tokens (not soft probabilities)
-                    # TODO wrap in "MORE_CHECKS" flag or something, to avoid slowing down in prod  !!!!!!!!!!!!!!!!
                     if candidate_trigger_ids is not None:
                         assert torch.allclose(
                             candidate_embeds,

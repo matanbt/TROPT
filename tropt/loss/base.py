@@ -39,7 +39,7 @@ class CombinedLoss(BaseLoss):
     """Combines multiple losses with given weights."""
 
     def __init__(self, loss_funcs: List[BaseLoss], weights: List[float] = None) -> None:
-        assert weights is None or len(loss_funcs) == len(weights), "Length mismatch"
+        assert weights is None or len(loss_funcs) == len(weights), "Length mismatch between loss_funcs and weights"
         assert all(isinstance(loss, BaseLoss) for loss in loss_funcs), "All elements in losses must be instances of BaseLoss"
         assert all(not isinstance(loss, CombinedLoss) for loss in loss_funcs), "CombinedLoss cannot contain another CombinedLoss"
         self.loss_funcs: List[BaseLoss] = loss_funcs

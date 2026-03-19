@@ -84,7 +84,6 @@ class LMHFModel(
         dtype: str = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 32,
-        do_prefill_response: bool = False,  # TODO go over model instantiations and set true where needed!
         # more args:
         use_prefix_cache: bool = True,
         set_model_to_eval: bool = True,
@@ -119,7 +118,6 @@ class LMHFModel(
         self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._embedding_layer = self._model.get_input_embeddings()
         self._use_prefix_cache = use_prefix_cache
-        self.do_prefill_response = do_prefill_response
 
         # Set model to eval mode
         if set_model_to_eval:
@@ -150,13 +148,10 @@ class LMHFModel(
                 "{% for message in messages %}{{ message['content'] }}{% endfor %}"
             )
         if self._tokenizer.padding_side != "left":
-            # Left padding is required for causal LM generation (tokenizer.pad() in generate_from_tokens/text)
-            # so that sequences are right-aligned and generation continues from the last real token.
+            # Left padding is required for LM prefilling and generation
             logger.warning(
                 "Tokenizer padding side is not 'left'. Overriding to 'left' (required for causal LM generation)."
             )
-            # TODO is it true that we need it? where do we assume it?? maybe it's not needed anymore?
-            # !!!!!!!!!
             self._tokenizer.padding_side = "left"
 
         if not self._tokenizer.pad_token:
@@ -406,6 +401,7 @@ class LMHFModel(
             tokens=input_attention_mask.sum().item(),
         )
 
+        # Extract prefill logits, if exist and requested
         prefill_response_logits = None
         if do_prefill_target_response:
             assert input_slices is not None, "input_slices must be provided to extract prefill logits when `do_prefill_target_response` is True."
@@ -499,7 +495,7 @@ class LMHFModel(
         padded_seq_len = inputs.input_ids.shape[1]
 
         # 5a. Forward pass (currently only needed when prefill logits are requested)
-        # TODO optimize this code so it'll always run the forward pass and reuse it for generation, w/ caching
+        # TODO optimize this code so it'll always run the forward pass and *reuse* it for generation, w/ caching
         prefill_response_logits = None
         if do_prefill_target_response:
             with torch.no_grad():

@@ -6,7 +6,7 @@ https://aclanthology.org/2025.naacl-long.302/
 """
 
 from typing import Optional
-
+import logging
 import torch
 
 from tropt.common import SliceKey, Targets
@@ -20,6 +20,8 @@ from tropt.utils.refusal_dir import (
     compute_refusal_directions,
     generate_jailbroken_responses,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def run_iris(
@@ -77,6 +79,7 @@ def run_iris(
         max_new_tokens=50,  # limit length as it will be used as target
     )
     target_output = target_outputs[0]
+    logger.info(f"Using generated jailbroken target output: {target_output}")
 
     # Create combined loss: CE + Steering (following Eq 8 from IRIS paper)
     ce_loss = PrefillCELoss()
@@ -84,7 +87,7 @@ def run_iris(
         steer_away=True,
         targeted_layers=slice(None),  # Apply to all layers
         slc_name=SliceKey.INPUT_LAST_TOKEN,
-        do_cosine_sim=False,  # Use dot product
+        do_cosine_sim=True,  # While they might be using dot-product in the paper, it seems to be much less stable
         apply_square=True,  # Square the products
     )
     combined_loss = CombinedLoss(

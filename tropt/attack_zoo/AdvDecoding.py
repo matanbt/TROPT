@@ -121,8 +121,8 @@ def run_advdecoding_jailbreak(
     loss = CombinedLoss(
         loss_funcs=[
             PrefillCELoss(),        # Main jailbreak loss
-
             InputReadabilityLoss(),  # Naturalness scorer: keep trigger fluent
+
             # InputReadabilityLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
         ],
         weights=[1.0, 1.0],

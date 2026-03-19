@@ -81,12 +81,16 @@ class EncoderHFModel(
             assert isinstance(loaded_model, SentenceTransformer), "loaded_model must be a SentenceTransformer instance."
             self._model = loaded_model
         else:
-            self._model = SentenceTransformer(
-                model_name,
-                device=device,
-                model_kwargs=dict(dtype=dtype or "auto"),
-                **kwargs
-            )
+            try:
+                self._model = SentenceTransformer(
+                    model_name,
+                    device=device,
+                    model_kwargs=dict(dtype=dtype or "auto"),
+                    **kwargs
+                )
+            except Exception as e:
+                logger.error(f"Error loading model `{model_name}`. Please make sure you load the model properly per the HuggingFace model card (e.g., you might need to pass `trust_remote_code=True` to `{self.__class__.__name__}`): {e}")
+                raise e
         self._tokenizer = self._model.tokenizer
         self._embedding_layer = self._get_input_embeddings()
 

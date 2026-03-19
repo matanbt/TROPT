@@ -7,3 +7,4 @@ Guides
    adding_a_model
    adding_a_loss
    adding_an_optimizer
+   compatibility_matrix

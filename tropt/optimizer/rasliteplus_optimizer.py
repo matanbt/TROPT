@@ -36,17 +36,13 @@ logger = logging.getLogger(__name__)
 
 class RASLITEPlusOptimizer(BaseOptimizer):
     """
-    Implements the RASLITEPlus optimization algorithm, which combines the black-box/transfer 
-    approach of RASLITE (using a utility LM) with the enhanced optimization strategies of GASLITEPlus
-    (buffer, early stopping, decreasing n_flip, etc.).
+    Implements the RASLITEPlus optimization algorithm, which basically runs GASLITE against a black-box model; 
+    specifically, we use a util-LM for the tokenizer and to compute logits, using stratgies from GASLITEPlus
+    (buffer, early stopping, decreasing n_flip, etc.). The key loss computations are done on text-level 
+    against the black-box target model.
 
     Builds on the paper: "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
     (https://arxiv.org/abs/2412.20953)
-
-    Key components:
-    - Target Model: Accessed via text-based loss (black-box).
-    - Utility Model: Accessed via token-based logits (used for candidate generation).
-    - Optimization: Greedy coordinate ascent with buffer and adaptive scheduling.
     """
 
     model_requirements = (LossTextAccessMixin,)
@@ -91,10 +87,10 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             n_candidates (int): Number of top candidate tokens to evaluate for each position.
 
             token_constraints (TokenConstraints): An object to manage token blacklisting.
-            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer. Defaults 
+            use_retokenize (bool): Whether to filter candidates that are not reversible by the tokenizer. Defaults
                 to False, as we anyway only evaluate the target model with strings, and have no token-specific gradients.
 
-            util_model (LMBaseModel, optional): Utility model for tokenization, and also for logits calculation (if use_random_logits=False). 
+            util_model (LMBaseModel, optional): Utility model for tokenization, and also optionally for logits calculation (if use_random_logits=False).
                 If `None`, defaults to `model` (if it supports tokenization and logits calculation).
             use_random_logits (bool): If True, use random logits instead of actual logits from `util_model`.
 
@@ -136,30 +132,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self.n_bulk_flips = n_bulk_flips
         self.flip_pos_method = flip_pos_method
 
-    def _get_trigger_variations(
-        self,
-        trigger_ids: Float[Tensor, "trigger_seq_len"],
-        vocab_size: int,
-        device: torch.device,
-    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
-        """
-        Creates a list of `n_grad` trigger variations. The first is the
-        original trigger, and the rest are random single-token flips.
-        """
-        trigger_seq_len = len(trigger_ids)
-        trigger_vars_ids = trigger_ids.repeat(
-            self.n_grad, 1
-        )  # shape: (n_grad, trigger_seq_len)
-
-        for idx in range(1, self.n_grad):  # (keep the first intact)
-            # select a random position and a random token
-            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
-            # apply the flip
-            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
-
-        return trigger_vars_ids
-
     def optimize_trigger(
         self,
         templates: TextTemplates,
@@ -171,7 +143,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         # Initialization:
         # We prepare inputs for both models.
         # The optimization (candidates, buffer) operates on `util_trigger_ids` (token space of util_model).
-        # The evaluation operates on `texts` via `model` (text space of target model).
+        # The assessment operates on text-level via `model` (text space of target model).
 
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
         self.util_model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -185,8 +157,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
             util_tokenizer, util_vocab_size
         )
-
-        model_stats_before = self.model.get_usage_stats().copy()
 
         # Take the only trigger (assuming single shared trigger for now)
         util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_model.device)
@@ -245,7 +215,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                     trigger_seq_len, util_vocab_size, device=self.util_model.device
                 )
             else:
-                if self.n_grad is not None and self.n_grad > 1:  # TODO unsure if useful
+                if self.n_grad is not None and self.n_grad > 1:
                     # Average logits over variations
                     trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size, device=self.util_model.device)
                     logits = self.util_model.compute_logits_from_tokens(
@@ -320,18 +290,14 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         logger.warning(
                             f"Retokenize filtering removed all candidates for pos {pos}. Skipping step."
                         )
-                        continue 
+                        continue
 
                 # Compute losses on candidate flips (on TARGET model via text)
                 candidate_strs = [util_tokenizer.decode(t, skip_special_tokens=True) for t in candidate_triggers]
 
                 losses = self.model.compute_loss_from_texts(
-                    candidate_strs,
-                    self.loss_func,
-                    keep_message_dim=True,  # Get per-message loss
-                ).mean(
-                    dim=0
-                )  # Average over messages -> (n_cands,)
+                    candidate_strs, self.loss_func,
+                )  # (n_cands,)
 
                 # Find the best token for this position
                 losses_sorted_indices = torch.argsort(losses)
@@ -405,9 +371,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
 
-        model_stats_diff = {
-            k: v - model_stats_before[k] for k, v in self.model.get_usage_stats().items()
-        }
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
@@ -416,8 +379,34 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             trigger_strs=trigger_strings,
             full_prompt=full_prompt,
         )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str, **model_stats_diff})
-        logger.info(f"Best loss: {result.best_loss}| Usage stats: {model_stats_diff}")
+        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        logger.info(f"Best loss: {result.best_loss} | Best trigger: {result.best_trigger_str}")
         self.model.reset_inputs_from_texts()
         self.util_model.reset_inputs_from_tokens()
         return result
+
+
+    def _get_trigger_variations(
+        self,
+        trigger_ids: Float[Tensor, "trigger_seq_len"],
+        vocab_size: int,
+        device: torch.device,
+    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
+        """
+        Creates a list of `n_grad` trigger variations. The first is the
+        original trigger, and the rest are random single-token flips.
+        """
+        trigger_seq_len = len(trigger_ids)
+        trigger_vars_ids = trigger_ids.repeat(
+            self.n_grad, 1
+        )  # shape: (n_grad, trigger_seq_len)
+
+        for idx in range(1, self.n_grad):  # (keep the first intact)
+            # select a random position and a random token
+            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            # apply the flip
+            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
+
+        return trigger_vars_ids
+

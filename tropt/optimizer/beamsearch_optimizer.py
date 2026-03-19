@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class BeamSearchOptimizer(BaseOptimizer):
     """
-    A Beam Search-based optimizer.
+    An LM beam search-based optimizer.
         The general idea is to sample tokens while generating from a util LM, and
         steer the generation towards the desired objective(s) on the target model.
 

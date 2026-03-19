@@ -81,30 +81,6 @@ class GASLITEOptimizer(BaseOptimizer):
         self.use_retokenize = use_retokenize
         self.use_random_gradient = use_random_gradient
 
-    def _get_trigger_variations(
-        self,
-        trigger_ids: Float[Tensor, "trigger_seq_len"],
-        vocab_size: int,
-    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
-        """
-        Creates a list of `n_grad` trigger variations. The first is the
-        original trigger, and the rest are random single-token flips of its.
-        """
-        trigger_seq_len = len(trigger_ids)
-        device = self.model.device
-        trigger_vars_ids = trigger_ids.repeat(
-            self.n_grad, 1
-        )  # shape: (n_grad, trigger_seq_len)
-
-        for idx in range(1, self.n_grad):  # (keep the first intact)
-            # select a random position and a random token
-            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
-            # apply the flip
-            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
-
-        return trigger_vars_ids
-
     def optimize_trigger(
         self,
         templates: TextTemplates,
@@ -119,8 +95,7 @@ class GASLITEOptimizer(BaseOptimizer):
         trigger_ids = (
             tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
             .to(self.model.device, torch.int64)
-        )
-        trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
+        ).squeeze(0)  # shape: (trigger_seq_len,)
 
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
@@ -133,7 +108,7 @@ class GASLITEOptimizer(BaseOptimizer):
         trigger_strings = []
         trigger_ids_per_step = []
 
-        # Calculate initial loss
+        # Calculate initial loss for logging
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0),
             self.loss_func,
@@ -147,7 +122,7 @@ class GASLITEOptimizer(BaseOptimizer):
                 f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
             )
 
-            # --- Gradient and candidate selection step ---
+            # --- (I) Gradient and candidate selection step ---
             if self.use_random_gradient:
                 # Replace model gradient with random values
                 trigger_grad = torch.randn(
@@ -164,14 +139,14 @@ class GASLITEOptimizer(BaseOptimizer):
                 # Average the gradients to get the final approximation
                 trigger_grad = grads.mean(dim=0)
                 trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"]
-                trigger_grad = -trigger_grad  # we want to minimize the loss
+                trigger_grad *= -1  # we want to minimize the loss
 
             # Get Top-k Candidates *per position*
             trigger_grad[:, blacklist_ids] = float("-inf")
             topk_ids: Float[Tensor, "trigger_seq_len n_candidates"]
             topk_ids = trigger_grad.topk(self.n_candidates, dim=-1).indices
 
-            # --- Greedy coordinate ascent step ---
+            # --- (II) Greedy coordinate ascent step ---
             current_trigger_ids = trigger_ids.clone()
             # Sample `n_flip` unique positions to optimize
             sampled_positions = torch.randperm(trigger_seq_len, device=self.model.device)[
@@ -211,18 +186,16 @@ class GASLITEOptimizer(BaseOptimizer):
                 losses = self.model.compute_loss_from_tokens(
                     candidate_triggers,
                     self.loss_func,
-                    keep_message_dim=True,  # Get per-message loss
-                ).mean(
-                    dim=0
-                )  # Average over messages -> (n_cands,)
+                )  # (n_cands,)
 
                 # Find the best token for this position
                 best_candidate_idx = losses.argmin()
 
-                # Update `current_trigger_ids` *in-place* for the next iteration of the greedy (inner) loop
+                # Update `current_trigger_ids` for the next iteration of the greedy (inner) loop
                 current_trigger_ids = candidate_triggers[best_candidate_idx].clone()
                 current_loss = losses[best_candidate_idx].item()
 
+            # --- (III) Update the main trigger ----
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             trigger_ids = current_trigger_ids
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
@@ -251,3 +224,28 @@ class GASLITEOptimizer(BaseOptimizer):
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         self.model.reset_inputs_from_tokens()
         return result
+
+
+    def _get_trigger_variations(
+        self,
+        trigger_ids: Float[Tensor, "trigger_seq_len"],
+        vocab_size: int,
+    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
+        """
+        Creates a list of `n_grad` trigger variations. The first is the
+        original trigger, and the rest are random single-token flips of its.
+        """
+        trigger_seq_len = len(trigger_ids)
+        device = self.model.device
+        trigger_vars_ids = trigger_ids.repeat(
+            self.n_grad, 1
+        )  # shape: (n_grad, trigger_seq_len)
+
+        for idx in range(1, self.n_grad):  # (keep the first intact)
+            # select a random position and a random token
+            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            # apply the flip
+            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
+
+        return trigger_vars_ids
