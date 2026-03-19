@@ -70,15 +70,6 @@ class GCGOptimizer(BaseOptimizer):
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
 
-    def _get_component_losses_log(self) -> dict:
-        """If using CombinedLoss, return a dict of sub-loss values for logging."""
-        if not isinstance(self.loss_func, CombinedLoss):
-            return {}
-        return {
-            f"loss/{name}": val.min().item()
-            for name, val in self.loss_func.get_component_losses_dict().items()
-        }
-
     def _sample_ids_from_grad(
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
@@ -228,3 +219,14 @@ class GCGOptimizer(BaseOptimizer):
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         self.model.reset_inputs_from_tokens()
         return result
+
+
+    def _get_component_losses_log(self) -> dict:
+        # TODO this is temporary for exploration -- remove me
+        """If using CombinedLoss, return a dict of sub-loss values for logging."""
+        if not isinstance(self.loss_func, CombinedLoss):
+            return {}
+        return {
+            f"loss/{name}": val.min().item()
+            for name, val in self.loss_func.get_component_losses_dict().items()
+        }

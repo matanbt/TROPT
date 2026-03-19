@@ -238,7 +238,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             trigger_strings.append(trigger_str)
             trigger_tensors.append(best_trigger_ids)
             loss_per_step.append(current_loss)
-            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, **self._get_component_losses_log(), **self.model.get_usage_stats()})
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
@@ -300,3 +300,12 @@ class BeamSearchOptimizer(BaseOptimizer):
 
         return next_tokens
 
+    def _get_component_losses_log(self) -> dict:
+        # TODO this is temporary for exploration -- remove me
+        """If using CombinedLoss, return a dict of sub-loss values for logging."""
+        if not isinstance(self.loss_func, CombinedLoss):
+            return {}
+        return {
+            f"loss/{name}": val.min().item()
+            for name, val in self.loss_func.get_component_losses_dict().items()
+        }

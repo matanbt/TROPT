@@ -338,7 +338,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         n_flip = max(1, math.ceil(self.n_flip * ratio))
 
             # Logging:
-            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, **self._get_component_losses_log(), **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(util_trigger_ids)
@@ -410,3 +410,12 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         return trigger_vars_ids
 
+    def _get_component_losses_log(self) -> dict:
+        # TODO this is temporary for exploration -- remove me
+        """If using CombinedLoss, return a dict of sub-loss values for logging."""
+        if not isinstance(self.loss_func, CombinedLoss):
+            return {}
+        return {
+            f"loss/{name}": val.min().item()
+            for name, val in self.loss_func.get_component_losses_dict().items()
+        }
