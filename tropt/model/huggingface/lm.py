@@ -48,13 +48,11 @@ class LMHFTokenInputManager(_HFTokenInputManager):
     def get_triggered_inputs(
         self,
         do_append_embeds: bool = False,
-        do_prefill_target_response: bool = False,
         **kwargs,
     ):
         assert (
             kwargs.get("append_embeds", None) is None
         ), "append_embeds should not be passed directly to LM models. Use `target_embeds` property instead."
-        do_append_embeds = do_append_embeds or do_prefill_target_response
         if do_append_embeds:
             assert self.targets.target_response_toks is not None, "target_response_toks must be provided in targets to append prefill_embeds to inputs."
 
@@ -180,6 +178,25 @@ class LMHFModel(
     def device(self):
         return self._model.device
 
+    def _update_targets_by_model(self, targets: Optional[Targets]) -> Targets:
+        if targets is None:
+            targets = Targets()
+
+        # Encode target outputs, if provided
+        if targets.target_response_strs is not None:
+            tokenized_lists = self._tokenizer(
+                targets.target_response_strs, add_special_tokens=False
+            )["input_ids"]
+            # convert to list of tensors
+            targets.target_response_toks = [
+                torch.tensor(ids, device=self._model.device) for ids in tokenized_lists
+                # each of shape (target_seq_len,)
+            ]
+
+        # Move targets to device
+        targets = targets.to_device(self._model.device)
+        return targets
+
     # ======================= Token-access methods =======================
 
     def set_inputs_from_tokens(
@@ -214,25 +231,8 @@ class LMHFModel(
             for template in templates
         ]
 
-        if targets is None:
-            targets = Targets()
-
-        # Encode target outputs, if provided
-        if targets.target_response_strs is not None:
-            tokenized_lists = self._tokenizer(
-                targets.target_response_strs, add_special_tokens=False
-            )["input_ids"]
-            # convert to list of tensors
-            targets.target_response_toks = [
-                torch.tensor(ids, device=self._model.device) for ids in tokenized_lists
-                # each of shape (target_seq_len,)
-            ]
-
-        # Move targets to device
-        targets = targets.to_device(self._model.device)
-
-        # Pass `do_prefill_response` and the token input manager fully handles the prefilling
-        do_prefill_response = self.do_prefill_response and targets.target_response_toks is not None
+        # Update targets (eg tokenize target response strs if toks not provided, move to device, etc.)
+        targets = self._update_targets_by_model(targets)
 
         # Build the input manager, that will allow combining with different triggers
         self._token_input_manager = LMHFTokenInputManager(
@@ -421,6 +421,13 @@ class LMHFModel(
 
     # ======================= Text-access methods =======================
 
+    def set_inputs_from_texts(self, templates, targets=None):
+
+        # Update targets (eg tokenize target response strs if toks not provided, move to device, etc.)
+        targets = self._update_targets_by_model(targets)
+
+        return super().set_inputs_from_texts(templates, targets)
+
     def invoke_from_texts(
         self,
         input_texts: Optional[List[str]] = None,
@@ -491,21 +498,19 @@ class LMHFModel(
         ).to(self.device)
         padded_seq_len = inputs.input_ids.shape[1]
 
-        # 5. Forward pass (optionally w/ prefill toks)
-        with torch.no_grad():
-            fwd_out = self._model(**inputs, use_cache=True)
-
-        # 5a. Slice prefill logits
+        # 5a. Forward pass (currently only needed when prefill logits are requested)
+        # TODO optimize this code so it'll always run the forward pass and reuse it for generation, w/ caching
         prefill_response_logits = None
-        if prefill_len > 0:
-            start = padded_seq_len - prefill_len - 1
-            end   = padded_seq_len - 1
-            prefill_response_logits = torch.stack(
-                [fwd_out.logits[i, start:end]
-                    for i in range(len(input_texts))],
-                dim=0
-            )  # (bsz, response_seq_len, vocab_size)
-
+        if do_prefill_target_response:
+            with torch.no_grad():
+                fwd_out = self._model(**inputs, use_cache=False)
+            if prefill_len > 0:
+                start = padded_seq_len - prefill_len - 1
+                end   = padded_seq_len - 1
+                prefill_response_logits = torch.stack(
+                    [fwd_out.logits[i, start:end] for i in range(len(input_texts))],
+                    dim=0,
+                )  # (bsz, prefill_len, vocab_size)
 
         # 5b. Early return if generation not requested
         n_prompt_tokens = inputs.input_ids.numel()
@@ -516,15 +521,14 @@ class LMHFModel(
                 forward_samples=len(input_texts),
             )
             return ModelOutput(
-                prefill_response_logits=prefill_response_logits,
+                prefill_response_logits=prefill_response_logits
                 # (full logits / full ids can be not aligned, so we currently don't provide them)
                 # TODO also populate with other available properties?
             )
 
-        # 5c. Generate, reusing KV cache from the forward pass above
+        # 5c. Generate
         generation_output = self._model.generate(
             **inputs,
-            past_key_values=fwd_out.past_key_values,
             output_logits=True,
             **hf_gen_kwargs,
         )

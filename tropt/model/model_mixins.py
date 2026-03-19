@@ -16,6 +16,8 @@ from tropt.common import (
     TokenTriggerCandidates,
 )
 from tropt.loss import BaseLoss
+from tropt.loss.losses import PrefillBasedLoss
+from tropt.loss.text_losses import GeneratedResponseBasedLoss
 from tropt.loss.resolution import resolve_and_compute_loss
 
 from .inputs_manager import (
@@ -205,6 +207,9 @@ class LossTextAccessMixin(TextAccessMixin):
             # Forward pass once per template bulk
             model_output = self.invoke_from_texts(
                 input_texts=curr_texts,
+                message_targets=curr_targets,
+                do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
             )  # Returns ModelOutput with available data
 
             # Create ModelInput wrapper

@@ -6,15 +6,12 @@ https://strong-reject.readthedocs.io/en/latest/api/index.html
 from typing import Any, Dict, List
 
 import pandas as pd
-import torch
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
+from transformers import pipeline
 
 import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.model import LMBaseModel
-from tropt.model.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
 
 
 def evaluate_jailbreakness_of_responses(
@@ -68,20 +65,31 @@ def evaluate_jailbreakness_of_responses(
 
 
 def evaluate_triggers(
-    model: LMBaseModel,
+    model_name: str,
     trigger_strs: List[str],
     trigger_ids: List[Any]=None,
     eval_dataset_path: str="scripts/attack_evaluate/advbench_plus.csv",
     batch_size: int = 128,
+    greedy_decode: bool = True,
+    max_new_tokens: int = 128,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
 
     Args:
-        model (LMBaseModel): The language model to evaluate.
-        trigger_strs (List[str]): List of trigger strings to evaluate.
-
+        model_name: HuggingFace model name/path to evaluate.
+        trigger_strs: List of trigger strings to evaluate.
+        greedy_decode: Use greedy decoding; set False for sampling.
+        max_new_tokens: Maximum tokens to generate per response.
     """
+    # Load HF model directly via pipeline (isolated, no TROPT wrapping)
+    pipe = pipeline(
+        "text-generation",
+        model=model_name,
+        torch_dtype=torch.bfloat16,
+        device_map="auto",
+    )
+
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
     base_df = pd.read_csv(eval_dataset_path)
@@ -105,12 +113,16 @@ def evaluate_triggers(
             lambda x: x.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, trigger_str)
         )
 
-        # Get model responses in batches
-        responses = []
-        for idx in range(0, len(df), batch_size):
-            batch_df = df.iloc[idx: idx + batch_size]
-            responses.extend(model(batch_df['triggered_message'].tolist()))
-        df['response'] = responses
+        # Get model responses via pipeline abstraction
+        messages = [[{"role": "user", "content": t}] for t in df['triggered_message']]
+        outputs = pipe(
+            messages,
+            max_new_tokens=max_new_tokens,
+            do_sample=not greedy_decode,
+            batch_size=batch_size,
+            return_full_text=False,
+        )
+        df['response'] = [out[0]["generated_text"] for out in outputs]
 
         # Evaluate jailbreakness
         metric_to_scores = evaluate_jailbreakness_of_responses(
@@ -165,20 +177,13 @@ def wandb_to_trigger_eval_pipeline(
     metadata_df = pd.DataFrame(metadata_df)
     metadata_df['trigger_id'] = range(len(metadata_df))
 
-    # Load Model
-    print(f"Loading model {model_name} for evaluation...")
-    model = LMHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
-
     # Run Evaluation
-    eval_df = evaluate_triggers(  # TODO get from tropts
-        model=model,
+    eval_df = evaluate_triggers(
+        model_name=model_name,
         trigger_strs=metadata_df['trigger'].tolist(),
         trigger_ids=metadata_df['trigger_id'].tolist(),
         eval_dataset_path=DATASET_PATH,
-        batch_size=8
+        batch_size=8,
     )
     eval_df['eval_model'] = model_name
 

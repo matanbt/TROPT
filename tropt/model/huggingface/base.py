@@ -561,7 +561,7 @@ class _HuggingFaceModelMixins:
                         trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
                     )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
@@ -671,7 +671,7 @@ class _HuggingFaceModelMixins:
                         chosen_template_idx=template_idx,
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
                     )
 
                     # 3. Forward pass
@@ -780,7 +780,7 @@ class _HuggingFaceModelMixins:
                     chosen_template_idx=template_idx,
 
                     # loss-conditional flags:
-                    do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
+                    do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
                 )
                 model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
