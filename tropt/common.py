@@ -77,8 +77,7 @@ class Targets(pydantic.BaseModel):
 
     Typically only one or two of these fields need to be provided depending
     on the loss function being used.
-    For example, a standard LM jailbreak only needs `target_response_strs` (which will be
-    tokenized internally).
+    For example, a standard LM jailbreak only needs `target_response_strs` to provide the target outputs.
     """
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
 

@@ -391,7 +391,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
-            best_trigger=best_trigger_ids,
+            best_trigger_ids=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
             full_prompt=full_prompt,

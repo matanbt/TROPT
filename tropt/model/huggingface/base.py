@@ -53,7 +53,7 @@ class _HFTokenInputManager(TokenInputManager):
         self,
         model: transformers.PreTrainedModel,
         tokenizer: transformers.PreTrainedTokenizer,
-        tok_ids: List[List[int]],
+        tok_ids: Annotated[List[List[int]], "n_templates seq_len"],
         embed_func: torch.nn.Embedding,
         optimized_trigger_placeholder: Optional[str] = OPTIMIZED_TRIGGER_PLACEHOLDER,
         use_prefix_cache: Optional[bool] = False,
@@ -62,25 +62,26 @@ class _HFTokenInputManager(TokenInputManager):
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
 
-        # Split texts into before/after optimized trigger parts
+        ## Split texts into before/after optimized trigger parts
+        placeholder_id = tokenizer.convert_tokens_to_ids(
+            optimized_trigger_placeholder  # expected to be a single token
+        )
+        before_ids, after_ids = [], []
         before_texts, after_texts = [], []
-        for text in tokenizer.batch_decode(tok_ids):
-            bef, aft = text.split(optimized_trigger_placeholder)
-            before_texts.append(bef)
-            after_texts.append(aft)
-
-        # Tokenize & Tensorize everything
-        # We save the tensor ids in lists, as they may have different lengths
-        before_ids = tokenizer(before_texts, add_special_tokens=False)["input_ids"]
-        before_ids = [
-            torch.tensor(ids, device=model.device, dtype=torch.int64)
-            for ids in before_ids
-        ]
-        after_ids = tokenizer(after_texts, add_special_tokens=False)["input_ids"]
-        after_ids = [
-            torch.tensor(ids, device=model.device, dtype=torch.int64)
-            for ids in after_ids
-        ]
+        for ids in tok_ids:  # iterate on each template
+            # extract trigger position:
+            ids = torch.tensor(ids, device=model.device, dtype=torch.int64)
+            trig_positions = (ids == placeholder_id).nonzero(as_tuple=True)[0]
+            assert len(trig_positions) == 1, (
+                f"Expected exactly 1 '{optimized_trigger_placeholder}' token in the template "
+                f"token sequence, found {len(trig_positions)}."
+            )
+            trig_pos = trig_positions.item()
+            # split into before/after trigger parts:
+            before_ids.append(ids[:trig_pos])
+            after_ids.append(ids[trig_pos + 1:])
+            before_texts.append(tokenizer.decode(ids[:trig_pos].tolist()))
+            after_texts.append(tokenizer.decode(ids[trig_pos + 1:].tolist()))
 
         self.before_ids = before_ids
         self.before_texts = before_texts
@@ -451,6 +452,8 @@ class _HuggingFaceModelMixins:
             fair comparison across different token positions.
 
         Raises:
+            ValueError: If loss_func.is_differentiable is False (e.g. ExternalTriggerPerplexityLoss,
+                TextBasedLoss). Use a black-box optimizer instead.
             AssertionError: If not exactly one of the trigger input modes is provided.
             AssertionError: If effective embedding matrix doesn't match embed function
                 (indicates non-standard model embedding logic).
@@ -468,6 +471,11 @@ class _HuggingFaceModelMixins:
             >>> # Use grads to select top-k tokens per position for next iteration
 
         """
+        if not loss_func.is_differentiable:
+            raise ValueError(
+                f"{type(loss_func).__name__}.is_differentiable=False: this loss has no gradient path "
+                f"through the model's input embeddings. Grad computation is not possible."
+            )
         assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
         assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."

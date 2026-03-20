@@ -300,7 +300,7 @@ class PGDOptimizer(BaseOptimizer):
         result = OptimizerResult(
             best_loss=best_loss,
             best_trigger_str=best_trigger_str,
-            best_trigger=best_trigger_ids,
+            best_trigger_ids=best_trigger_ids,
             losses=loss_per_step,
             trigger_strs=trigger_strings,
             full_prompt=full_prompt,

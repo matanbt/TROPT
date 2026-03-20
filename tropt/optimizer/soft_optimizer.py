@@ -80,7 +80,6 @@ class SoftPromptOptimizer(BaseOptimizer):
         )
 
         trigger_embeds = self.model._embedding_layer(trigger_ids)  # (1, trigger_seq_len, embd_dim)
-        # trigger_embeds.requires_grad_(True)  # TODO ??
 
         # Initialize Adam optimizer on the logits
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
@@ -121,16 +120,13 @@ class SoftPromptOptimizer(BaseOptimizer):
 
         result = OptimizerResult(
             best_loss=min(loss_per_step),
-            best_trigger=trigger_embeds.detach().tolist(),
+            best_trigger_emb=trigger_embeds.detach().squeeze(0),  # (trigger_seq_len, embd_dim)
             losses=loss_per_step,
         )
-        # TODO save to result to pt file?
-
-        # TODO allow inference with this soft prompt?
 
         self.tracker.log({
             "best_loss": result.best_loss,
-            "best_trigger_embeds": result.best_trigger
+            "best_trigger_embeds": result.best_trigger_emb
         })
         self.model.reset_inputs_from_tokens()
         return result

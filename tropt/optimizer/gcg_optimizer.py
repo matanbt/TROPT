@@ -210,7 +210,7 @@ class GCGOptimizer(BaseOptimizer):
         result = OptimizerResult(
             best_loss=loss_per_step[min_loss_index],
             best_trigger_str=best_trigger_str,
-            best_trigger=trigger_ids_per_step[min_loss_index],
+            best_trigger_ids=trigger_ids_per_step[min_loss_index],
             losses=loss_per_step,
             trigger_strs=trigger_strings,
             full_prompt=full_prompt,

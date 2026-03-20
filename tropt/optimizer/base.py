@@ -4,6 +4,7 @@ from typing import Annotated, Any, List, Optional
 
 import pydantic
 import torch
+from jaxtyping import Float
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
 from tropt.loss import BaseLoss
@@ -14,11 +15,18 @@ from tropt.tracker import BaseTracker, DummyTracker
 ## ------- Optimizer result ------- ##
 @dataclass
 class OptimizerResult:
-    best_trigger: TokenTrigger
     best_loss: float
-    losses: Optional[List[float]] = None
+
+    # Best trigger options:
+    best_trigger_ids: Optional[TokenTrigger] = None
     best_trigger_str: Optional[str] = None
+    best_trigger_emb: Optional[Float[torch.Tensor, "trigger_seq_len embed_dim"]] = None
+
+    # Optiomazation records:
+    losses: Optional[List[float]] = None
     trigger_strs: Optional[List[str]] = None
+
+    # Complete artifacts:
     full_prompt: Optional[str | List[str]] = None
 
 ## ------- Base Optimizer ------- ##

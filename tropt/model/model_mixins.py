@@ -138,7 +138,7 @@ class GradientTokenAccessMixin(InvokeTokenAccessMixin):
 
 ## "White-box" Model Mixins w/ embed access:
 class GradientEmbedAccessMixin(InvokeTokenAccessMixin):
-    """Mixin for models that can compute gradients based on token-level inputs."""
+    """Mixin for models that can compute gradients from the *input embeddings* based on token-level inputs."""
 
     @abstractmethod
     def compute_grad_from_embeds(
@@ -208,8 +208,8 @@ class LossTextAccessMixin(TextAccessMixin):
             model_output = self.invoke_from_texts(
                 input_texts=curr_texts,
                 message_targets=curr_targets,
-                do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
-                do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
+                do_prefill_target_response=loss_func.requires_target_prefill,
+                do_generate=loss_func.requires_generation,
             )  # Returns ModelOutput with available data
 
             # Create ModelInput wrapper
