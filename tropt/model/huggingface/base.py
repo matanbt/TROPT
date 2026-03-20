@@ -19,13 +19,7 @@ from tropt.common import (
     SliceKey,
     Targets,
 )
-from tropt.loss import (
-    AttentionBasedLoss,
-    BaseLoss,
-    HiddenStateBasedLoss,
-    PrefillBasedLoss,
-    GeneratedResponseBasedLoss,
-)
+from tropt.loss import BaseLoss
 from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
@@ -574,16 +568,16 @@ class _HuggingFaceModelMixins:
                         trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
                         # loss-conditional flags:
-                        do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_append_embeds=loss_func.requires_target_prefill,
                     )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
-                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
-                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
-                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
+                        do_prefill_target_response=loss_func.requires_target_prefill,
+                        do_generate=loss_func.requires_generation,
+                        return_hidden_states=loss_func.requires_hidden_states,
+                        return_attentions=loss_func.requires_attentions,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
@@ -684,7 +678,7 @@ class _HuggingFaceModelMixins:
                         chosen_template_idx=template_idx,
 
                         # loss-conditional flags:
-                        do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
+                        do_append_embeds=loss_func.requires_target_prefill,
                     )
 
                     # 3. Forward pass
@@ -692,10 +686,10 @@ class _HuggingFaceModelMixins:
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
-                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
-                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
-                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
+                        do_prefill_target_response=loss_func.requires_target_prefill,
+                        do_generate=loss_func.requires_generation,
+                        return_hidden_states=loss_func.requires_hidden_states,
+                        return_attentions=loss_func.requires_attentions,
                     )
 
                     # 4. Compute Loss
@@ -793,16 +787,16 @@ class _HuggingFaceModelMixins:
                     chosen_template_idx=template_idx,
 
                     # loss-conditional flags:
-                    do_append_embeds=loss_func.contains_loss_type(PrefillBasedLoss),
+                    do_append_embeds=loss_func.requires_target_prefill,
                 )
                 model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.contains_loss_type(PrefillBasedLoss),
-                        do_generate=loss_func.contains_loss_type(GeneratedResponseBasedLoss),
-                        return_hidden_states=loss_func.contains_loss_type(HiddenStateBasedLoss),
-                        return_attentions=loss_func.contains_loss_type(AttentionBasedLoss),
+                        do_prefill_target_response=loss_func.requires_target_prefill,
+                        do_generate=loss_func.requires_generation,
+                        return_hidden_states=loss_func.requires_hidden_states,
+                        return_attentions=loss_func.requires_attentions,
                     )
                 loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)

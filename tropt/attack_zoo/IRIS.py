@@ -76,7 +76,7 @@ def run_iris(
         prompts=[instruction_clean],
         refusal_dirs=refusal_dirs,
         source_layer=source_layer,
-        max_new_tokens=50,  # limit length as it will be used as target
+        max_new_tokens=20,  # limit length as it will be used as target
     )
     target_output = target_outputs[0]
     logger.info(f"Using generated jailbroken target output: {target_output}")

@@ -10,7 +10,7 @@ import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import ClassVar, List, Optional
 
 import torch
 from jaxtyping import Float
@@ -22,8 +22,29 @@ logger = logging.getLogger(__name__)
 class BaseLoss(ABC):
     """Base class for all loss functions."""
 
+    is_differentiable: ClassVar[bool] = True
+    """Whether this loss is back-propable. Set to False for losses that use external
+    models, text generation, or other non-differentiable operations."""
+
+    requires_target_prefill: ClassVar[bool] = False
+    """Whether this loss requires the model to prefill the target response tokens (appending
+    them to the input, as a response prefix)."""
+
+    requires_generation: ClassVar[bool] = False
+    """Whether this loss requires autoregressive generation."""
+
+    requires_hidden_states: ClassVar[bool] = False
+    """Whether this loss requires the model to provid the forward pass's hidden states."""
+
+    requires_attentions: ClassVar[bool] = False
+    """Whether this loss requires the model to return attention weights."""
+
     _last_loss_vals: Optional[Float[Tensor, "bsz"]] = None
     """Loss values from the most recent __call__, shape (bsz,). Set automatically by __init_subclass__."""
+
+    def __post_init__(self):
+        """Initialize instance state."""
+        self._last_loss_vals = None
 
     def __init_subclass__(cls, **kwargs):
         """
@@ -116,6 +137,26 @@ class CombinedLoss(BaseLoss):
                 for lf, val in zip(self.loss_funcs, self._last_component_loss_vals)
             },
         }
+
+    @property
+    def is_differentiable(self) -> bool:
+        return all(lf.is_differentiable for lf in self.loss_funcs)
+
+    @property
+    def requires_target_prefill(self) -> bool:
+        return any(lf.requires_target_prefill for lf in self.loss_funcs)
+
+    @property
+    def requires_generation(self) -> bool:
+        return any(lf.requires_generation for lf in self.loss_funcs)
+
+    @property
+    def requires_hidden_states(self) -> bool:
+        return any(lf.requires_hidden_states for lf in self.loss_funcs)
+
+    @property
+    def requires_attentions(self) -> bool:
+        return any(lf.requires_attentions for lf in self.loss_funcs)
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""

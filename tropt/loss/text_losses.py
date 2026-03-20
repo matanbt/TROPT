@@ -5,10 +5,9 @@ Important note: The losses arguments must match the fields in ModelOutput and Mo
 for unified loss resolution to work properly.
 """
 import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Annotated, Any, List, Optional, Set
-from tropt.loss.utils import masked_mean
+from typing import Annotated, Any, ClassVar, List, Set
 
 import torch
 from accelerate.utils.memory import find_executable_batch_size
@@ -16,6 +15,7 @@ from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.loss.base import BaseLoss
+from tropt.loss.utils import IGNORE_INDEX, masked_mean
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class TextBasedLoss(BaseLoss):
     """Marker base for losses that operate on text fields (e.g. input_texts, generated_response_strs)."""
+
+    is_differentiable: ClassVar[bool] = False
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Float[torch.Tensor, "bsz"]:
@@ -36,6 +38,8 @@ class TextBasedLoss(BaseLoss):
 @dataclass
 class GeneratedResponseBasedLoss(TextBasedLoss):
     """Marker base for losses that operate on `generated_response_strs`."""
+
+    requires_generation: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -65,6 +69,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
     _negative_token_ids: Set[int] = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         logger.info(f"Loading LM judge model for loss: {self.model_name_or_path}")
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
@@ -220,20 +225,15 @@ class ResponseHarmfulnessLoss(BinaryLMJudgeLoss, GeneratedResponseBasedLoss):
 
 ############################
 
-from dataclasses import dataclass, field
-from typing import Any, Annotated, List
-import torch
-from jaxtyping import Float
-import logging
-
-logger = logging.getLogger(__name__)
-
 @dataclass
 class ExternalTriggerPerplexityLoss(BaseLoss):
     """Perplexity of the trigger under an external LM (operates on the trigger strings).
 
     Wraps each trigger with naturalness_prefix and computes the perplexity wrt model_name_or_path.
+    Not differentiable: uses a separate external model with no gradient path to the optimized trigger embeddings.
     """
+
+    is_differentiable: ClassVar[bool] = False
 
     naturalness_prefix: str = "Here is a readable sentence: "
 
@@ -245,6 +245,7 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
     _prefix_tok_len: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self):
+        super().__post_init__()
         logger.info(f"Loading external LM for perplexity loss: {self.model_name_or_path}")
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,
@@ -263,7 +264,6 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
         input_trigger_strs: Annotated[List[str], "bsz"],
     ) -> Float[torch.Tensor, "bsz"]:
         texts = [(self.naturalness_prefix + t) for t in input_trigger_strs]
-        ignore_index = -100
 
         @find_executable_batch_size(starting_batch_size=self.max_batch_size)
         def _compute_all(batch_size: int) -> Float[torch.Tensor, "bsz"]:
@@ -289,7 +289,7 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
                 max_trigger_len = max(len(ids) for ids in trigger_ids)
                 # Left pad trigger_ids to max_trigger_len with -100 for ignore index in loss:
                 trigger_ids = [  # left-pad with -100 for ignore index in loss
-                    torch.tensor([ignore_index] * (max_trigger_len - len(ids)) + ids) for ids in trigger_ids
+                    torch.tensor([IGNORE_INDEX] * (max_trigger_len - len(ids)) + ids) for ids in trigger_ids
                 ]
                 # Extract the logits corresponding to the trigger tokens (accounting for prefix length and padding):
                 trigger_logits = [
@@ -307,7 +307,7 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
                 )  # (bsz, trigger_len)
 
                 all_losses.append(
-                    masked_mean(log_perp, (trigger_ids != ignore_index).float())  # mean over trigger tokens
+                    masked_mean(log_perp, (trigger_ids != IGNORE_INDEX).float())  # mean over trigger tokens
                 )
 
             return torch.cat(all_losses, dim=0)  # (bsz,)

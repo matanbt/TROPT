@@ -173,6 +173,10 @@ class LMHFModel(
     def device(self):
         return self._model.device
 
+    @property
+    def embedding_layer(self):
+        return self._embedding_layer
+
     def _update_targets_by_model(self, targets: Optional[Targets]) -> Targets:
         if targets is None:
             targets = Targets()
@@ -207,6 +211,7 @@ class LMHFModel(
             targets: Optional Targets object containing target response strings to optimize towards.
         """
         # To make sure the placeholder will be tokenizer as is
+        # [TODO isn't it already done? we're just overloading the token!]
         self._tokenizer.add_special_tokens(
             {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
         )
@@ -358,6 +363,9 @@ class LMHFModel(
         do_generate: bool = False,
         return_hidden_states: bool = False,
         return_attentions: bool = False,
+        # generation kwargs (only used when do_generate=True):
+        max_new_tokens: int = 128,
+        greedy_decode: bool = True,
         **kwargs
     ) -> ModelOutput:
         """
@@ -382,9 +390,8 @@ class LMHFModel(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
-        if do_generate:
-            # TODO implement
-            raise NotImplementedError("Generation is not yet implemented in `invoke_from_tokens`.")
+        if input_attention_mask is None:
+            input_attention_mask = torch.ones(input_embeds.shape[:2], device=input_embeds.device)
 
         assert input_embeds is not None, "input_embeds must be provided in HF's invoke_from_tokens."
 
@@ -407,12 +414,43 @@ class LMHFModel(
             assert input_slices is not None, "input_slices must be provided to extract prefill logits when `do_prefill_target_response` is True."
             response_slc = input_slices[SliceKey.APPENDED]
             prefill_response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
+        
+        # Generate response, if requested
+        generated_response_strs = None
+        generated_response_ids = None
+        generated_response_logits = None
+        if do_generate:
+            hf_gen_kwargs = {
+                "do_sample": not greedy_decode,
+                "output_logits": True,
+                "pad_token_id": self._tokenizer.pad_token_id,
+                "max_new_tokens": max_new_tokens,
+                "return_dict_in_generate": True,
+            }
+            with torch.no_grad():
+                generation_output = self._model.generate(
+                    inputs_embeds=input_embeds,
+                    attention_mask=input_attention_mask,
+                    **hf_gen_kwargs,
+                    **(input_prefix_cache_kwargs or {}),
+                )
+            # When inputs_embeds is used, sequences only contains generated token IDs (no prompt IDs)
+            generated_response_ids = [generation_output.sequences[i] for i in range(input_embeds.shape[0])]
+            generated_response_logits = torch.stack(generation_output.logits, dim=1)  # (bsz, gen_len, vocab)
+            generated_response_strs = self._tokenizer.batch_decode(generated_response_ids, skip_special_tokens=True)
+            self._update_usage_stats(
+                tokens=sum(len(t) for t in generated_response_ids),
+                forward_samples=0, forward_calls=0,  # already counted above
+            )
 
         return ModelOutput(
             full_logits=outputs.logits,
             prefill_response_logits=prefill_response_logits,
             full_attentions=torch.stack(outputs.attentions, dim=1) if return_attentions else None,
             full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if return_hidden_states else None,  # (skips input embedding (layer 0))
+            generated_response_strs=generated_response_strs,
+            generated_response_ids=generated_response_ids,
+            generated_response_logits=generated_response_logits,
         )
 
     # ======================= Text-access methods =======================
@@ -458,7 +496,7 @@ class LMHFModel(
             "max_new_tokens": max_new_tokens,
             "do_sample": not greedy_decode,
             "pad_token_id": self._tokenizer.pad_token_id,
-            "output_scores": True,
+            "output_logits": True,
             "return_dict_in_generate": True,
         }
 
@@ -525,7 +563,6 @@ class LMHFModel(
         # 5c. Generate
         generation_output = self._model.generate(
             **inputs,
-            output_logits=True,
             **hf_gen_kwargs,
         )
 

@@ -7,7 +7,7 @@ for unified loss resolution to work properly.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, List
+from typing import Annotated, ClassVar, List
 
 import torch
 from jaxtyping import Float, Int
@@ -15,7 +15,7 @@ from torch import Tensor
 
 from tropt.common import SliceKey
 from tropt.loss.base import BaseLoss
-from tropt.loss.utils import masked_mean
+from tropt.loss.utils import IGNORE_INDEX, masked_mean
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,8 @@ class PrefillBasedLoss(BaseLoss):
     Requires target tokens (`target_response_toks`); commonly derived from `target_response_strs`.
     Using this loss usually implies that the model will prefill the response with these target tokens.
     """
+
+    requires_target_prefill: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -49,7 +51,6 @@ class PrefillCELoss(PrefillBasedLoss):
         self,
         prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
-        ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
             prefill_response_logits.shape[0], -1
@@ -65,10 +66,10 @@ class PrefillCELoss(PrefillBasedLoss):
             prefill_response_logits.transpose(-1, -2),  # move vocab size (= # classes) to 2nd dim
             target_response_toks,
             reduction="none",
-            ignore_index=ignore_index,
+            ignore_index=IGNORE_INDEX,
         )  # (bsz, seq_len)
 
-        return masked_mean(loss, (target_response_toks != ignore_index).float())
+        return masked_mean(loss, (target_response_toks != IGNORE_INDEX).float())
 
 
 @dataclass
@@ -85,7 +86,6 @@ class PrefillMellowMaxLoss(PrefillBasedLoss):
         self,
         prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
-        ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
             prefill_response_logits.shape[0], -1
@@ -94,7 +94,7 @@ class PrefillMellowMaxLoss(PrefillBasedLoss):
         assert prefill_response_logits.shape[:-1] == target_response_toks.shape, "Shape mismatch"
 
         # 1. Create mask
-        mask = target_response_toks != ignore_index
+        mask = target_response_toks != IGNORE_INDEX
         # replace ignore index with 0 to avoid index error (will be masked later anyway)
         target_response_toks = target_response_toks.masked_fill(~mask, 0)
 
@@ -139,7 +139,6 @@ class PrefillCWLoss(PrefillBasedLoss):
         self,
         prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
         target_response_toks: Int[Tensor, "response_seq_len"],
-        ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         target_response_toks = target_response_toks.unsqueeze(0).expand(
             prefill_response_logits.shape[0], -1
@@ -148,7 +147,7 @@ class PrefillCWLoss(PrefillBasedLoss):
         vocab_dim: int = -1  # dimension of vocab size
 
         # Create mask and safe indices
-        mask = target_response_toks != ignore_index
+        mask = target_response_toks != IGNORE_INDEX
         target_response_toks = target_response_toks.masked_fill(~mask, 0)  # replace ignore index with 0 to avoid index error (will be masked later anyway)
 
         # extract the target's logits (using the target ids as indices)
@@ -204,7 +203,6 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
         full_logits: Float[Tensor, "bsz seq_len vocab_size"],
         input_trigger_ids: Int[Tensor, "bsz trigger_seq_len"],
         input_slices: dict[SliceKey, slice],
-        ignore_index: int = -100,
     ) -> Float[Tensor, "bsz"]:
         """
         Compute perplexity loss on the trigger tokens.
@@ -228,10 +226,10 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
             trigger_logits.transpose(-1, -2),  # (bsz, vocab_size, trigger_seq_len)
             input_trigger_ids,  # (bsz, trigger_seq_len)
             reduction="none",
-            ignore_index=ignore_index,
+            ignore_index=IGNORE_INDEX,
         )  # (bsz, trigger_seq_len)
 
-        ce_loss = masked_mean(loss, (input_trigger_ids != ignore_index).float())
+        ce_loss = masked_mean(loss, (input_trigger_ids != IGNORE_INDEX).float())
 
         return ce_loss
 
@@ -239,6 +237,8 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 @dataclass
 class AttentionBasedLoss(BaseLoss):
     """Loss computed on model attention weights (`full_attentions`)."""
+
+    requires_attentions: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -331,6 +331,8 @@ class SimilarityLoss(EmbeddingBasedLoss):
 @dataclass
 class HiddenStateBasedLoss(BaseLoss):
     """Loss computed on model hidden states (`full_hidden_states`)."""
+
+    requires_hidden_states: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
