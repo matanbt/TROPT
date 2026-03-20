@@ -11,6 +11,7 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
+from tropt.loss.losses import PrefillCELoss
 
 
 def run_rasliteplus(
