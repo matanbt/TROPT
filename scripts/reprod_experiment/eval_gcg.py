@@ -10,6 +10,7 @@ import pandas as pd
 import torch
 from tropt.attack_zoo.AdvDecoding import run_advdecoding_jailbreak
 from tropt.attack_zoo.BEAST import run_beast
+from tropt.attack_zoo.GASLITEPlus import run_gaslite_plus_llm
 from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
 from tropt.attack_zoo.GCGHij import run_gcghij
 from tropt.attack_zoo.IRIS import run_iris
@@ -254,7 +255,7 @@ def tropt(
 
     
 # All LLM attack zoo methods available for tropt_zoo
-_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm", "adv_jailbreak"]
+_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm", "adv_jailbreak", "gasliteplus_llm", "qgasliteplus_llm"]
 
 
 @app.command()
@@ -334,6 +335,10 @@ def tropt_zoo(
                 run_rasliteplus_llm(instruction=instruction, model_obj=model, tracker=tracker)
             elif method == "adv_jailbreak":
                 run_advdecoding_jailbreak(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "gasliteplus_llm":
+                run_gaslite_plus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "qgasliteplus_llm":
+                run_gaslite_plus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker, quick_variant=True)
             else:
                 raise typer.BadParameter(f"Unknown method '{method}'. Available: {_LLM_ZOO_METHODS}")
 
