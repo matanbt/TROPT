@@ -332,7 +332,7 @@ def tropt_zoo(
             elif method == "gcg_perplexity":
                 run_gcg_perplexity(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "rasliteplus_llm":
-                run_rasliteplus_llm(instruction=instruction, model_obj=model, tracker=tracker)
+                run_rasliteplus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "adv_jailbreak":
                 run_advdecoding_jailbreak(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "gasliteplus_llm":
