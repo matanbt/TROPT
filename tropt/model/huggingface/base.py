@@ -291,7 +291,6 @@ class _HFTokenInputManager(TokenInputManager):
                 template_idx=chosen_template_idx,
             )
 
-        print("self.tokenizer.batch_decode(trigger_ids)", self.tokenizer.batch_decode(trigger_ids))
         return ModelInput(
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),

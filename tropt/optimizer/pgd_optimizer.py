@@ -249,6 +249,7 @@ class PGDOptimizer(BaseOptimizer):
 
             self.tracker.log({
                 "loss": current_loss,
+                **self.loss_func.get_loss_log_dict(),
                 **self.model.get_usage_stats()
             })
 

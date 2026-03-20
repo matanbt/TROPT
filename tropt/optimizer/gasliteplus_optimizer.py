@@ -347,7 +347,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # Logging:
-            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(trigger_ids)

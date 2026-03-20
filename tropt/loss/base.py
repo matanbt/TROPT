@@ -6,10 +6,11 @@ for unified loss resolution to work properly.
 """
 
 
+import functools
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 import torch
 from jaxtyping import Float
@@ -21,13 +22,45 @@ logger = logging.getLogger(__name__)
 class BaseLoss(ABC):
     """Base class for all loss functions."""
 
+    _last_loss_vals: Optional[Float[Tensor, "bsz"]] = None
+    """Loss values from the most recent __call__, shape (bsz,). Set automatically by __init_subclass__."""
+
+    def __init_subclass__(cls, **kwargs):
+        """
+        Wraps __call__ in subclasses to automatically record _last_loss_vals after every call.
+        """
+        super().__init_subclass__(**kwargs)
+        if "__call__" in cls.__dict__:
+            original = cls.__dict__["__call__"]
+
+            @functools.wraps(original)
+            def wrapped(self, *args, **kwargs):
+                result = original(self, *args, **kwargs)
+                self._last_loss_vals = result.detach()
+                return result
+
+            cls.__call__ = wrapped
+
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Float[Tensor, "bsz"]:
+        """
+        Given values formatted as ModelInput / ModelOutput / Targets fields,
+        computes the loss, and returns per-batch-element loss values.
+        """
         pass
+
+    def get_loss_log_dict(self) -> dict:
+        """
+        Returns a loggable dict of the last computed loss value, keyed by loss class name.
+        Useful for verbose loss logging in optimizers.
+        """
+        if self._last_loss_vals is None:
+            return {}
+        return {f"loss/{type(self).__name__}": self._last_loss_vals.min().item()}
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """
-        Check if the loss is of the specified type.
+        Returns True if this loss is of the given type.
         Complicated losses (e.g., CombinedLoss) may override this method with different logic.
         """
         return isinstance(self, loss_type)
@@ -37,6 +70,9 @@ class BaseLoss(ABC):
 @dataclass
 class CombinedLoss(BaseLoss):
     """Combines multiple losses with given weights."""
+
+    _last_component_loss_vals: Optional[Float[Tensor, "n_losses bsz"]] = None
+    """Per-component loss values from the most recent __call__, shape (n_losses, bsz)."""
 
     def __init__(self, loss_funcs: List[BaseLoss], weights: List[float] = None) -> None:
         assert weights is None or len(loss_funcs) == len(weights), "Length mismatch between loss_funcs and weights"
@@ -58,7 +94,7 @@ class CombinedLoss(BaseLoss):
         Returns:
             Tensor of shape (bsz,), the combined loss for each element in the batch.
         """
-        self.last_component_losses = losses.detach()  # shape: (n_losses, bsz)
+        self._last_component_loss_vals = losses.detach()  # shape: (n_losses, bsz)
 
         weights = self.weights.to(losses).unsqueeze(-1)  # shape: (n_losses, 1)
         loss = losses * weights
@@ -66,11 +102,19 @@ class CombinedLoss(BaseLoss):
 
         return loss  # shape: (bsz,)
 
-    def get_component_losses_dict(self) -> dict[str, Float[Tensor, "bsz"]]:
-        """Returns {loss_class_name: loss_values} from the last __call__."""
+    def get_loss_log_dict(self) -> dict:
+        """
+        Returns a loggable dict of the last computed loss value (of *all* the component losses), keyed by loss class name.
+        Useful for verbose loss logging in optimizers.
+        """
+        if self._last_loss_vals is None:
+            return {}
         return {
-            type(lf).__name__: val
-            for lf, val in zip(self.loss_funcs, self.last_component_losses)
+            f"loss/{type(self).__name__}": self._last_loss_vals.min().item(),
+            **{
+                f"loss/{type(lf).__name__}": val.min().item()
+                for lf, val in zip(self.loss_funcs, self._last_component_loss_vals)
+            },
         }
 
     def contains_loss_type(self, loss_type: type) -> bool:

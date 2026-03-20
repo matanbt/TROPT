@@ -193,6 +193,7 @@ class GBDAOptimizer(BaseOptimizer):
             self.tracker.log({
                 "loss": current_loss,
                 "temperature": temperature,
+                **self.loss_func.get_loss_log_dict(),
                 **self.model.get_usage_stats()
             })
 
