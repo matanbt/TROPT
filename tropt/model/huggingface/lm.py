@@ -21,6 +21,7 @@ from tropt.common import (
     TextTemplates,
 )
 from tropt.loss import BaseLoss
+
 from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -233,7 +234,7 @@ class LMHFModel(
                 [{"role": "user", "content": template}],
                 tokenize=True,
                 add_generation_prompt=True,
-            )
+            )["input_ids"]
             for template in templates
         ]
 
@@ -520,7 +521,7 @@ class LMHFModel(
                     [{"role": "user", "content": text}],
                     tokenize=True,
                     add_generation_prompt=True,
-                )
+                )["input_ids"]
             )
 
         # 3. Append prefill tokens to the prompt

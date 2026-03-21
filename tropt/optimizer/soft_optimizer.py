@@ -41,7 +41,7 @@ class SoftPromptOptimizer(BaseOptimizer):
         # Soft prompt optimization parameters:
         num_steps: int = 100,
         learning_rate: float = 0.001,
-        gd_optimizer: Optional[torch.optim.Optimizer] = torch.optim.Adam,
+        gd_optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam,
     ):
         """
 
@@ -95,6 +95,7 @@ class SoftPromptOptimizer(BaseOptimizer):
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
                 loss_func=self.loss_func,
                 candidate_trigger_embeds=trigger_embeds,
+                normalize_grads=False,
                 return_loss=True,
             )  # Shape: (1, trigger_seq_len, vocab_size)
 

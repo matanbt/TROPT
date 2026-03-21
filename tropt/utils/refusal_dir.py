@@ -107,7 +107,7 @@ def extract_activations(
             messages,
             return_tensors="pt",
             add_generation_prompt=True,
-        ).to(model.device)
+        )["input_ids"].to(model.device)
 
         hf_model = get_hf_model(model)
 
@@ -324,7 +324,7 @@ def generate_jailbroken_responses(
             messages,
             return_tensors="pt",
             add_generation_prompt=True,
-        ).to(model.device)
+        )["input_ids"].to(model.device)
 
         hf_model = get_hf_model(model)
 

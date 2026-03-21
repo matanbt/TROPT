@@ -37,7 +37,7 @@ class BaseOptimizer(ABC):
     def __init__(
         self,
         model: BaseModel,
-        loss: BaseLoss=None,
+        loss: Optional[BaseLoss] = None,
         tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
     ):
@@ -99,7 +99,11 @@ class BaseOptimizer(ABC):
 
         targets_repr = None
         if targets is not None:
-            targets_repr = targets.model_dump(mode="json")
+            targets_repr: dict[str, Any] = {
+                k: v.tolist() if isinstance(v, torch.Tensor) else v
+                for k, v in targets.model_dump().items()
+                if v is not None
+            }
 
         metadata = {
             "optimizer": type(self).__name__,

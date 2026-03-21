@@ -106,7 +106,7 @@ def generate_from_soft_trigger(
         [{"role": "user", "content": text_template}],
         tokenize=True,
         add_generation_prompt=True,
-    )
+    )["input_ids"]
     ids = torch.tensor(ids, device=model.device, dtype=torch.int64)
     placeholder_id = tokenizer.convert_tokens_to_ids(
         OPTIMIZED_TRIGGER_PLACEHOLDER  # expected to be a single token
@@ -191,7 +191,7 @@ def encode_from_soft_trigger(
     model: EncoderHFModel,
     soft_trigger: Float[torch.Tensor, "trigger_seq_len embed_dim"],
     text_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
-) -> Float[torch.Tensor, "d_model"] | ModelOutput:
+) -> Float[torch.Tensor, "1 d_model"]:
     """
     Get the encoded vector from the model given an optimized trigger.
     """
@@ -217,9 +217,9 @@ def encode_from_soft_trigger(
     ], dim=0)  # (full_seq_len, embed_dim)
 
     # Get encoded vector from model:
-    model_output = model.invoke_from_tokens(
+    model_output: ModelOutput = model.invoke_from_tokens(
         input_embeds=full_input_embeds.unsqueeze(0),  # (w/ batch dim)
-        do_generate=False,
     )
+    assert model_output.output_embeddings is not None
 
-    return model_output.embeddings[0]
+    return model_output.output_embeddings

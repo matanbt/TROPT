@@ -259,6 +259,7 @@ class EncoderHFModel(
     def invoke_from_texts(
         self,
         input_texts: Annotated[List[str], "n_texts"],
+        **kwargs,
     ) -> ModelOutput:
         """
         Get the embeddings for the given texts (n_texts elements).
