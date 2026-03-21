@@ -23,7 +23,6 @@ from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 
-# TODO re-read, test and validate the implementation below
 
 
 class SoftPromptOptimizer(BaseOptimizer):

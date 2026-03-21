@@ -126,6 +126,8 @@ class BeamSearchOptimizer(BaseOptimizer):
         - This loss evaluation against the target model is usually done in a black-box manner using text-level access (i.e., we query the model with the full text including the decoded candidate triggers), to enable the attack of fully black-box models; however, if util and target model share the same tokenizer, we can compute loss in token-level using the `use_model_with_token_inputs` option.
         """
 
+        super().optimize_trigger(templates, targets=targets)
+
         # Prepare inputs for both target model and util LM
         self.util_lm.set_inputs_from_tokens(
             templates=[self.util_lm_prefix] * len(templates) if self.util_lm_prefix is not None else templates,

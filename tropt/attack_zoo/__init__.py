@@ -6,6 +6,7 @@ from .GCGEmb import run_gcg_embedding_variant
 from .GCGHij import run_gcghij
 from .GCGMult import run_gcg_mutl_instruction
 from .IRIS import run_iris
+from .PEZ import run_pez
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 
 ATTACK_RECIPES = {
@@ -19,6 +20,7 @@ ATTACK_RECIPES = {
     "gcg_hij": run_gcghij,
     "gcg_mult": run_gcg_mutl_instruction,
     "iris": run_iris,
+    "pez": run_pez,
     "rasliteplus": run_rasliteplus,
     "rasliteplus_llm": run_rasliteplus_llm,
 }

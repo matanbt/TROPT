@@ -185,6 +185,7 @@ class EncoderOpenAIModel(
     def d_model(self):
         return self._d_model
 
+    @property
     def tokenizer(self) -> OpenAITokenizer:
         return self._tokenizer
 
@@ -210,7 +211,6 @@ class EncoderOpenAIModel(
         response = self._client.embeddings.create(
             input=input_texts,
             model=self.model_name,
-            **kwargs
         )
 
         embeddings = [data.embedding for data in response.data]

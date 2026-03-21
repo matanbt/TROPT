@@ -14,7 +14,7 @@ from tropt.tracker import BaseTracker
 
 def run_gaslite(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-    prefix_info: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
+    mal_info_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
         1, 384
     ),  # random target vector for demo purposes
@@ -27,7 +27,7 @@ def run_gaslite(
 
     Args:
         model_name (str): The name of the HuggingFace model to attack.
-        prefix_info (str): The string prefixing the passage with a placeholder for the trigger (i.e., the "malicious information").
+        mal_info_template (str): The string prefixing the passage with a placeholder for the trigger (i.e., the "malicious information").
         target_vector (Tensor, (d_model)): The target vector the passage's embedding is aligned (the centroid of the target query set).
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
@@ -35,7 +35,6 @@ def run_gaslite(
     if model_obj is None:
         model_obj = EncoderHFModel(
             model_name=model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu",
         )
     model = model_obj
     loss = SimilarityLoss()
@@ -55,7 +54,7 @@ def run_gaslite(
     )
 
     result = optimizer.optimize_trigger(
-        templates=[prefix_info],
+        templates=[mal_info_template],
         targets=Targets(
             target_vectors=target_vector
         ),

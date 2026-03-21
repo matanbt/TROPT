@@ -36,6 +36,10 @@ class BaseModel(ABC):
     # ... compute loss/grad/... methods will be added upon expansion ...
 
     # ... usage stats methods will be added upon expansion ...
+    def get_model_name(self) -> str:
+        """Returns the model identifier string."""
+        return getattr(self, "_model_name", getattr(self, "model_name", type(self).__name__))
+
     def get_usage_stats(self) -> Dict[str, int]:
         """Returns summary of model usage statistics, namespaced under 'usage/' for W&B logging."""
         return {

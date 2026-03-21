@@ -174,7 +174,7 @@ class LMHFModel(
         return self._model.device
 
     @property
-    def embedding_layer(self):
+    def embedding_layer(self) -> torch.nn.Module:
         return self._embedding_layer
 
     def _update_targets_by_model(self, targets: Optional[Targets]) -> Targets:

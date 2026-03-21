@@ -135,6 +135,10 @@ class EncoderHFModel(
     def d_model(self):
         return self._model.get_sentence_embedding_dimension()
 
+    @property
+    def embedding_layer(self) -> torch.nn.Module:
+        return self._embedding_layer
+
     def _get_input_embeddings(self):
         # this is a bit hacky way to extract the embedding layer from sentence transformers,
         # but as models may differ in implementation, we try multiple methods.
@@ -210,9 +214,8 @@ class EncoderHFModel(
     def invoke_from_tokens(
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
-        input_attention_mask: Float[Tensor, "bsz seq_len"],
+        input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
         # TODO add input_ids, but input-embeds should be priority
-        reference_loss_func: BaseLoss = None,
         **kwargs
     ) -> ModelOutput:
         """
@@ -228,6 +231,10 @@ class EncoderHFModel(
         """
 
         assert input_embeds is not None, "input_embeds must be provided in invoke_from_tokens."
+        if input_attention_mask is None:
+            input_attention_mask = torch.ones(
+                input_embeds.shape[:-1], device=input_embeds.device, dtype=torch.int64
+            )
 
         outputs = self._model(
             dict(

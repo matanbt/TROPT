@@ -5,8 +5,9 @@ Combines GCG optimization with activation steering to suppress model refusal.
 https://aclanthology.org/2025.naacl-long.302/
 """
 
-from typing import Optional
 import logging
+from typing import Optional
+
 import torch
 
 from tropt.common import SliceKey, Targets

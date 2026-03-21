@@ -386,6 +386,11 @@ class _HuggingFaceModelMixins:
         effective_embedding_matrix = self._embedding_layer(all_token_ids)  # (vocab_size, dim)
         return effective_embedding_matrix  # shape: (vocab_size, embd_dim)
 
+    @property
+    def embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
+        """The raw embedding matrix from the model's embedding layer, without any enrichment."""
+        return self.effective_embedding_matrix
+
     def compute_grad_from_tokens(
         self,
         loss_func: BaseLoss,
@@ -738,7 +743,7 @@ class _HuggingFaceModelMixins:
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_templates n_candidates"]:
-        """Computes the loss on all candidate token id sequences.
+        """Computes the loss on all candidate token id sequences. Gradient computation is disabled.
 
         Args:
             search_batch_size : int

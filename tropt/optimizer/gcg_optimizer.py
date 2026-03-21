@@ -52,6 +52,8 @@ class GCGOptimizer(BaseOptimizer):
         Args:
             model (BaseModel): The language model to be attacked.
             loss (BaseLoss): The loss function to be optimized.
+            tracker (BaseTracker, optional): An optional tracker for logging optimization progress.
+            seed (int, optional): Random seed for reproducibility.
 
             # Attack parameters:
             num_steps (int): Number of optimization steps to perform.
@@ -68,66 +70,6 @@ class GCGOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
-
-    def _sample_ids_from_grad(
-        self,
-        trigger_ids: Int[Tensor, "trigger_seq_len"],
-        trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"],
-        blacklist_ids: List[int] = [],
-    ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
-        """
-        Samples `n_candidates` combinations of token ids based on the token gradient.
-
-        Args:
-            trigger_ids (Tensor): shape = (n_type, trigger_seq_len)
-            The sequence of token ids being optimized.
-            trigger_grad (Tensor): shape = (n_type, trigger_seq_len, vocab_size)
-            The gradient of the loss with respect to the one-hot token embeddings.
-
-        Returns:
-            Tensor: shape = (n_type, n_candidates, trigger_seq_len)
-            Sampled token ids for each candidate.
-        """
-        trigger_seq_len, vocab_size = trigger_grad.shape
-        device = trigger_grad.device
-        candidate_trigger_ids = trigger_ids.repeat(self.n_candidates, 1).clone()
-
-        trigger_grad[:, blacklist_ids] = float("inf")
-
-        topk_ids: Float[Tensor, "trigger_seq_len sample_topk"] = (
-            (-trigger_grad).topk(self.sample_topk, dim=-1).indices
-        )
-
-        # Create random indices for each item in the batch and for each candidate.
-        sampled_ids_pos = torch.rand(
-            self.n_candidates, trigger_seq_len, device=device
-        ).argsort(dim=-1)[
-            ..., : self.sample_n_replace
-        ]  # shape: (n_candidates, sample_n_replace)  # noqa
-        # Select the relevant lists of top-k tokens for each candidate and position
-        relevant_topk_lists = topk_ids[sampled_ids_pos]
-        # Randomly choose one token from each of the top-k lists
-        rand_k_indices = torch.randint(
-            0,
-            self.sample_topk,
-            (self.n_candidates, self.sample_n_replace, 1),
-            device=device,
-        )
-
-        # Gather the selected token ids using the random indices
-        sampled_ids_val = torch.gather(
-            input=relevant_topk_lists,  # shape: (n_candidates, sample_n_replace, sample_topk)
-            dim=-1,
-            index=rand_k_indices,  # shape: (n_candidates, sample_n_replace, 1)
-        ).squeeze(-1)  # shape: (n_candidates, sample_n_replace)
-        # Scatter the sampled token ids in the selected positions, within the trigger (=apply the flips)
-        candidate_trigger_ids = candidate_trigger_ids.scatter_(
-            dim=-1,  # -> trigger_seq_len dimension
-            index=sampled_ids_pos,
-            src=sampled_ids_val,
-        )
-
-        return candidate_trigger_ids
 
     def optimize_trigger(
         self,
@@ -220,3 +162,62 @@ class GCGOptimizer(BaseOptimizer):
         return result
 
 
+    def _sample_ids_from_grad(
+        self,
+        trigger_ids: Int[Tensor, "trigger_seq_len"],
+        trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"],
+        blacklist_ids: List[int] = [],
+    ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
+        """
+        Samples `n_candidates` combinations of token ids based on the token gradient.
+
+        Args:
+            trigger_ids (Tensor): shape = (n_type, trigger_seq_len)
+            The sequence of token ids being optimized.
+            trigger_grad (Tensor): shape = (n_type, trigger_seq_len, vocab_size)
+            The gradient of the loss with respect to the one-hot token embeddings.
+
+        Returns:
+            Tensor: shape = (n_type, n_candidates, trigger_seq_len)
+            Sampled token ids for each candidate.
+        """
+        trigger_seq_len, vocab_size = trigger_grad.shape
+        device = trigger_grad.device
+        candidate_trigger_ids = trigger_ids.repeat(self.n_candidates, 1).clone()
+
+        trigger_grad[:, blacklist_ids] = float("inf")
+
+        topk_ids: Float[Tensor, "trigger_seq_len sample_topk"] = (
+            (-trigger_grad).topk(self.sample_topk, dim=-1).indices
+        )
+
+        # Create random indices for each item in the batch and for each candidate.
+        sampled_ids_pos = torch.rand(
+            self.n_candidates, trigger_seq_len, device=device
+        ).argsort(dim=-1)[
+            ..., : self.sample_n_replace
+        ]  # shape: (n_candidates, sample_n_replace)  # noqa
+        # Select the relevant lists of top-k tokens for each candidate and position
+        relevant_topk_lists = topk_ids[sampled_ids_pos]
+        # Randomly choose one token from each of the top-k lists
+        rand_k_indices = torch.randint(
+            0,
+            self.sample_topk,
+            (self.n_candidates, self.sample_n_replace, 1),
+            device=device,
+        )
+
+        # Gather the selected token ids using the random indices
+        sampled_ids_val = torch.gather(
+            input=relevant_topk_lists,  # shape: (n_candidates, sample_n_replace, sample_topk)
+            dim=-1,
+            index=rand_k_indices,  # shape: (n_candidates, sample_n_replace, 1)
+        ).squeeze(-1)  # shape: (n_candidates, sample_n_replace)
+        # Scatter the sampled token ids in the selected positions, within the trigger (=apply the flips)
+        candidate_trigger_ids = candidate_trigger_ids.scatter_(
+            dim=-1,  # -> trigger_seq_len dimension
+            index=sampled_ids_pos,
+            src=sampled_ids_val,
+        )
+
+        return candidate_trigger_ids

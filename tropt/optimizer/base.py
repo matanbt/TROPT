@@ -81,7 +81,36 @@ class BaseOptimizer(ABC):
         Returns:
             Optimized trigger.
         """
-        pass
+        self._log_run_metadata(templates, initial_trigger, targets)
+
+    def _log_run_metadata(
+        self,
+        templates: TextTemplates,
+        initial_trigger: Optional[str | TokenTrigger],
+        targets: Optional[Targets],
+    ):
+        """Logs run metadata to the tracker at the start of optimization."""
+        _skip = {"model", "loss_func", "tracker"}
+        hparams = {
+            f"hparam/{k}": v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
+            for k, v in self.__dict__.items()
+            if k not in _skip
+        }
+
+        targets_repr = None
+        if targets is not None:
+            targets_repr = targets.model_dump(mode="json")
+
+        metadata = {
+            "optimizer": type(self).__name__,
+            "model_name": self.model.get_model_name(),
+            "loss": type(self.loss_func).__name__,
+            "templates": list(templates) if not isinstance(templates, list) else templates,
+            "initial_trigger": str(initial_trigger) if initial_trigger is not None else None,
+            "targets": targets_repr,
+            **hparams,
+        }
+        self.tracker.log_metadata(metadata)
 
     def set_tracker(self, tracker: BaseTracker):
         """

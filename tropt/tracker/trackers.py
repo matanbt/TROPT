@@ -44,6 +44,9 @@ class JSONTracker(BaseTracker):
         for key, value in data.items():
             self.log_data[key].append(value)
 
+    def log_metadata(self, metadata: dict):
+        self.log_data["run_metadata"] = metadata
+
     def finish(self):
         with open(self.log_file_path, "w") as f:
             json.dump(self.log_data, f, indent=4)
@@ -79,6 +82,9 @@ class WandbTracker(BaseTracker):
 
     def log(self, data: Dict[str, Any]):
         wandb.log(data)
+
+    def log_metadata(self, metadata: dict):
+        wandb.config.update(metadata, allow_val_change=True)
 
     def finish(self):
         wandb.finish()
@@ -118,6 +124,9 @@ class PrintTracker(BaseTracker):
                     f"{key}={val:.4f}" if isinstance(val, float) else f"{key}={val!r}"
                 )
         print(" | ".join(parts), flush=True)
+
+    def log_metadata(self, metadata: dict):
+        print(f"=== Run metadata: {metadata} ===", flush=True)
 
     def finish(self):
         pass

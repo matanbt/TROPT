@@ -35,3 +35,11 @@ class BaseTracker(ABC):
         """Closes the tracker and performs any necessary cleanup."""
         pass
 
+    def log_metadata(self, metadata: dict):
+        """Logs run metadata (hparams, model name, templates, targets) once at run start.
+
+        Called automatically by BaseOptimizer before optimization begins.
+        Override in subclasses to persist metadata in the appropriate backend.
+        """
+        pass
+
