@@ -17,7 +17,7 @@ class ConcreteOptimizer(BaseOptimizer):
         targets=None,
     ) -> OptimizerResult:
         return OptimizerResult(
-            best_trigger=torch.tensor([1]),
+            best_trigger_ids=torch.tensor([1]),
             best_trigger_str="test",
             best_loss=0.0,
             trigger_strs=["test"],
@@ -62,7 +62,7 @@ def test_base_optimizer_abstract_methods():
 
 def test_optimizer_result_dataclass():
     res = OptimizerResult(
-        best_trigger=torch.tensor([1, 2]),
+        best_trigger_ids=torch.tensor([1, 2]),
         best_trigger_str="test",
         best_loss=0.5,
         trigger_strs=["a", "b"],

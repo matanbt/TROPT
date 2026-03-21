@@ -1,6 +1,6 @@
 import torch
 
-from tropt.loss.base import SimilarityLoss, SteeringActivationLoss
+from tropt.loss import SimilarityLoss, SteeringActivationLoss
 
 
 def test_similarity_loss():
@@ -134,7 +134,7 @@ def test_steering_activation_loss_batch():
 
 def test_prefill_ce_loss_shape():
     """Test PrefillCELoss returns correct output shape."""
-    from tropt.loss.base import PrefillCELoss
+    from tropt.loss import PrefillCELoss
 
     loss_fn = PrefillCELoss()
 
@@ -154,7 +154,7 @@ def test_prefill_ce_loss_shape():
 
 def test_prefill_ce_loss_known_values():
     """Test PrefillCELoss with known input/output pairs."""
-    from tropt.loss.base import PrefillCELoss
+    from tropt.loss import PrefillCELoss
 
     loss_fn = PrefillCELoss()
 
@@ -176,7 +176,7 @@ def test_prefill_ce_loss_known_values():
 
 def test_prefill_mellowmax_loss_shape():
     """Test PrefillMellowMaxLoss returns correct output shape."""
-    from tropt.loss.base import PrefillMellowMaxLoss
+    from tropt.loss import PrefillMellowMaxLoss
 
     loss_fn = PrefillMellowMaxLoss()
     loss_fn.mellowmax_alpha = 1.0
@@ -194,7 +194,7 @@ def test_prefill_mellowmax_loss_shape():
 
 def test_prefill_mellowmax_different_alpha():
     """Test PrefillMellowMaxLoss with different alpha values."""
-    from tropt.loss.base import PrefillMellowMaxLoss
+    from tropt.loss import PrefillMellowMaxLoss
 
     bsz, target_seq_len, vocab_size = 2, 3, 100
     logits = torch.randn(bsz, target_seq_len, vocab_size)
@@ -212,7 +212,7 @@ def test_prefill_mellowmax_different_alpha():
 
 def test_prefill_cw_loss_shape():
     """Test PrefillCWLoss returns correct output shape."""
-    from tropt.loss.base import PrefillCWLoss
+    from tropt.loss import PrefillCWLoss
 
     loss_fn = PrefillCWLoss()
     loss_fn.cw_margin = 0.0
@@ -230,7 +230,7 @@ def test_prefill_cw_loss_shape():
 
 def test_prefill_cw_loss_known_values():
     """Test PrefillCWLoss with known scenarios."""
-    from tropt.loss.base import PrefillCWLoss
+    from tropt.loss import PrefillCWLoss
 
     loss_fn = PrefillCWLoss()
     loss_fn.cw_margin = 1e-3
@@ -272,7 +272,7 @@ def test_prefill_cw_loss_known_values():
 
 def test_trigger_perplexity_loss_shape():
     """Test TriggerPerplexityLoss returns correct output shape."""
-    from tropt.loss.base import TriggerPerplexityLoss
+    from tropt.loss import TriggerPerplexityLoss
 
     loss_fn = TriggerPerplexityLoss(slc_name="adv")
 
@@ -299,7 +299,7 @@ def test_trigger_perplexity_loss_shape():
 
 def test_attention_enh_loss_shape():
     """Test AttentionEnhLoss returns correct output shape."""
-    from tropt.loss.base import AttentionEnhLoss
+    from tropt.loss import AttentionEnhLoss
 
     loss_fn = AttentionEnhLoss()
     loss_fn.src_slc_name = "adv"
@@ -321,7 +321,7 @@ def test_attention_enh_loss_shape():
 
 def test_attention_enh_loss_properties():
     """Test AttentionEnhLoss mathematical properties."""
-    from tropt.loss.base import AttentionEnhLoss
+    from tropt.loss import AttentionEnhLoss
 
     loss_fn = AttentionEnhLoss()
     loss_fn.src_slc_name = "trigger"
@@ -354,7 +354,7 @@ def test_attention_enh_loss_properties():
 
 def test_combined_loss_basic():
     """Test CombinedLoss with multiple loss functions."""
-    from tropt.loss.base import CombinedLoss, SimilarityLoss, SteeringActivationLoss
+    from tropt.loss import CombinedLoss, SimilarityLoss, SteeringActivationLoss
 
     loss1 = SimilarityLoss()
     loss2 = SteeringActivationLoss()
@@ -368,7 +368,7 @@ def test_combined_loss_basic():
 
 def test_combined_loss_weight_validation():
     """Test CombinedLoss validates weights correctly."""
-    from tropt.loss.base import CombinedLoss, SimilarityLoss
+    from tropt.loss import CombinedLoss, SimilarityLoss
 
     loss1 = SimilarityLoss()
     loss2 = SimilarityLoss()
@@ -388,7 +388,7 @@ def test_combined_loss_weight_validation():
 
 def test_loss_functions_handle_zero_gradients():
     """Test that loss functions handle non-zero vectors correctly."""
-    from tropt.loss.base import SimilarityLoss
+    from tropt.loss import SimilarityLoss
 
     loss_fn = SimilarityLoss()
 
@@ -405,7 +405,7 @@ def test_loss_functions_handle_zero_gradients():
 
 def test_loss_functions_batch_size_one():
     """Test loss functions work with batch size 1."""
-    from tropt.loss.base import SimilarityLoss, SteeringActivationLoss
+    from tropt.loss import SimilarityLoss, SteeringActivationLoss
 
     # SimilarityLoss
     sim_loss = SimilarityLoss()
@@ -424,7 +424,7 @@ def test_loss_functions_batch_size_one():
 
 def test_loss_functions_large_batch():
     """Test loss functions work with large batch sizes."""
-    from tropt.loss.base import SimilarityLoss
+    from tropt.loss import SimilarityLoss
 
     loss_fn = SimilarityLoss()
 

@@ -33,7 +33,7 @@ def mock_openai_client():
 
     mock_client.embeddings.create.side_effect = mock_create_embeddings
 
-    with patch("openai.OpenAI", return_value=mock_client):
+    with patch("tropt.model.openai.encoder.OpenAI", return_value=mock_client):
         yield mock_client
 
 
@@ -60,8 +60,8 @@ def mock_tiktoken():
     mock_encoding.name = "cl100k_base"
     mock_encoding.special_tokens_set = set()
 
-    with patch("tropt.models.openai.encoder.tiktoken.encoding_for_model", return_value=mock_encoding), \
-         patch("tropt.models.openai.encoder.tiktoken.get_encoding", return_value=mock_encoding), \
+    with patch("tropt.model.openai.encoder.tiktoken.encoding_for_model", return_value=mock_encoding), \
+         patch("tropt.model.openai.encoder.tiktoken.get_encoding", return_value=mock_encoding), \
          patch.object(OpenAITokenizer, "batch_decode", side_effect=lambda ids, **kwargs: [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}" for _ in ids]):
         yield mock_encoding
 
@@ -79,7 +79,7 @@ def test_openai_encoder_init(mock_openai_client, mock_tiktoken):
     assert model is not None
     assert model.model_name == "text-embedding-3-small"
     assert model.d_model == 1536
-    assert model.client is not None
+    assert model._client is not None
 
 
 def test_openai_encoder_init_deduces_d_model(mock_openai_client, mock_tiktoken):
@@ -126,14 +126,14 @@ def test_openai_encoder_set_token_inputs(mock_openai_client, mock_tiktoken):
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
     targets = Targets(target_vectors=torch.randn(1, 1536))
 
-    model.set_token_inputs(texts, targets)
+    model.set_inputs_from_tokens(texts, targets)
     trigger_ids = model.tokenizer("test trigger", return_tensors="pt")["input_ids"]
 
     assert model._token_input_manager is not None
     assert isinstance(trigger_ids, torch.Tensor)
     assert trigger_ids.ndim == 2  # (1, trigger_length)
 
-    model.reset_token_inputs()
+    model.reset_inputs_from_tokens()
     assert model._token_input_manager is None
 
 
@@ -151,7 +151,7 @@ def test_openai_encoder_compute_loss_from_texts(mock_openai_client, mock_tiktoke
     targets = Targets(target_vectors=torch.randn(1, 1536))
 
     # Use set_text_inputs to configure the model
-    model.set_text_inputs(texts, targets)
+    model.set_inputs_from_texts(texts, targets)
 
     # Create candidate trigger strings
     n_candidates = 3
@@ -165,7 +165,7 @@ def test_openai_encoder_compute_loss_from_texts(mock_openai_client, mock_tiktoke
     assert losses.shape == (n_candidates,)
     assert not torch.isnan(losses).any()
 
-    model.reset_text_inputs()
+    model.reset_inputs_from_texts()
 
 
 def test_openai_encoder_multi_message(mock_openai_client, mock_tiktoken):
@@ -184,11 +184,11 @@ def test_openai_encoder_multi_message(mock_openai_client, mock_tiktoken):
     ]
     targets = Targets(target_vectors=torch.randn(2, 1536))
 
-    model.set_token_inputs(texts, targets)
+    model.set_inputs_from_tokens(texts, targets)
 
     assert model._token_input_manager.n_templates == 2
 
-    model.reset_token_inputs()
+    model.reset_inputs_from_tokens()
 
 
 def test_openai_tokenizer(mock_tiktoken):
@@ -221,5 +221,5 @@ def test_openai_encoder_usage_stats(mock_openai_client, mock_tiktoken):
 
     stats = model.get_usage_stats()
 
-    assert stats["forward_calls"] >= 1
-    assert stats["forward_samples"] >= 2
+    assert stats["usage/forward_calls"] >= 1
+    assert stats["usage/forward_samples"] >= 2

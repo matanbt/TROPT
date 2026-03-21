@@ -2,25 +2,26 @@ import pytest
 import torch
 from transformers import AutoTokenizer
 from unittest.mock import MagicMock
-from tropt.optimizer.beamsearch_optimizer import BEASTOptimizer
+from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
 from tropt.model import (
     BaseModel,
     LMBaseModel,
-    LossTokenAccessMixin, # Changed from LossTextAccessMixin
+    LossTextAccessMixin,
+    LossTokenAccessMixin,
     LogitsTokenAccessMixin,
     TextInputManager,
     TokenInputManager
 )
 from tropt.loss import BaseLoss
+from tropt.common import ModelOutput
 
 
 class MockTextInputManager(TextInputManager):
     """Mock text inputs manager for testing"""
     def __init__(self):
-        # Set the attributes that n_templates property depends on
         self.before_texts = ["Test message "]
         self.after_texts = [""]
-        self.targets = {}  # TargetsDict is a type alias, use plain dict
+        self.targets = {}
 
     def get_triggered_inputs(self, *args, **kwargs):
         pass
@@ -31,10 +32,9 @@ class MockTokenInputManager(TokenInputManager):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
-        # Set attributes that n_templates might depend on
-        self.before_ids = [torch.tensor([1, 2, 3])]  # Single message
+        self.before_ids = [torch.tensor([1, 2, 3])]
         self.after_ids = [torch.tensor([4, 5])]
-        self.targets = {}  # TargetsDict is a type alias, use plain dict
+        self.targets = {}
 
     @property
     def n_templates(self):
@@ -59,10 +59,16 @@ class MockUtilLM(LMBaseModel, LogitsTokenAccessMixin):
     def __call__(self, *args, **kwargs):
         pass
 
-    def set_token_inputs(self, texts, targets=None):
+    def invoke_from_texts(self, *args, **kwargs):
+        return ModelOutput()
+
+    def invoke_from_tokens(self, *args, **kwargs):
+        return ModelOutput()
+
+    def set_inputs_from_tokens(self, templates, targets=None):
         self._token_input_manager = MockTokenInputManager(self.tokenizer)
 
-    def reset_token_inputs(self):
+    def reset_inputs_from_tokens(self):
         self._token_input_manager = None
 
     @property
@@ -75,15 +81,14 @@ class MockUtilLM(LMBaseModel, LogitsTokenAccessMixin):
         vocab_size = self.tokenizer.vocab_size
 
         if return_after_trigger_logits_only:
-            # Return logits for next token: (batch, 1, vocab_size)
             return torch.randn(batch_size, 1, vocab_size)
         else:
             seq_len = trigger_ids.shape[-1]
             return torch.randn(batch_size, seq_len, vocab_size)
 
 
-class MockTargetModel(BaseModel, LossTokenAccessMixin): # Changed from LossTextAccessMixin
-    """Mock target model for white-box loss evaluation""" # Changed docstring
+class MockTargetModel(BaseModel, LossTextAccessMixin):
+    """Mock target model for text-level loss evaluation"""
 
     @property
     def tokenizer(self):
@@ -97,21 +102,20 @@ class MockTargetModel(BaseModel, LossTokenAccessMixin): # Changed from LossTextA
     def __call__(self, *args, **kwargs):
         pass
 
-    def set_token_inputs(self, texts, targets=None):
-        self._token_input_manager = MockTokenInputManager(self.tokenizer)
-
-    def reset_token_inputs(self):
-        self._token_input_manager = None
+    def invoke_from_texts(self, *args, **kwargs):
+        return ModelOutput()
 
     @property
     def vocab_size(self):
         return self._tokenizer.vocab_size
 
-    def compute_loss_from_tokens(self, candidate_trigger_ids, loss_func=None):
+    def compute_loss_from_texts(self, candidate_trigger_strs, loss_func=None, keep_message_dim=False, **kwargs):
         """Return mock losses for candidate triggers"""
-        n_candidates = candidate_trigger_ids.shape[0]
-        # Return random losses that decrease over time to simulate optimization
-        return torch.rand(n_candidates) * 0.5 + 0.5  # losses in [0.5, 1.0]
+        n_candidates = len(candidate_trigger_strs)
+        losses = torch.rand(1, n_candidates) * 0.5 + 0.5
+        if not keep_message_dim:
+            losses = losses.mean(dim=0)
+        return losses
 
 
 class MockLoss(BaseLoss):
@@ -121,12 +125,12 @@ class MockLoss(BaseLoss):
 
 
 def test_beast_optimizer_initialization():
-    """Test BEAST optimizer initialization with model requirements"""
+    """Test BeamSearch optimizer initialization with model requirements"""
     target_model = MockTargetModel()
     util_lm = MockUtilLM()
     loss = MockLoss()
 
-    optimizer = BEASTOptimizer(
+    optimizer = BeamSearchOptimizer(
         model=target_model,
         loss=loss,
         util_lm=util_lm,
@@ -142,18 +146,18 @@ def test_beast_optimizer_initialization():
 
 
 def test_beast_optimizer_run():
-    """Test basic BEAST optimization run"""
+    """Test basic BeamSearch optimization run"""
     target_model = MockTargetModel()
     util_lm = MockUtilLM()
     loss = MockLoss()
 
-    optimizer = BEASTOptimizer(
+    optimizer = BeamSearchOptimizer(
         model=target_model,
         loss=loss,
         util_lm=util_lm,
-        num_steps=3,  # Minimal steps for testing
-        beam_size=2,  # Small beam for testing
-        branching_factor=2,  # Small branching for testing
+        num_steps=3,
+        beam_size=2,
+        branching_factor=2,
         temperature=1.0
     )
 
@@ -161,7 +165,6 @@ def test_beast_optimizer_run():
 
     result = optimizer.optimize_trigger(texts, initial_trigger="")
 
-    # Check result structure
     assert result.best_loss is not None
     assert result.best_trigger_str is not None
     assert len(result.trigger_strs) == 2  # num_steps - 1 (we start with 1 token)
@@ -169,7 +172,7 @@ def test_beast_optimizer_run():
 
 
 def test_beast_requirements_validation():
-    """Test that BEAST validates model requirements"""
+    """Test that BeamSearch validates model requirements"""
 
     class BadModel(BaseModel):
         """Model without required LossTextAccessMixin"""
@@ -179,11 +182,11 @@ def test_beast_requirements_validation():
             pass
 
     with pytest.raises(AssertionError):
-        BEASTOptimizer(BadModel(""), MockLoss())
+        BeamSearchOptimizer(BadModel(""), MockLoss())
 
 
 def test_beast_util_lm_validation():
-    """Test that BEAST validates util_lm requirements"""
+    """Test that BeamSearch validates util_lm requirements"""
     target_model = MockTargetModel()
     loss = MockLoss()
 
@@ -195,7 +198,7 @@ def test_beast_util_lm_validation():
             pass
 
     with pytest.raises(AssertionError, match="BEAST requires util_lm to be LM"):
-        BEASTOptimizer(
+        BeamSearchOptimizer(
             model=target_model,
             loss=loss,
             util_lm=BadUtilLM()
@@ -204,17 +207,15 @@ def test_beast_util_lm_validation():
 
 def test_beast_multinomial_sampling():
     """Test the multinomial sampling utility function"""
-    # Test basic sampling
     probs = torch.tensor([[0.1, 0.2, 0.3, 0.4]])
-    probs = probs / probs.sum()  # Normalize
+    probs = probs / probs.sum()
 
-    samples = BEASTOptimizer._sample_multinomial(probs, return_tokens=2)
+    samples = BeamSearchOptimizer._sample_multinomial(probs, return_tokens=2)
     assert samples.shape == (1, 2)
-    assert samples.max() < 4  # Valid indices
+    assert samples.max() < 4
     assert samples.min() >= 0
 
-    # Test top-k sampling
-    samples_topk = BEASTOptimizer._sample_multinomial(probs, return_tokens=2, top_k=3)
+    samples_topk = BeamSearchOptimizer._sample_multinomial(probs, return_tokens=2, top_k=3)
     assert samples_topk.shape == (1, 2)
     assert samples_topk.max() < 4
     assert samples_topk.min() >= 0

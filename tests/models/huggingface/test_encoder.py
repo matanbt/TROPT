@@ -2,7 +2,7 @@ import pytest
 import torch
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
-from tropt.loss.base import SimilarityLoss
+from tropt.loss import SimilarityLoss
 from tropt.model.huggingface.encoder import EncoderHFModel
 
 # TODO review & consider dropping the mocks
@@ -19,14 +19,14 @@ def encoder_model():
 def test_encoder_init(encoder_model):
     assert encoder_model is not None
     assert encoder_model.d_model == 384  # specific to all-MiniLM-L6-v2
-    assert encoder_model.model is not None
+    assert encoder_model._model is not None
     assert encoder_model.tokenizer is not None
 
 def test_encoder_set_token_inputs(encoder_model):
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
     targets = Targets(target_vectors=torch.randn(1, encoder_model.d_model))
 
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
     )["input_ids"]
@@ -37,13 +37,13 @@ def test_encoder_set_token_inputs(encoder_model):
     assert trigger_ids.shape[0] == 1  # shared trigger
     assert encoder_model._token_input_manager.n_templates == 1
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 def test_encoder_set_token_multi_inputs(encoder_model):
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}", f"Second: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
     targets = Targets(target_vectors=torch.randn(2, encoder_model.d_model))
 
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
     )["input_ids"]
@@ -53,12 +53,12 @@ def test_encoder_set_token_multi_inputs(encoder_model):
     assert trigger_ids.ndim == 2 and trigger_ids.shape[0] == 1
     assert encoder_model._token_input_manager.n_templates == 2
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 def test_encoder_compute_loss(encoder_model):
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
     targets = Targets(target_vectors=torch.randn(1, encoder_model.d_model))
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
     )["input_ids"]
@@ -74,12 +74,12 @@ def test_encoder_compute_loss(encoder_model):
     assert losses.shape == (n_candidates,)
     assert not torch.isnan(losses).any()
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 def test_encoder_compute_grad(encoder_model):
     texts = [f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}"]
     targets = Targets(target_vectors=torch.randn(1, encoder_model.d_model))
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
     )["input_ids"]
@@ -94,14 +94,14 @@ def test_encoder_compute_grad(encoder_model):
     assert grads.shape == (n_candidates, trigger_ids.shape[1], encoder_model.tokenizer.vocab_size)
     assert not torch.isnan(grads).any()
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 # --- _HFTokenInputManager Tests (Encoder Context) ---
 
 def test_token_input_manager_initialization(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
     targets = Targets(target_vectors=torch.randn(2, encoder_model.d_model))
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     inputs = encoder_model._token_input_manager
 
     n_templates = len(texts)
@@ -113,14 +113,14 @@ def test_token_input_manager_initialization(encoder_model):
     assert inputs.targets.target_vectors is not None
     assert inputs.targets.target_vectors.shape == (n_templates, encoder_model.d_model)
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 def test_token_input_manager_get_triggered_inputs(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
     targets = Targets(target_vectors=torch.randn(2, encoder_model.d_model))
     n_templates = len(texts)
 
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     inputs = encoder_model._token_input_manager
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
@@ -136,7 +136,7 @@ def test_token_input_manager_get_triggered_inputs(encoder_model):
         # Check that key attributes are present
         assert res.input_embeds is not None
         assert res.input_attention_mask is not None
-        assert res.targets is not None
+        assert res.message_targets is not None
 
         # inputs_embeds: (n_candidates, seq_len, embd_dim) -- message dim removed
         assert res.input_embeds.dim() == 3
@@ -147,7 +147,7 @@ def test_token_input_manager_get_triggered_inputs(encoder_model):
         assert res.input_attention_mask.shape[0] == n_candidates
 
         # Check targets expansion
-        assert res.targets.target_vectors is not None
+        assert res.message_targets.target_vectors is not None
 
         from tropt.common import SliceKey
 
@@ -157,12 +157,12 @@ def test_token_input_manager_get_triggered_inputs(encoder_model):
         # Trigger slice length should match the actual trigger length (default is 20 tokens)
         assert res.input_slices[SliceKey.TRIGGER].stop - res.input_slices[SliceKey.TRIGGER].start == trigger_ids.shape[1]
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()
 
 def test_token_input_manager_chosen_message(encoder_model):
     texts = [f"A {OPTIMIZED_TRIGGER_PLACEHOLDER} B", f"C {OPTIMIZED_TRIGGER_PLACEHOLDER} D"]
     targets = Targets(target_vectors=torch.randn(2, encoder_model.d_model))
-    encoder_model.set_token_inputs(texts, targets)
+    encoder_model.set_inputs_from_tokens(texts, targets)
     inputs = encoder_model._token_input_manager
     trigger_ids = encoder_model.tokenizer(
         "init", add_special_tokens=False, return_tensors="pt"
@@ -179,9 +179,9 @@ def test_token_input_manager_chosen_message(encoder_model):
     assert res.input_embeds.shape[0] == n_candidates
 
     # Targets should be for single message now
-    tgt_vecs = res.targets.target_vectors
+    tgt_vecs = res.message_targets.target_vectors
     # Should be (d_model)
     assert isinstance(tgt_vecs, torch.Tensor)
     assert tgt_vecs.shape[0] == encoder_model.d_model
 
-    encoder_model.reset_token_inputs()
+    encoder_model.reset_inputs_from_tokens()

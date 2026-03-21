@@ -69,15 +69,22 @@ class MockUtilModel(LMBaseModel, LogitsTokenAccessMixin):
         self._tokenizer = AutoTokenizer.from_pretrained("gpt2")
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-        self.vocab_size = self._tokenizer.vocab_size
-    
+
     def __call__(self, *args, **kwargs):
         pass
 
-    def set_token_inputs(self, texts, targets=None):
+    def invoke_from_texts(self, *args, **kwargs):
+        from tropt.common import ModelOutput
+        return ModelOutput()
+
+    def invoke_from_tokens(self, *args, **kwargs):
+        from tropt.common import ModelOutput
+        return ModelOutput()
+
+    def set_inputs_from_tokens(self, templates, targets=None):
         self._token_input_manager = MockInputsManager(self.tokenizer)
 
-    def reset_token_inputs(self):
+    def reset_inputs_from_tokens(self):
         self._token_input_manager = None
 
     @property

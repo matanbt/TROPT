@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 from tropt.optimizer.gaslite_optimizer import GASLITEOptimizer
 from tropt.model import BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin, TokenInputManager
 from tropt.loss import BaseLoss
+from tropt.common import ModelOutput
 
 # TODO review & consider dropping the mocks
 
@@ -14,7 +15,7 @@ class MockInputsManager(TokenInputManager):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
         self.n_templates = 1
-    
+
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 
@@ -39,25 +40,23 @@ class MockModel(BaseModel, LossTokenAccessMixin, GradientTokenAccessMixin):
     def vocab_size(self):
         return self._tokenizer.vocab_size
 
-    def set_token_inputs(self, texts, targets=None):
+    def invoke_from_tokens(self, *args, **kwargs):
+        return ModelOutput()
+
+    def set_inputs_from_tokens(self, templates, targets=None):
         self._token_input_manager = MockInputsManager(self.tokenizer)
 
-    def reset_token_inputs(self):
+    def reset_inputs_from_tokens(self):
         self._token_input_manager = None
 
     def compute_loss_from_tokens(self, candidate_trigger_ids, loss_func=None, keep_message_dim=False, **kwargs):
-        # return random loss
         n_candidates = candidate_trigger_ids.shape[0]
-        # shape: (n_templates, n_candidates)
         losses = torch.rand(self._token_input_manager.n_templates, n_candidates, device=self.device)
         if not keep_message_dim:
             losses = losses.mean(dim=0)
         return losses
 
     def compute_grad_from_tokens(self, candidate_trigger_ids, **kwargs):
-        # return random grad
-        # Input shape: (n_cands, trigger_seq_len)
-        # Output shape: (n_cands, trigger_seq_len, vocab_size)
         n_cands, trigger_seq_len = candidate_trigger_ids.shape
         vocab_size = self._token_input_manager.vocab_size
         return torch.randn(n_cands, trigger_seq_len, vocab_size, device=self.device)
@@ -72,22 +71,22 @@ class MockLoss(BaseLoss):
 def test_gaslite_optimizer_run():
     model = MockModel()
     loss = MockLoss()
-    
+
     optimizer = GASLITEOptimizer(
         model=model,
         loss=loss,
         num_steps=2,
-        n_grad=2, # Small number for testing
+        n_grad=2,
         n_flip=1,
         n_candidates=10,
-        use_retokenize=True # Use real tokenizer logic
+        use_retokenize=True
     )
-    
+
     texts = ["Test message"]
     initial_trigger = "ABC"
-    
+
     result = optimizer.optimize_trigger(texts, initial_trigger=initial_trigger)
-    
+
     assert result.best_loss is not None
     assert len(result.losses) == 2
     assert len(result.trigger_strs) == 2
