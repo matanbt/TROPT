@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "tropt"
@@ -102,8 +102,11 @@ evaluate = [
   "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]
 
-[tool.setuptools.packages.find]
-exclude = ["tests", "tests.*"]
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["tropt"]
 
 [tool.ruff]
 line-length = 88

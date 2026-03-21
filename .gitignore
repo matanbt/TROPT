@@ -1,6 +1,7 @@
 __pycache__
 
 .env
+.venv/
 dist/
 *.slurm
 .pypirc
