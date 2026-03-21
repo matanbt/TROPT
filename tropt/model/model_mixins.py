@@ -17,8 +17,8 @@ from tropt.common import (
 )
 from tropt.loss import BaseLoss
 from tropt.loss.losses import PrefillBasedLoss
-from tropt.loss.text_losses import GeneratedResponseBasedLoss
 from tropt.loss.resolution import resolve_and_compute_loss
+from tropt.loss.text_losses import GeneratedResponseBasedLoss
 
 from .inputs_manager import (
     TextInputManager,
@@ -190,8 +190,8 @@ class LossTextAccessMixin(TextAccessMixin):
         assert self._text_input_manager is not None, "Text input manager is not initialized. Please call set_inputs_from_texts() first."
 
         input_manager = self._text_input_manager
-        n_templates = input_manager.n_templates
-        n_candidates = len(candidate_trigger_strs)
+        n_templates: int = input_manager.n_templates
+        n_candidates: int = len(candidate_trigger_strs)
 
         # Main Loop: for each template, we compute the loss for all candidates
         losses = []

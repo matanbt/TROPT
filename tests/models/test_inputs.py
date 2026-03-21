@@ -27,7 +27,7 @@ from tropt.model.inputs_manager import TextInputManager
 #     tdp = TargetsDictPlus(targets)
 #     with pytest.raises(AssertionError):
 #         tdp["key2"] = [1, 2] # Wrong length
-    
+
 #     tdp["key2"] = [4, 5, 6]
 #     assert tdp["key2"] == [4, 5, 6]
 
@@ -35,7 +35,7 @@ from tropt.model.inputs_manager import TextInputManager
 #     t1 = torch.tensor([1, 2, 3])
 #     targets = {"t1": t1}
 #     tdp = TargetsDictPlus(targets)
-    
+
 #     device = torch.device("cpu")
 #     tdp.to_device(device)
 #     assert tdp["t1"].device.type == "cpu"
@@ -46,12 +46,12 @@ from tropt.model.inputs_manager import TextInputManager
 #     n_templates = 2
 #     n_candidates = 3
 #     feature_dim = 4
-    
+
 #     targets = {"t1": torch.randn(n_templates, feature_dim)}
 #     tdp = TargetsDictPlus(targets, n_templates=n_templates)
-    
+
 #     expanded = TargetsDictPlus.get_expanded_with_candidates(tdp, n_candidates)
-    
+
 #     assert expanded["t1"].shape == (n_templates, n_candidates, feature_dim)
 #     # Check content: all candidates for a message should be identical
 #     assert torch.allclose(expanded["t1"][0, 0], targets["t1"][0])
@@ -64,9 +64,9 @@ from tropt.model.inputs_manager import TextInputManager
 #     targets = {"s1": ["msg1", "msg2"]}
 #     tdp = TargetsDictPlus(targets)
 #     n_candidates = 3
-    
+
 #     expanded = TargetsDictPlus.get_expanded_with_candidates(tdp, n_candidates)
-    
+
 #     assert len(expanded["s1"]) == 2
 #     assert len(expanded["s1"][0]) == 3
 #     assert expanded["s1"][0][0] == "msg1"
@@ -78,7 +78,7 @@ from tropt.model.inputs_manager import TextInputManager
 def test_text_input_manager_init():
     texts = ["Hello {{OPTIMIZED_TRIGGER}} World", "Start {{OPTIMIZED_TRIGGER}}"]
     tim = TextInputManager(texts, optimized_trigger_placeholder="{{OPTIMIZED_TRIGGER}}")
-    
+
     assert tim.n_templates == 2
     assert tim.before_texts == ["Hello ", "Start "]
     assert tim.after_texts == [" World", ""]
@@ -86,10 +86,10 @@ def test_text_input_manager_init():
 def test_text_input_manager_get_triggered_inputs():
     texts = [f"A{OPTIMIZED_TRIGGER_PLACEHOLDER}B"]
     tim = TextInputManager(texts, optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER)
-    
+
     triggers = ["1", "2"]
     res = tim.get_triggered_inputs(triggers, chosen_template_idx=0)
-    
+
     assert isinstance(res, ModelInput)
     assert res.input_texts == ["A1B", "A2B"]
 
@@ -97,10 +97,10 @@ def test_text_input_manager_get_triggered_inputs():
 def test_text_input_manager_get_triggered_inputs_chosen_message():
     texts = [f"A{OPTIMIZED_TRIGGER_PLACEHOLDER}B", f"C{OPTIMIZED_TRIGGER_PLACEHOLDER}D"]
     tim = TextInputManager(texts, optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER)
-    
+
     triggers = ["1", "2"]
     res = tim.get_triggered_inputs(triggers, chosen_template_idx=1)
-    
+
     assert isinstance(res, ModelInput)
     assert res.input_texts == ["C1D", "C2D"]
 

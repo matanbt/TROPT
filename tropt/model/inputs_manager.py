@@ -71,13 +71,13 @@ class TextInputManager(InputsManager):
         self.targets = targets
 
     @property
-    def n_templates(self):
+    def n_templates(self) -> int:
         return len(self.before_texts)
 
     def get_triggered_inputs(
         self,
         trigger_strs: Annotated[List[str], "n_candidates"],
-        chosen_template_idx: Optional[int],
+        chosen_template_idx: int,
     ) -> ModelInput:
         """
         Returns a list of inputs with the given trigger strings merged in.
@@ -88,7 +88,7 @@ class TextInputManager(InputsManager):
         assert isinstance(trigger_strs, list) and all(
             isinstance(s, str) for s in trigger_strs
         ), "trigger_strs must be a list of strings."
-        n_candidates = len(trigger_strs)
+        n_candidates: int = len(trigger_strs)
 
         input_texts: List[str] = []
         for trigger_str in trigger_strs:
@@ -168,7 +168,7 @@ class DefaultTokenInputManager(TokenInputManager):
     def get_triggered_inputs(
         self,
         trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        chosen_template_idx: Optional[int],
+        chosen_template_idx: int,
         **kwargs
     ) -> ModelInput:
         """
@@ -190,5 +190,5 @@ class DefaultTokenInputManager(TokenInputManager):
             input_trigger_ids=trigger_ids,
             input_trigger_strs=trigger_strs,
             input_texts=curr_message_candidates,
-            targets=targets,
+            message_targets=targets,
         )

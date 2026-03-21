@@ -74,11 +74,11 @@ class GCGOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         templates: TextTemplates,
-        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
+        initial_trigger: str = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
         targets: Optional[Targets] = None,  # depends on the objective
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -93,9 +93,9 @@ class GCGOptimizer(BaseOptimizer):
         trigger_ids: Int[Tensor, "trigger_seq_len"] = trigger_ids.squeeze(0)  # take the only trigger
         trigger_str: str = initial_trigger
 
-        loss_per_step = []
-        trigger_strings = []
-        trigger_ids_per_step = []
+        loss_per_step: list[float] = []
+        trigger_strings: list[str] = []
+        trigger_ids_per_step: list[Int[Tensor, "trigger_seq_len"]] = []
 
         # Compute loss before optimization
         current_loss = self.model.compute_loss_from_tokens(
@@ -148,7 +148,6 @@ class GCGOptimizer(BaseOptimizer):
         best_trigger_str = trigger_strings[min_loss_index]
 
         full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
-
         result = OptimizerResult(
             best_loss=loss_per_step[min_loss_index],
             best_trigger_str=best_trigger_str,

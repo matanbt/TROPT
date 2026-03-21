@@ -1,31 +1,34 @@
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 from transformers import AutoTokenizer
-from unittest.mock import MagicMock
-from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
-from tropt.model import (
-    BaseModel, 
-    LossTextAccessMixin, 
-    LogitsTokenAccessMixin, 
-    LMBaseModel,
-    TokenInputManager,
-    TextInputManager
-)
+
 from tropt.loss import BaseLoss
+from tropt.model import (
+    BaseModel,
+    LMBaseModel,
+    LogitsTokenAccessMixin,
+    LossTextAccessMixin,
+    TextInputManager,
+    TokenInputManager,
+)
+from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
+
 
 class MockInputsManager(TokenInputManager):
     def __init__(self, tokenizer):
         self.tokenizer = tokenizer
         self.vocab_size = tokenizer.vocab_size
         self.n_templates = 1
-    
+
     def get_triggered_inputs(self, *args, **kwargs):
         pass
 
 class MockTextInputManager(TextInputManager):
     def __init__(self):
         # Mocking the attributes required by the n_templates property in TextInputManager
-        self.before_texts = [""] 
+        self.before_texts = [""]
         self.targets = {}
 
 
@@ -36,7 +39,7 @@ class MockTargetModel(BaseModel, LossTextAccessMixin):
 
     def __init__(self):
         pass
-        
+
     def __call__(self, *args, **kwargs):
         pass
 
@@ -108,7 +111,7 @@ def test_rasliteplus_optimizer_run():
     target_model = MockTargetModel()
     util_model = MockUtilModel()
     loss = MockLoss()
-    
+
     optimizer = RASLITEPlusOptimizer(
         model=target_model,
         util_model=util_model,
@@ -121,12 +124,12 @@ def test_rasliteplus_optimizer_run():
         use_retokenize=True,
         n_bulk_flips=1 # Simplify for test
     )
-    
+
     texts = ["Test message"]
     initial_trigger = "ABC"
-    
+
     result = optimizer.optimize_trigger(texts, initial_trigger=initial_trigger)
-    
+
     assert result.best_loss is not None
     assert len(result.losses) == 2
     assert len(result.trigger_strs) == 2

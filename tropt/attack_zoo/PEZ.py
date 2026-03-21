@@ -7,8 +7,9 @@ from tropt.loss import PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.pez_optimizer import PEZOptimizer
-from tropt.tracker import BaseTracker
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.tracker import BaseTracker
+
 
 def run_pez(
     model_name: str = "google/gemma-3-270m-it",
@@ -54,7 +55,8 @@ def run_pez(
 
     )
     # Init random trigger of length 16 (as in paper):
-    initial_trigger = get_printable_random_trigger(model_obj.tokenizer, length=16)
+    initial_trigger = get_printable_random_trigger(trigger_len=16, tokenizer=model_obj.tokenizer)
+    assert isinstance(initial_trigger, str)
 
     return optimizer.optimize_trigger(
         templates=[instruction],

@@ -4,6 +4,7 @@ from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
+import transformers
 from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
@@ -12,12 +13,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
+    MessageTargets,
     ModelInput,
     ModelOutput,
     SliceKey,
     Targets,
     TextTemplates,
-    MessageTargets,
 )
 from tropt.loss import BaseLoss
 from tropt.model import (
@@ -43,6 +44,7 @@ class LMHFTokenInputManager(_HFTokenInputManager):
 
     @cached_property
     def _prefill_embeds(self) -> List[Float[Tensor, "target_seq_len embd_dim"]]:
+        assert self.targets.target_response_toks is not None, "target_response_toks must be set"
         return [self.embed_func(target_output) for target_output in self.targets.target_response_toks]
 
     def get_triggered_inputs(
@@ -115,8 +117,12 @@ class LMHFModel(
 
         self.dtype = self._model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._embedding_layer = self._model.get_input_embeddings()
+        _tokenizer = AutoTokenizer.from_pretrained(model_name)
+        assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)
+        self._tokenizer = _tokenizer
+        embedding_layer = self._model.get_input_embeddings()
+        assert embedding_layer is not None, f"Model {model_name} has no input embeddings"
+        self._embedding_layer: torch.nn.Module = embedding_layer
         self._use_prefix_cache = use_prefix_cache
 
         # Set model to eval mode
@@ -286,7 +292,7 @@ class LMHFModel(
         @find_executable_batch_size(starting_batch_size=self._forward_pass_batch_size)
         def _compute_logits_batched(batch_size):
             full_logits = [[] for _ in range(n_templates)]
-            slices: List[Dict[str, slice]] = [None for _ in range(n_templates)]
+            slices: List[Optional[Dict[SliceKey, Optional[slice]]]] = [None for _ in range(n_templates)]
 
             for template_idx, cand_idx in itertools.product(
                 range(n_templates),
@@ -335,9 +341,9 @@ class LMHFModel(
                     slc = slice(slc_trigger.stop - 1, slc_trigger.stop)
 
                 trigger_logits[i_template] = logits[i_template, :, slc, :]
-                
+
                 assert trigger_logits.shape[2] == slc.stop - slc.start, "Extracted trigger logits length does not match expected length."
-            
+
             logits = trigger_logits
 
         if not keep_message_dim:
@@ -405,7 +411,7 @@ class LMHFModel(
         self._update_usage_stats(
             forward_calls=1,
             forward_samples=input_embeds.shape[0],
-            tokens=input_attention_mask.sum().item(),
+            tokens=int(input_attention_mask.sum().item()),
         )
 
         # Extract prefill logits, if exist and requested
@@ -414,7 +420,7 @@ class LMHFModel(
             assert input_slices is not None, "input_slices must be provided to extract prefill logits when `do_prefill_target_response` is True."
             response_slc = input_slices[SliceKey.APPENDED]
             prefill_response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
-        
+
         # Generate response, if requested
         generated_response_strs = None
         generated_response_ids = None

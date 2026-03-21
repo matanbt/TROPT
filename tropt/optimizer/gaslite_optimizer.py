@@ -87,7 +87,7 @@ class GASLITEOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -212,7 +212,6 @@ class GASLITEOptimizer(BaseOptimizer):
         best_trigger_ids = trigger_ids_per_step[best_loss_idx]
 
         full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
-
         result = OptimizerResult(
             best_loss=loss_per_step[best_loss_idx],
             best_trigger_str=best_trigger_str,
@@ -243,8 +242,8 @@ class GASLITEOptimizer(BaseOptimizer):
 
         for idx in range(1, self.n_grad):  # (keep the first intact)
             # select a random position and a random token
-            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
+            tok_to_flip_to = int(torch.randint(0, vocab_size, (1,), device=device).item())
             # apply the flip
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 

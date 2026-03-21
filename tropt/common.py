@@ -11,7 +11,7 @@ from torch import Tensor
 
 # =========== Common constants and utilities for TTOP ==========
 # Defines a placeholder string for optimized triggers
-OPTIMIZED_TRIGGER_PLACEHOLDER = "{{OPTIMIZED_TRIGGER}}"
+OPTIMIZED_TRIGGER_PLACEHOLDER: str = "{{OPTIMIZED_TRIGGER}}"
 
 # Default initial trigger
 DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
@@ -134,7 +134,7 @@ class Targets(pydantic.BaseModel):
             **{k: v[idx] for k, v in self if v is not None}
         )
 
-    def to_device(self, device: torch.device) -> "Targets":
+    def to_device(self, device: torch.device | str) -> "Targets":
         updates = {}
         for k, v in self:
             if isinstance(v, Tensor):
@@ -326,7 +326,7 @@ class ModelOutput(pydantic.BaseModel):
 
     # === Generated responses (Language models with generation) ===
     generated_response_ids: Optional[List[Int[Tensor, "response_len"]]] = None
-    """Generated token IDs from language model generation. 
+    """Generated token IDs from language model generation.
     Response lengths may vary across samples.
     """
 
@@ -334,8 +334,8 @@ class ModelOutput(pydantic.BaseModel):
     """Generated text strings from language model generation.
     """
 
-    generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]]] = None
-    """Logits for generated tokens from language model generation. 
+    generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]] | Float[Tensor, "bsz response_len vocab_size"]] = None
+    """Logits for generated tokens from language model generation.
     Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
     Response lengths may vary across samples.
     """

@@ -102,6 +102,14 @@ evaluate = [
   "strong_reject @ git+https://github.com/dsbowen/strong_reject.git@main"
 ]
 
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126" }]
+
 [tool.hatch.metadata]
 allow-direct-references = true
 
@@ -110,21 +118,24 @@ packages = ["tropt"]
 
 [tool.ruff]
 line-length = 88
-ignore = [
-    "F722", # Forward annotation false positive from jaxtyping
-    "F821", # Undefined name false positive from jaxtyping
-    "F401", # allow empty imports
-]
+include = ["tropt/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
 # Enable Pyflakes, pycodestyle, and isort rules
 select = ["E", "F", "W", "I"]
 
-# Never enforce `E501` (line length), as `black` will handle that.
-ignore = ["E501"]
+ignore = [
+    "E501",  # line length — handled by formatter
+    "F722",  # Forward annotation false positive from jaxtyping
+    "F821",  # Undefined name false positive from jaxtyping
+    "F401",  # allow empty imports
+]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+
+[tool.ty.environment]
+python = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

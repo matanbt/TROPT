@@ -4,13 +4,16 @@ Tests for OpenAI encoder model integration.
 These tests use mocked API calls to avoid requiring actual API keys and incurring costs.
 """
 
+from unittest.mock import MagicMock, Mock, patch
+
 import pytest
 import torch
-from unittest.mock import Mock, patch, MagicMock
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss import SimilarityLoss
-from tropt.model.openai.encoder import OpenAITokenizer # Import OpenAITokenizer directly
+from tropt.model.openai.encoder import (
+    OpenAITokenizer,  # Import OpenAITokenizer directly
+)
 
 
 @pytest.fixture
@@ -43,7 +46,7 @@ def mock_tiktoken():
     mock_encoding = MagicMock()
     mock_encoding.encode.return_value = [[1, 2, 3, 4, 5]] # Changed to 2D tensor
     mock_encoding.decode.return_value = f"Query: {OPTIMIZED_TRIGGER_PLACEHOLDER}" # Example with placeholder
-    
+
     def mock_encode_batch_side_effect(texts, **kwargs):
         # Each text gets a dummy token list
         return [[1, 2, 3, 4, 5] for _ in texts]

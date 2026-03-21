@@ -7,7 +7,7 @@ class TriggerBuffer:
     https://www.haizelabs.com/blog/making-a-sota-adversarial-attack-on-llms-38x-faster
     https://arxiv.org/pdf/2402.12329
     """
-    # TODO can optimize this class using heap (Python's heapq) for better performance on 
+    # TODO can optimize this class using heap (Python's heapq) for better performance on
     #      large buffers (which are currently rare in the package)
 
     def __init__(

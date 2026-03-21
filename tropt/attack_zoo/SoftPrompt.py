@@ -132,6 +132,7 @@ def generate_from_soft_trigger(
 
     if return_full_model_output:
         return model_output
+    assert model_output.generated_response_strs is not None
     return model_output.generated_response_strs[0]
 
 ############################################################

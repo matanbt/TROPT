@@ -36,9 +36,9 @@ logger = logging.getLogger(__name__)
 
 class RASLITEPlusOptimizer(BaseOptimizer):
     """
-    Implements the RASLITEPlus optimization algorithm, which basically runs GASLITE against a black-box model; 
+    Implements the RASLITEPlus optimization algorithm, which basically runs GASLITE against a black-box model;
     specifically, we use a util-LM for the tokenizer and to compute logits, using stratgies from GASLITEPlus
-    (buffer, early stopping, decreasing n_flip, etc.). The key loss computations are done on text-level 
+    (buffer, early stopping, decreasing n_flip, etc.). The key loss computations are done on text-level
     against the black-box target model.
 
     Builds on the paper: "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
@@ -60,7 +60,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = False,
-        
+
         util_model: Optional[LMBaseModel] = None,  # for logits calc
         use_random_logits: bool = False,  # for possible ablation
 
@@ -138,7 +138,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         # We prepare inputs for both models.
@@ -403,8 +403,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         for idx in range(1, self.n_grad):  # (keep the first intact)
             # select a random position and a random token
-            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
+            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
+            tok_to_flip_to = int(torch.randint(0, vocab_size, (1,), device=device).item())
             # apply the flip
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 

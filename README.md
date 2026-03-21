@@ -55,12 +55,20 @@ pip install tropt[all]
 
 ### Development Installation
 
-For contributing or local development:
+For contributing or local development, we use [uv](https://docs.astral.sh/uv/) for dependency management:
 
 ```bash
 git clone https://github.com/matanbt/tropt.git
 cd tropt
-pip install -e ".[dev]"
+pip install uv
+uv sync --extra dev
+```
+
+Then run commands via `uv run` (no need to activate the venv):
+
+```bash
+uv run pytest
+uv run ruff check .
 ```
 
 ## Usage
@@ -126,13 +134,13 @@ For contributors and developers: See [DESIGN.md](DESIGN.md) for comprehensive de
 
 ```bash
 # Install in development mode
-pip install -e ".[dev]"
+uv sync --extra dev
 
 # Run tests
-pytest
+uv run pytest
 
 # Run linting
-ruff check .
+uv run ruff check .
 ```
 
 ## Roadmap

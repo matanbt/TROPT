@@ -5,6 +5,7 @@ import inspect
 import logging
 from typing import Any, Dict
 
+import pydantic
 import torch
 from jaxtyping import Float
 from torch import Tensor
@@ -35,12 +36,12 @@ def resolve_and_compute_loss(
     loss_func: BaseLoss,
 ) -> Float[Tensor, "bsz"]:
     """Universal loss computation via automatic argument matching.
-      
-    This function invokes `loss_func` with the model input (which includes the targets and slices), 
+
+    This function invokes `loss_func` with the model input (which includes the targets and slices),
     and output; it returns the computed loss tensor (size `bsz`).
 
     Notes:
-        - Since loss functions in TROPT declare their required arguments following the naming 
+        - Since loss functions in TROPT declare their required arguments following the naming
         convention of ModelOutput and ModelInput fields, this function can automatically
         resolve which data to provide to the loss function by inspecting its __call__
         signature.
@@ -144,7 +145,7 @@ def resolve_and_compute_loss(
                 f"It is probably because the model you try to run does not provide this access.\n\n"
                 f"Available in model_output: {_get_non_none_fields(model_output)}\n"
                 f"Available in model_input: {_get_non_none_fields(model_input)}\n"
-                f"Available in message_targets: {_get_non_none_fields(model_input.message_targets)}"
+                f"Available in message_targets: {_get_non_none_fields(model_input.message_targets) if model_input.message_targets else []}"
             )
 
     # Call the loss function with matched arguments
@@ -156,7 +157,7 @@ def resolve_and_compute_loss(
         raise e
 
 
-def _get_non_none_fields(obj: ModelOutput | ModelInput) -> list[str]:
+def _get_non_none_fields(obj: pydantic.BaseModel) -> list[str]:
     """Helper to get list of non-None field names from a Pydantic model."""
     return [name for name in type(obj).model_fields if getattr(obj, name) is not None]
 

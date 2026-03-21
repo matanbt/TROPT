@@ -7,8 +7,8 @@ These tests verify the core infrastructure that all model implementations build 
 import pytest
 import torch
 
-from tropt.model.model_base import BaseModel, EncoderBaseModel, LMBaseModel
 from tropt.common import ModelOutput
+from tropt.model.model_base import BaseModel, EncoderBaseModel, LMBaseModel
 
 # ==============================================================================
 # BaseModel Tests
@@ -172,13 +172,13 @@ def test_model_requirements_validation():
     This is a critical test because optimizers depend on this validation
     to ensure they can safely call model methods.
     """
+    from tropt.common import ModelOutput
     from tropt.model import (
-        LMBaseModel,
         GradientTokenAccessMixin,
+        LMBaseModel,
         LossTokenAccessMixin,
     )
     from tropt.model.model_base import BaseTokenizer
-    from tropt.common import ModelOutput
 
     class MockTokenizer(BaseTokenizer):
         @property

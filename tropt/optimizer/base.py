@@ -81,13 +81,13 @@ class BaseOptimizer(ABC):
         Returns:
             Optimized trigger.
         """
-        self._log_run_metadata(templates, initial_trigger, targets)
+        ...
 
-    def _log_run_metadata(
+    def _log_run_config_to_tracker(
         self,
         templates: TextTemplates,
-        initial_trigger: Optional[str | TokenTrigger],
-        targets: Optional[Targets],
+        initial_trigger: Optional[str | TokenTrigger] = None,
+        targets: Optional[Targets] = None,
     ):
         """Logs run metadata to the tracker at the start of optimization."""
         _skip = {"model", "loss_func", "tracker"}

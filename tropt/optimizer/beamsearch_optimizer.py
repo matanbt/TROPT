@@ -47,7 +47,7 @@ class BeamSearchOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         util_lm: LMBaseModel = None,  # if None, use the same as `model`
-        util_lm_prefix: Optional[TextTemplates] = None,
+        util_lm_prefix: str = None,
         num_steps: int = 40,
         beam_size: int = 15,
         branching_factor: int = 15,
@@ -66,7 +66,7 @@ class BeamSearchOptimizer(BaseOptimizer):
 
             util_lm (LMBaseModel, optional): Utility LM for generating candidates.
                 If None, internally uses the same as `model` (as in original BEAST paper).
-            util_lm_prefix (TextTemplates, optional): A prefix to seed the util LM for next-token computation of the trigger.
+            util_lm_prefix (str, optional): A prefix to seed the util LM for next-token computation of the trigger.
                 If None, defaults to the same `templates` provided to `optimize_trigger()`.
 
             num_steps (int): Number of optimization iterations (L in paper); also represents the length of the crafted trigger. Default: 40
@@ -126,7 +126,7 @@ class BeamSearchOptimizer(BaseOptimizer):
         - This loss evaluation against the target model is usually done in a black-box manner using text-level access (i.e., we query the model with the full text including the decoded candidate triggers), to enable the attack of fully black-box models; however, if util and target model share the same tokenizer, we can compute loss in token-level using the `use_model_with_token_inputs` option.
         """
 
-        super().optimize_trigger(templates, targets=targets)
+        self._log_run_config_to_tracker(templates, targets=targets)
 
         # Prepare inputs for both target model and util LM
         self.util_lm.set_inputs_from_tokens(

@@ -1,5 +1,8 @@
 """
-Allows filtering of candidate token sequences based on retokenization.
+Retokenization utilities for token-level optimization.
+
+Provides both filtering (keep only candidates that survive round-trip)
+and transformation (produce the retokenized version of a token sequence).
 """
 
 import logging
@@ -14,7 +17,7 @@ from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
 
 logger = logging.getLogger(__name__)
 
-# TODO need to profile whether these functions are bottlenecks, and if so parallelize them. 
+# TODO need to profile whether these functions are bottlenecks, and if so parallelize them.
 
 def retokenize_filtering(
         ids: Float[Tensor, "bsz n_ids"],
@@ -62,6 +65,36 @@ def retokenize_filtering(
     return torch.stack(filtered_ids)
 
 
+def retokenize_transform(
+    ids: Float[Tensor, "n_ids"],
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> Float[Tensor, "n_ids"]:
+    """Retokenize a token sequence: decode then re-encode.
+
+    Handles length mismatches by truncating or padding (with original ids)
+    to preserve the original sequence length.
+
+    Args:
+        ids: Token ids to retokenize, shape (n_ids,).
+        tokenizer: The model's tokenizer.
+
+    Returns:
+        Retokenized ids with the same length as input.
+    """
+    text = tokenizer.decode(ids, skip_special_tokens=True)
+    retok_ids = tokenizer.encode(text, add_special_tokens=False, return_tensors="pt")
+    retok_ids = retok_ids.to(ids.device, dtype=ids.dtype).squeeze(0)
+
+    trigger_len = ids.shape[0]
+    if retok_ids.shape[0] >= trigger_len:
+        return retok_ids[:trigger_len]
+    else:
+        # Pad with original ids if retokenization shortened the sequence
+        result = ids.clone()
+        result[: retok_ids.shape[0]] = retok_ids
+        return result
+
+
 def full_messages_retokenize_filtering(
     candidate_trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"],
     tokenizer: transformers.PreTrainedTokenizer,
@@ -80,7 +113,7 @@ def full_messages_retokenize_filtering(
         than the one in `retokenize_filtering` (i.e. the following function also enforces the
         former condition), which only requires successful retokenization of the trigger.
         Subsequenctly, for some tokenizers, this function may leave very few to no valid
-        candidates, in which case the user should consider disabling. Notably, empirically, 
+        candidates, in which case the user should consider disabling. Notably, empirically,
         optimizations were shown to perform well with the `retokenize_filtering` alone.
 
     Args:

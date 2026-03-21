@@ -17,10 +17,10 @@ from tropt.common import (
 )
 from tropt.model import (
     BaseTokenizer,
+    DefaultTokenInputManager,
     EncoderBaseModel,
     LossTextAccessMixin,
     TokenAccessMixin,
-    DefaultTokenInputManager,
 )
 
 
@@ -54,7 +54,7 @@ class OpenAITokenizer(BaseTokenizer):
 
     @property
     def name_or_path(self) -> str:
-        return f"openai-{self._encoding.name}" 
+        return f"openai-{self._encoding.name}"
 
     @property
     def all_special_ids(self) -> List[int]:
@@ -65,7 +65,7 @@ class OpenAITokenizer(BaseTokenizer):
 
     def __call__(
         self,
-        text: str,
+        text: str | List[str],
         return_tensors: Literal["list", "pt", "np"] = "list",
         **kwargs,
     ) -> BatchEncoding:
@@ -109,20 +109,17 @@ class OpenAITokenizer(BaseTokenizer):
         decoded = self._encoding.decode(ids)
         return decoded.replace(self.eot_token, "")
 
-    def batch_decode(self, ids, **kwargs) -> list[str]:
+    def batch_decode(self, ids: list | int | torch.Tensor, **kwargs) -> list[str]:
         _ = kwargs  # unused
         if isinstance(ids, torch.Tensor):
             ids = ids.tolist()
         if isinstance(ids, int):
             ids = [[ids]]
-        if isinstance(ids, list) and isinstance(ids[0], int):
+        assert isinstance(ids, list)
+        if len(ids) > 0 and isinstance(ids[0], int):
             ids = [ids]
-        assert (
-            isinstance(ids, list)
-            and isinstance(ids[0], list)
-            and isinstance(ids[0][0], int)
-        ), f"ids must be list of list of int, got {type(ids)} {ids}"
-        decoded_list = self._encoding.decode_batch(ids)
+        batch: list[list[int]] = ids
+        decoded_list = self._encoding.decode_batch(batch)
         decoded_list = [s.replace(self.eot_token, "") for s in decoded_list]
         return decoded_list
 

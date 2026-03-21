@@ -23,7 +23,9 @@ def get_printable_random_trigger(
     if tokenizer is not None:
         # Encode, slice to strict token length, and decode back
         _token_ids = tokenizer.encode(initial_trigger, add_special_tokens=False)
-        initial_trigger = tokenizer.decode(_token_ids[:trigger_len])
+        decoded = tokenizer.decode(_token_ids[:trigger_len])
+        assert isinstance(decoded, str)
+        initial_trigger: str = decoded
     else:
         initial_trigger = initial_trigger[:trigger_len]
 

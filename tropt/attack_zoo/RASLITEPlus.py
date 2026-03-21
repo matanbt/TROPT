@@ -5,13 +5,14 @@ from jaxtyping import Float
 
 from tropt.common import DEFAULT_INIT_TRIGGER, Targets
 from tropt.loss import ResponseHarmfulnessLoss, SimilarityLoss
+from tropt.loss.losses import PrefillCELoss
+from tropt.model import EncoderBaseModel
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rasliteplus_optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
-from tropt.loss.losses import PrefillCELoss
 
 
 def run_rasliteplus(
@@ -22,7 +23,7 @@ def run_rasliteplus(
     ),  # random target vector for demo purposes
     # util_lm_name: str = "google/gemma-3-270m-it",
     initial_trigger: str = DEFAULT_INIT_TRIGGER,
-    model_obj=None,
+    model_obj: Optional[EncoderBaseModel] = None,
     tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
     """
@@ -47,11 +48,13 @@ def run_rasliteplus(
         else:
             model_obj = EncoderHFModel(model_name=model_name)
             device = model_obj.device
-    model = model_obj
+    model: EncoderBaseModel = model_obj
 
     util_lm = None  # we dont use logits
 
-    target_vector = model(["paris is the capital of france. It is also known for the Eiffel Tower, its art, culture, and history."])
+    result = model(["paris is the capital of france. It is also known for the Eiffel Tower, its art, culture, and history."])
+    assert isinstance(result, torch.Tensor)
+    target_vector = result
 
     loss = SimilarityLoss()
 

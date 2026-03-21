@@ -60,7 +60,7 @@ class BaseLoss(ABC):
                 self._last_loss_vals = result.detach()
                 return result
 
-            cls.__call__ = wrapped
+            setattr(cls, "__call__", wrapped)
 
     @abstractmethod
     def __call__(self, *args, **kwargs) -> Float[Tensor, "bsz"]:
@@ -95,7 +95,7 @@ class CombinedLoss(BaseLoss):
     _last_component_loss_vals: Optional[Float[Tensor, "n_losses bsz"]] = None
     """Per-component loss values from the most recent __call__, shape (n_losses, bsz)."""
 
-    def __init__(self, loss_funcs: List[BaseLoss], weights: List[float] = None) -> None:
+    def __init__(self, loss_funcs: List[BaseLoss], weights: Optional[List[float]] = None) -> None:
         assert weights is None or len(loss_funcs) == len(weights), "Length mismatch between loss_funcs and weights"
         assert all(isinstance(loss, BaseLoss) for loss in loss_funcs), "All elements in losses must be instances of BaseLoss"
         assert all(not isinstance(loss, CombinedLoss) for loss in loss_funcs), "CombinedLoss cannot contain another CombinedLoss"
@@ -128,7 +128,7 @@ class CombinedLoss(BaseLoss):
         Returns a loggable dict of the last computed loss value (of *all* the component losses), keyed by loss class name.
         Useful for verbose loss logging in optimizers.
         """
-        if self._last_loss_vals is None:
+        if self._last_loss_vals is None or self._last_component_loss_vals is None:
             return {}
         return {
             f"loss/{type(self).__name__}": self._last_loss_vals.min().item(),

@@ -7,7 +7,7 @@ for unified loss resolution to work properly.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, List
+from typing import Annotated, ClassVar, List, Optional
 
 import torch
 from jaxtyping import Float, Int
@@ -196,7 +196,7 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
     """
 
     temperature: float = 1.0
-    slc_name: str = SliceKey.TRIGGER  # Which slice contains the trigger tokens
+    slc_name: SliceKey = SliceKey.TRIGGER  # Which slice contains the trigger tokens
 
     def __call__(
         self,
@@ -260,8 +260,8 @@ class AttentionEnhLoss(AttentionBasedLoss):
     """
 
     targeted_layers: slice = slice(None)
-    src_slc_name: str = SliceKey.TRIGGER
-    dst_slc_name: str = SliceKey.INPUT_AFTER
+    src_slc_name: SliceKey = SliceKey.TRIGGER
+    dst_slc_name: SliceKey = SliceKey.INPUT_AFTER
 
     def __call__(
         self,
@@ -378,7 +378,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         self,
         full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "d_model"],
-        input_slices: dict[str, slice] = None,
+        input_slices: Optional[dict[str, slice]] = None,
     ) -> Float[Tensor, "bsz"]:
         """
         Compute steering loss by measuring cosine similarity between hidden states and target directions.

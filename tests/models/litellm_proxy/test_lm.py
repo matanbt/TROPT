@@ -2,9 +2,8 @@
 Tests for the LiteLLM model wrapper.
 Important note: These tests require a running LiteLLM proxy server and Ollama with the specified model pulled.
 """
-from tropt.model.litellm_proxy.lm import LiteLLMModel
-
 import pytest
+
 from tropt.model.litellm_proxy.lm import LiteLLMModel
 
 MODEL_NAME = "ollama/gemma3:270m"
@@ -38,14 +37,14 @@ def test_litellm_model_integration(config):
     """
     Tests the LiteLLMModel wrapper against both Proxy and Direct connections.
     """
-    
+
     # Initialize model by unpacking the dictionary (**config)
     model = LiteLLMModel(**config)
-    
+
     # Test single input
     text = "Hello, reply with 'World'"
     responses = model([text], max_new_tokens=8)
-    
+
     assert len(responses) == 1
     if responses[0]:
         assert len(responses[0]) > 0

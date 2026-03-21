@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Type
 
 import torch
 import torch.nn.functional as F
@@ -46,7 +46,7 @@ class PEZOptimizer(BaseOptimizer):
         num_steps: int = 300,
         learning_rate: float = 0.1,
         weight_decay: float = 0.1,
-        gd_optimizer: Optional[type] = torch.optim.SGD,
+        gd_optimizer: type = torch.optim.SGD,
     ):
         """
         Args:
@@ -73,7 +73,7 @@ class PEZOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)

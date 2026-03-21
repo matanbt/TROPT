@@ -1,5 +1,5 @@
 # Base models:
-from .model_base import (
+from .model_base import (  # noqa: I001
     BaseModel,
     EncoderBaseModel,
     LMBaseModel,
@@ -13,7 +13,6 @@ from .inputs_manager import (
     TokenInputManager,
     DefaultTokenInputManager,
 )
-
 
 
 # Mixins:

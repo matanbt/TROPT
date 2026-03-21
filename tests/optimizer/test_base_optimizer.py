@@ -37,7 +37,7 @@ class MockLoss(BaseLoss):
 def test_base_optimizer_init_and_requirements():
     model = MockModel()
     loss = MockLoss()
-    
+
     # Test initialization
     optimizer = ConcreteOptimizer(model, loss)
     assert optimizer.model == model
@@ -55,7 +55,7 @@ def test_base_optimizer_init_and_requirements():
 def test_base_optimizer_abstract_methods():
     model = MockModel()
     loss = MockLoss()
-    
+
     # Try to instantiate BaseOptimizer directly
     with pytest.raises(TypeError):
         BaseOptimizer(model, loss)

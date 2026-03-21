@@ -3,7 +3,7 @@ from jaxtyping import Float
 from torch import Tensor
 
 IGNORE_INDEX: int = -100
-"""Token index to ignore in loss computation (masked out in cross-entropy). 
+"""Token index to ignore in loss computation (masked out in cross-entropy).
 -100 is also the default in torch's CE."""
 
 

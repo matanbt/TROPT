@@ -111,9 +111,10 @@ class LMBaseModel(BaseModel):
             input_texts (List[str]): List of input prompt strings to generate completions for.
             return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the generated response strings.
         """
-        result = self.invoke_from_texts(input_texts=input_texts, do_generate=True, **kwargs)
+        result: ModelOutput = self.invoke_from_texts(input_texts=input_texts, do_generate=True, **kwargs)
         if return_full_output:
             return result
+        assert result.generated_response_strs is not None, "Model did not generate response strings"
         return result.generated_response_strs
 
     @abstractmethod
@@ -149,7 +150,7 @@ class EncoderBaseModel(BaseModel):
         input_texts: List[str],
         return_full_output: bool = False,
         **kwargs
-    ) -> Union[Float[Tensor, "n_texts d_model"], ModelOutput]:
+    ) -> Float[Tensor, "n_texts d_model"] | ModelOutput:
         """
         Computes encoder embeddings for the given input texts.
 
@@ -157,9 +158,10 @@ class EncoderBaseModel(BaseModel):
             input_texts (List[str]): List of input strings to compute embeddings for.
             return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the output embeddings.
         """
-        result = self.invoke_from_texts(input_texts=input_texts, **kwargs)
+        result: ModelOutput = self.invoke_from_texts(input_texts=input_texts, **kwargs)
         if return_full_output:
             return result
+        assert result.output_embeddings is not None, "Model did not return embeddings"
         return result.output_embeddings
 
     @abstractmethod
@@ -186,7 +188,7 @@ class EncoderBaseModel(BaseModel):
 
 class BaseTokenizer(ABC):
     """
-    Abstract base class for tokenizers to ensure a unified interface 
+    Abstract base class for tokenizers to ensure a unified interface
     compatible with Hugging Face-style usage.
     """
 

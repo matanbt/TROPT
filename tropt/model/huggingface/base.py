@@ -33,11 +33,11 @@ logger = logging.getLogger(__name__)
 class _HFTokenInputManager(TokenInputManager):
     before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
     after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
-    embed_func: torch.nn.Embedding
+    embed_func: torch.nn.Module
     targets: Targets
     padding_side: str
     pad_token_id: int
-    tokenizer: transformers.PreTrainedTokenizer
+    tokenizer: transformers.PreTrainedTokenizerBase
 
     # Optional prefix cache (for models that support it)
     prefix_cache: Optional[List[tuple]] = None
@@ -46,10 +46,10 @@ class _HFTokenInputManager(TokenInputManager):
     def __init__(
         self,
         model: transformers.PreTrainedModel,
-        tokenizer: transformers.PreTrainedTokenizer,
+        tokenizer: transformers.PreTrainedTokenizerBase,
         tok_ids: Annotated[List[List[int]], "n_templates seq_len"],
-        embed_func: torch.nn.Embedding,
-        optimized_trigger_placeholder: Optional[str] = OPTIMIZED_TRIGGER_PLACEHOLDER,
+        embed_func: torch.nn.Module,
+        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
         use_prefix_cache: Optional[bool] = False,
         targets: Targets = None,
     ):
@@ -141,11 +141,11 @@ class _HFTokenInputManager(TokenInputManager):
         return self.prefix_cache is not None
 
     @cached_property
-    def before_embeds(self) -> Float[Tensor, "n_templates bef_len embd_dim"]:
+    def before_embeds(self) -> List[Float[Tensor, "bef_len embd_dim"]]:
         return [self.embed_func(ids) for ids in self.before_ids]
 
     @cached_property
-    def after_embeds(self) -> Float[Tensor, "n_templates aft_len embd_dim"]:
+    def after_embeds(self) -> List[Float[Tensor, "aft_len embd_dim"]]:
         return [self.embed_func(ids) for ids in self.after_ids]
 
     @cached_property
@@ -157,7 +157,7 @@ class _HFTokenInputManager(TokenInputManager):
         # trigger options:
         trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"] = None,
         trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
-        append_embeds: List[Float[Tensor, "n_app_ids embd_dim"]] = None,  # of length n_templates
+        append_embeds: Optional[List[Float[Tensor, "n_app_ids embd_dim"]]] = None,  # of length n_templates
         do_append_embeds: bool = False,
         chosen_template_idx: Optional[int] = None,
     ) -> ModelInput:
@@ -213,11 +213,10 @@ class _HFTokenInputManager(TokenInputManager):
         curr_before = self.before_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
         curr_trigger = trigger_embeds
         curr_after = self.after_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
-        curr_append = (
-            append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
-            if do_append_embeds
-            else None
-        )
+        curr_append = None
+        if do_append_embeds:
+            assert append_embeds is not None
+            curr_append = append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
 
         # Build embeddings and attention mask
         embeds_parts = []
@@ -279,7 +278,7 @@ class _HFTokenInputManager(TokenInputManager):
         message_targets: MessageTargets = self.targets.select_message(chosen_template_idx)
 
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
-        prefix_cache_kwargs = {}
+        prefix_cache_kwargs: dict[str, Any] = {}
         if self.use_prefix_cache:
             prefix_cache_kwargs = self._get_prefix_cache_kwargs(
                 batch_size=n_candidates,
@@ -299,7 +298,7 @@ class _HFTokenInputManager(TokenInputManager):
 
     def _get_prefix_cache_kwargs(
         self, batch_size: int = 1, template_idx: int = None
-    ) -> List[Dict[str, transformers.DynamicCache | bool]] | Dict[str, transformers.DynamicCache | bool]:
+    ) -> Dict[str, Any]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
         if not self.use_prefix_cache:
             return dict()
@@ -323,6 +322,7 @@ class _HFTokenInputManager(TokenInputManager):
             )
 
         # Compute if not in memory
+        assert self.prefix_cache is not None
         past_key_values = self.prefix_cache[template_idx]
         # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
 
@@ -406,7 +406,7 @@ class _HuggingFaceModelMixins:
         # Additional config:
         normalize_grads: bool = True,
         return_loss: bool = False,
-    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"]:
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
 
         This method is the core of white-box, gradient-based trigger optimization (e.g., GCG, GASLITE).
@@ -493,7 +493,7 @@ class _HuggingFaceModelMixins:
         @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
-        ) -> Float[Tensor, "n_templates n_candidates"]:
+        ) -> Tuple[Tensor, Tensor]:
 
             # --- Update backward batch size ---
             # Automatically lower the default for future calls if this run required a downgrade
@@ -632,20 +632,14 @@ class _HuggingFaceModelMixins:
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
         return_loss: bool = False,
         normalize_grads: bool = True,
-    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"]:
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"] | Tuple[Tensor, float]:
         """Compute gradients of loss w.r.t. trigger embeddings.
 
         This variant optimizes directly in the continuous embedding space, with no constraints.
 
-        Args:
-            inputs: Token inputs manager.
-            loss_func: Loss function to optimize.
-            candidate_trigger_embeds: Continuous embedding vectors for triggers.
-                Shape: (n_candidates, trigger_seq_len, embed_dim)
-
         Returns:
-            Gradients w.r.t. the input embeddings.
-            Shape: (n_candidates, trigger_seq_len, embed_dim)
+            If return_loss is False: gradients tensor (n_candidates, trigger_seq_len, embed_dim).
+            If return_loss is True: tuple of (gradients tensor, average loss scalar).
         """
         assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
@@ -657,7 +651,7 @@ class _HuggingFaceModelMixins:
         @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
-        ) -> Float[Tensor, "n_templates n_candidates"]:
+        ) -> Tuple[Float[Tensor, "n_templates n_candidates"], float]:
 
             # --- Update backward batch size ---
             if batch_size < self._backward_pass_batch_size:
@@ -721,7 +715,7 @@ class _HuggingFaceModelMixins:
                 all_grads.append(candidate_embeds_grad)
                 all_losses.extend(batch_losses.detach().cpu().tolist())
 
-            return torch.cat(all_grads, dim=0), torch.tensor(all_losses, device=model.device).mean().item()
+            return torch.cat(all_grads, dim=0), float(torch.tensor(all_losses, device=model.device).mean().item())
 
         # Execute batched computation
         all_grads, avg_loss = _compute_grad__batched()
@@ -819,7 +813,7 @@ class _HuggingFaceModelMixins:
     def invoke_from_tokens(
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
-        input_attention_mask: Int[Tensor, "bsz seq_len"],
+        input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None,
 
         do_prefill_target_response: bool = False,
         do_generate: bool = False,
@@ -832,7 +826,7 @@ class _HuggingFaceModelMixins:
         Args:
             input_embeds: Float[Tensor, "bsz seq_len d_model"]
                 the input embeddings with the trigger merged in; if provided, used instead of any other potential input.
-            input_attention_mask: Int[Tensor, "bsz seq_len"]
+            input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None
                 the attention mask matching the input embeddings
             do_prefill_target_response: bool
                 whether to prefill the target response, and return the corresponding logits (e.g., for LMs).

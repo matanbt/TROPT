@@ -3,6 +3,7 @@ import logging
 from typing import Annotated, List, Optional
 
 import sentence_transformers
+import sentence_transformers.models
 import torch
 from jaxtyping import Float, Int
 from sentence_transformers import SentenceTransformer
@@ -215,7 +216,6 @@ class EncoderHFModel(
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
         input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
-        # TODO add input_ids, but input-embeds should be priority
         **kwargs
     ) -> ModelOutput:
         """
@@ -245,7 +245,7 @@ class EncoderHFModel(
         self._update_usage_stats(
             forward_calls=1,
             forward_samples=len(input_embeds),
-            tokens=input_attention_mask.sum().item(),
+            tokens=int(input_attention_mask.sum().item()),
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 

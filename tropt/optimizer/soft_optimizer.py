@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Type
 
 import torch
 import torch.nn.functional as F
@@ -68,7 +68,7 @@ class SoftPromptOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)

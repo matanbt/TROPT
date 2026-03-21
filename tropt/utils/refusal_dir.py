@@ -267,7 +267,7 @@ def ablate_refusal_direction(
         scale=scale,
         targeted_positions=targeted_positions,
     )
-    
+
     hf_model = get_hf_model(model)
 
     # Register hooks to model layers

@@ -1,19 +1,21 @@
+from unittest.mock import MagicMock
+
 import pytest
 import torch
 from transformers import AutoTokenizer
-from unittest.mock import MagicMock
-from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
+
+from tropt.common import ModelOutput
+from tropt.loss import BaseLoss
 from tropt.model import (
     BaseModel,
     LMBaseModel,
+    LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
-    LogitsTokenAccessMixin,
     TextInputManager,
-    TokenInputManager
+    TokenInputManager,
 )
-from tropt.loss import BaseLoss
-from tropt.common import ModelOutput
+from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
 
 
 class MockTextInputManager(TextInputManager):

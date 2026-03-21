@@ -7,9 +7,10 @@ for unified loss resolution to work properly.
 import logging
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Annotated, Any, ClassVar, List, Set
+from typing import Annotated, Any, ClassVar, List, Optional, Set
 
 import torch
+import transformers
 from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -65,8 +66,8 @@ class BinaryLMJudgeLoss(TextBasedLoss):
     # the loaded model and tokenizer
     _model: Any = field(default=None, init=False, repr=False)
     _tokenizer: Any = field(default=None, init=False, repr=False)
-    _positive_token_ids: Set[int] = field(default=None, init=False, repr=False)
-    _negative_token_ids: Set[int] = field(default=None, init=False, repr=False)
+    _positive_token_ids: Optional[Set[int]] = field(default=None, init=False, repr=False)
+    _negative_token_ids: Optional[Set[int]] = field(default=None, init=False, repr=False)
 
     def __post_init__(self):
         super().__post_init__()
@@ -75,7 +76,9 @@ class BinaryLMJudgeLoss(TextBasedLoss):
             self.model_name_or_path,
             dtype=torch.bfloat16
         ).eval().to(self.device)
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        _tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)
+        self._tokenizer = _tokenizer
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
 
@@ -143,6 +146,8 @@ class BinaryLMJudgeLoss(TextBasedLoss):
         last_logits = logits[batch_indices, last_token_indices, :]  # (bsz, vocab_size)
 
         # Sum logits over positive and negative token sets
+        assert self._positive_token_ids is not None
+        assert self._negative_token_ids is not None
         positive_ids = list(self._positive_token_ids)
         negative_ids = list(self._negative_token_ids)
 
@@ -251,7 +256,9 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
             self.model_name_or_path,
             dtype=torch.bfloat16,
         ).eval().to(self.device)
-        self._tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        _tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
+        assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)
+        self._tokenizer: transformers.PreTrainedTokenizerBase = _tokenizer
         self._tokenizer.padding_side = "left"
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token

@@ -100,7 +100,7 @@ class GBDAOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Targets = None,
     ) -> OptimizerResult:
-        super().optimize_trigger(templates, initial_trigger=initial_trigger, targets=targets)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -242,6 +242,7 @@ class GBDAOptimizer(BaseOptimizer):
             best_loss = loss_per_step[-1]
 
         # Construct full prompts
+        assert isinstance(best_trigger_str, str)
         full_prompt = [
             t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str)
             for t in templates
