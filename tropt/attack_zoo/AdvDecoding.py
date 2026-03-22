@@ -26,6 +26,7 @@ def run_advdecoding_retrieval(
     ),  # random target vector for demo purposes
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
+    original_hps: bool = False,
 ) -> OptimizerResult:
     """
     Run the AdvDecoding encoder's corpus poisoning attack.
@@ -37,6 +38,7 @@ def run_advdecoding_retrieval(
         target_vector: Target embedding vector to align with.
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
+        original_hps: Whether to use the original HPs from the paper, or more computationally-expensive ones.
 
     References:
         AdvDecoding paper (Retrieval experiment): https://arxiv.org/abs/2410.02163
@@ -50,18 +52,31 @@ def run_advdecoding_retrieval(
         model = EncoderHFModel(model_name=model_name)
     else:
         model = model_obj
-    util_lm = LMHFModel(model_name=util_lm_name)
+    util_lm = LMHFModel(model_name=util_lm_name, use_prefix_cache=False)
 
-    loss = CombinedLoss(
-        loss_funcs=[
+    if original_hps:
+        num_steps = 30  # num steps = length of trigger to generate; Paper uses 30
+        beam_size = 30   # `m` in the paper; mostly use 30
+        branching_factor = 10
+        top_k = 10   # Paper uses top_k=10 logits filtering
+        loss = CombinedLoss([
             SimilarityLoss(),  # Main attack loss: align to target embedding
             InputReadabilityLoss(),
 
             # InputReadabilityLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
+         ], weights=[
+             1.0,
+             1.0,
+         ]
+        )
+    else:
+        # Prioritize main-loss ASR with wider search; may be traded off with fluency
+        num_steps = 50
+        beam_size = 60
+        branching_factor = 15
+        top_k = 15
+        loss = SimilarityLoss()
 
-        ],
-        weights=[1.0, 1.0],  # Weights for each loss component
-    )
 
     # Initialize optimizer with AdvDecoding parameters
     optimizer = BeamSearchOptimizer(
@@ -69,10 +84,10 @@ def run_advdecoding_retrieval(
         loss=loss,
         util_lm=util_lm,
         tracker=tracker,
-        num_steps=30,  # num steps = length of trigger to generate; Paper uses 30
-        beam_size=30,  # `m` in the paper; mostly use 30,
-        top_k=10,  # Paper uses top_k=10 logits filtering
-        branching_factor=10,
+        num_steps=num_steps,
+        beam_size=beam_size,
+        top_k=top_k,
+        branching_factor=branching_factor,
         temperature=1.0,  # as there is no sampling anyway
         use_model_with_token_inputs=False,  # computes the target model loss in text-level
         # a prompt for util LM to compute logits of the trigger; prompt is taken from the paper:

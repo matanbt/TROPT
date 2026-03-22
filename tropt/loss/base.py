@@ -86,6 +86,7 @@ class BaseLoss(ABC):
         """
         return isinstance(self, loss_type)
 
+
 ############################
 
 @dataclass
@@ -165,5 +166,12 @@ class CombinedLoss(BaseLoss):
     def __iter__(self):
         """Allows iterating over the nested loss functions."""
         return iter(self.loss_funcs)
+
+    def __repr__(self) -> str:
+        parts = [
+            f"{lf!r} (w={w:.2f})"
+            for lf, w in zip(self.loss_funcs, self.weights.tolist())
+        ]
+        return f"CombinedLoss([{', '.join(parts)}])"
 
 

@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Annotated, Any, List, Optional
@@ -10,6 +11,8 @@ from tropt.common import Targets, TextTemplates, TokenTrigger
 from tropt.loss import BaseLoss
 from tropt.model import BaseModel
 from tropt.tracker import BaseTracker, DummyTracker
+
+logger = logging.getLogger(__name__)
 
 
 ## ------- Optimizer result ------- ##
@@ -108,13 +111,20 @@ class BaseOptimizer(ABC):
         metadata = {
             "optimizer": type(self).__name__,
             "model_name": self.model.get_model_name(),
-            "loss": type(self.loss_func).__name__,
+            "loss": repr(self.loss_func),
             "templates": list(templates) if not isinstance(templates, list) else templates,
             "initial_trigger": str(initial_trigger) if initial_trigger is not None else None,
             "targets": targets_repr,
             **hparams,
         }
         self.tracker.log_metadata(metadata)
+
+        # also log this metadata:
+        lines = ["\n=== Optimizer Run Config ==="]
+        for k, v in metadata.items():
+            lines.append(f"  {k}: {v}")
+        lines.append("===========================")
+        logger.info("\n".join(lines))
 
     def set_tracker(self, tracker: BaseTracker):
         """

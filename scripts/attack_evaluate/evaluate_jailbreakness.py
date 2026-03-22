@@ -6,11 +6,12 @@ https://strong-reject.readthedocs.io/en/latest/api/index.html
 from typing import Any, Dict, List
 
 import pandas as pd
+import torch
+import wandb
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
 from transformers import pipeline
 
-import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 
 

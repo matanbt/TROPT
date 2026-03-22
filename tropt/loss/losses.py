@@ -373,6 +373,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
     slc_name: str = SliceKey.INPUT_LAST_TOKEN
     do_cosine_sim: bool = False
     apply_square: bool = False
+    apply_abs: bool = False
 
     def __call__(
         self,
@@ -414,7 +415,9 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         # (bsz, 1, 1, d_model) -> broadcast dot product -> (bsz, n_targeted_layers, slc_seq_len)
         res = (h * target_directions[:, None, None, :]).sum(dim=-1)
 
-        # Optionally square the similarity scores
+        # Optionally {abs, square, ..} the similarity scores
+        if self.apply_abs:
+            res = res.abs()
         if self.apply_square:
             res = res.pow(2)
 
