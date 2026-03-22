@@ -7,9 +7,10 @@ from .GCG import run_gcg, run_gcg_perplexity
 from .GCGEmb import run_gcg_embedding_variant
 from .GCGHij import run_gcghij
 from .GCGMult import run_gcg_mutl_instruction
-from .IRIS import run_iris
+from .IRIS import run_iris, run_iris2
 from .PEZ import run_pez
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
+from .SoftGCG import run_soft_gcg
 from .SoftPrompt import run_soft_prompt, run_soft_prompt_encoder_attack
 
 ATTACK_RECIPES = {
@@ -26,9 +27,11 @@ ATTACK_RECIPES = {
     "gcg_hij": run_gcghij,
     "gcg_mult": run_gcg_mutl_instruction,
     "iris": run_iris,
+    "iris2": run_iris2,
     "pez": run_pez,
     "rasliteplus": run_rasliteplus,
     "rasliteplus_llm": run_rasliteplus_llm,
+    "soft_gcg": run_soft_gcg,
     "soft_prompt": run_soft_prompt,
     "soft_prompt_encoder": run_soft_prompt_encoder_attack,
 }

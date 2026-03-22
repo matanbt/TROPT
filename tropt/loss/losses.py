@@ -134,6 +134,7 @@ class PrefillCWLoss(PrefillBasedLoss):
     """
 
     cw_margin: float = 1e-3
+    first_token_weight: float = 1.0
 
     def __call__(
         self,
@@ -163,6 +164,12 @@ class PrefillCWLoss(PrefillBasedLoss):
         # calculate the CW loss:
         loss = largest_non_tgt_logits - tgt_logits
         loss = loss.clamp_min(-self.cw_margin)
+
+        # Apply first-token weighting (e.g., to emphasize the affirmative "Sure" token)
+        if self.first_token_weight != 1.0:
+            weights = torch.ones_like(loss)
+            weights[:, 0] = self.first_token_weight
+            loss = loss * weights
 
         # Zero out loss for padding tokens
         loss = loss * mask.float()
