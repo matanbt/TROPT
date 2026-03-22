@@ -1,11 +1,9 @@
 import logging
-import math
 import time
-from typing import Annotated, Any, List, Optional
+from typing import Optional
 
-import numpy as np
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
 from tqdm import tqdm
 
@@ -24,6 +22,7 @@ from tropt.model import (
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.scheduler import (
     ConstantScheduler,
     LinearScheduler,
@@ -196,9 +195,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_seq_len = len(trigger_ids)
         trigger_str = initial_trigger
 
-        loss_per_step = []
-        trigger_strings = []
-        trigger_ids_per_step = []
+        best = RunningBest()
         current_loss = float("inf")
 
         start_time = time.time()
@@ -349,9 +346,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # Logging:
             self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
-            loss_per_step.append(current_loss)
-            trigger_strings.append(trigger_str)
-            trigger_ids_per_step.append(trigger_ids)
+            best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             if self.time_limit is not None:
                 if time.time() - start_time > self.time_limit:
@@ -382,18 +377,12 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 best_loss_global = min(best_loss_global, current_loss)
 
 
-        # Return the best trigger found
-        best_loss_idx = np.argmin(loss_per_step)
-        best_trigger_str = trigger_strings[best_loss_idx]
-        best_trigger_ids = trigger_ids_per_step[best_loss_idx]
-
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
         result = OptimizerResult(
-            best_loss=loss_per_step[best_loss_idx],
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=best_trigger_ids,
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
+            best_loss=best.loss,
+            best_trigger_str=best.trigger_str,
+            best_trigger_ids=best.trigger_ids,
+            losses=best.losses,
+            trigger_strs=best.trigger_strs,
             full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})

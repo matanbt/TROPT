@@ -20,6 +20,7 @@ from tropt.model import (
     LossTokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,7 @@ class PEZOptimizer(BaseOptimizer):
         )
 
         pbar = tqdm(range(self.num_steps), desc="PEZ Optimization")
-        trigger_ids_per_step,trigger_str_per_step, loss_per_step = [], [], []
+        best = RunningBest()
 
         for step in pbar:
             optimizer.zero_grad()
@@ -132,9 +133,7 @@ class PEZOptimizer(BaseOptimizer):
             pbar.set_description(
                 f"loss={curr_loss:.4f}, trigger={current_trigger_str[:30]}"
             )
-            trigger_ids_per_step.append(projected_ids.cpu())
-            trigger_str_per_step.append(current_trigger_str)
-            loss_per_step.append(curr_loss)
+            best.update(loss=curr_loss, trigger_ids=projected_ids.cpu(), trigger_str=current_trigger_str)
 
         # Final projection and evaluation on discrete tokens
         final_ids, _ = self._project_to_vocab(
@@ -145,25 +144,19 @@ class PEZOptimizer(BaseOptimizer):
             final_ids.unsqueeze(0),
             loss_func=self.loss_func,
         ).item()
-        trigger_ids_per_step.append(final_ids.cpu())
-        trigger_str_per_step.append(final_trigger_str)
-        loss_per_step.append(final_loss)
-
-        # Select the best trigger:
-        best_idx = int(torch.tensor(loss_per_step).argmin())
-        best_trigger_ids = trigger_ids_per_step[best_idx]
-        best_trigger_str = trigger_str_per_step[best_idx]
-        best_loss = loss_per_step[best_idx]
+        best.update(loss=final_loss, trigger_ids=final_ids.cpu(), trigger_str=final_trigger_str)
 
         self.tracker.log({
-            "best_loss": best_loss,
-            "best_trigger_str": best_trigger_str
+            "best_loss": best.loss,
+            "best_trigger_str": best.trigger_str
         })
         self.model.reset_inputs_from_tokens()
         return OptimizerResult(
-            best_loss=best_loss,
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=best_trigger_ids,
+            best_loss=best.loss,
+            best_trigger_str=best.trigger_str,
+            best_trigger_ids=best.trigger_ids,
+            losses=best.losses,
+            trigger_strs=best.trigger_strs,
         )
 
     @torch.no_grad()

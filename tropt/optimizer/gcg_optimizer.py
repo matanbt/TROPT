@@ -20,6 +20,7 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
 
@@ -91,11 +92,7 @@ class GCGOptimizer(BaseOptimizer):
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
 
         trigger_ids: Int[Tensor, "trigger_seq_len"] = trigger_ids.squeeze(0)  # take the only trigger
-        trigger_str: str = initial_trigger
-
-        loss_per_step: list[float] = []
-        trigger_strings: list[str] = []
-        trigger_ids_per_step: list[Int[Tensor, "trigger_seq_len"]] = []
+        best = RunningBest()
 
         # Compute loss before optimization
         current_loss = self.model.compute_loss_from_tokens(
@@ -136,26 +133,17 @@ class GCGOptimizer(BaseOptimizer):
             self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
             trigger_ids = candidate_trigger_ids[losses.argmin()]
 
-            # Update the buffer based on the loss
-            loss_per_step.append(current_loss)
-            trigger_ids_per_step.append(trigger_ids)
-
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
-            trigger_strings.append(trigger_str)
+            best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
-        min_loss_index = loss_per_step.index(min(loss_per_step))
-        best_trigger_str = trigger_strings[min_loss_index]
-
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
         result = OptimizerResult(
-            best_loss=loss_per_step[min_loss_index],
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=trigger_ids_per_step[min_loss_index],
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
+            best_loss=best.loss,
+            best_trigger_str=best.trigger_str,
+            best_trigger_ids=best.trigger_ids,
+            losses=best.losses,
+            trigger_strs=best.trigger_strs,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         self.model.reset_inputs_from_tokens()

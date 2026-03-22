@@ -21,6 +21,7 @@ from tropt.model import (
     LossTokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -164,14 +165,7 @@ class GBDAOptimizer(BaseOptimizer):
             else torch.optim.lr_scheduler.ConstantLR(optimizer, factor=1.0)
         )
 
-        # --- Tracking ---
-        loss_per_step = []
-        trigger_strings = []
-
-        # Best tracking throughout optimization
-        best_loss = float("inf")
-        best_trigger_ids = None
-        best_trigger_str = None
+        best = RunningBest()
 
         # --- Optimization of `trigger_probs` ---
         pbar = tqdm(range(self.num_steps), desc="GBDA Optimization")
@@ -213,19 +207,11 @@ class GBDAOptimizer(BaseOptimizer):
                     current_trigger_ids, skip_special_tokens=True
                 )
 
-            # Best tracking
-            if current_loss < best_loss:
-                best_loss = current_loss
-                best_trigger_ids = current_trigger_ids.clone()
-                best_trigger_str = current_trigger_str
-
-            # Track
-            loss_per_step.append(current_loss)
-            trigger_strings.append(current_trigger_str)
+            best.update(loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str)
 
             self.tracker.log({
                 "loss": current_loss,
-                "best_loss": best_loss,
+                "best_loss": best.loss,
                 "temperature": temperature,
                 "lr": scheduler.get_last_lr()[0],
                 **self.loss_func.get_loss_log_dict(),
@@ -233,15 +219,15 @@ class GBDAOptimizer(BaseOptimizer):
             })
 
             pbar.set_description(
-                f"loss={current_loss:.4f} best={best_loss:.4f} "
+                f"loss={current_loss:.4f} best={best.loss:.4f} "
                 f"T={temperature:.4f} trigger={current_trigger_str[:30]}"
             )
 
         # --- Final sampling ---
         # Collect candidates: argmax from final theta, best from optimization, and drawn gumbel samples
         candidates = [trigger_probs.argmax(dim=-1)]
-        if best_trigger_ids is not None:
-            candidates.append(best_trigger_ids)
+        if best.trigger_ids is not None:
+            candidates.append(best.trigger_ids)
 
         for _ in range(self.n_final_gumbel_samples):
             sampled_probs = F.gumbel_softmax(
@@ -253,25 +239,17 @@ class GBDAOptimizer(BaseOptimizer):
         candidate_losses = self.model.compute_loss_from_tokens(
             candidates, loss_func=self.loss_func,
         )
-        best_idx = candidate_losses.argmin().item()
-        best_loss = candidate_losses[best_idx].item()
-        best_trigger_ids = candidates[best_idx]
-        best_trigger_str = tokenizer.decode(best_trigger_ids, skip_special_tokens=True)
-
-        # Construct full prompts
-        assert isinstance(best_trigger_str, str)
-        full_prompt = [
-            t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str)
-            for t in templates
-        ]
+        final_best_idx = candidate_losses.argmin().item()
+        final_best_ids = candidates[final_best_idx]
+        final_best_str = tokenizer.decode(final_best_ids, skip_special_tokens=True)
+        final_best_loss = candidate_losses[final_best_idx].item()
 
         result = OptimizerResult(
-            best_loss=best_loss,
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=best_trigger_ids,
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
+            best_loss=final_best_loss,
+            best_trigger_str=final_best_str,
+            best_trigger_ids=final_best_ids,
+            losses=best.losses,
+            trigger_strs=best.trigger_strs,
             best_trigger_probs=trigger_probs.detach(),
         )
 
