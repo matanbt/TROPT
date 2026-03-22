@@ -110,6 +110,8 @@ class SoftPromptOptimizer(BaseOptimizer):
 
             self.tracker.log({
                 "loss": curr_loss,
+                "lr": optimizer.param_groups[0]["lr"],
+                "grad_norm": trigger_grad.norm().item(),
                 **self.loss_func.get_loss_log_dict(),
                 **self.model.get_usage_stats()
             })

@@ -20,7 +20,7 @@ dependencies = [
   "numpy>=2.0.0",
   "jaxtyping",
   # HuggingFace models (core use case)
-  "transformers>=4.45.0",
+  "transformers>=5.3.0",
   "accelerate>=1.0.0",
   "sentence-transformers>=5.1.0",
   # Data validation
@@ -66,13 +66,7 @@ notebooks = [
 ]
 
 # All optional features (convenience installer)
-all = [
-  "tropt[openai]",
-  "tropt[google]",
-  "tropt[litellm]",
-  "tropt[tracking]",
-  "tropt[notebooks]",
-]
+all = []
 
 # Development tools
 dev = [

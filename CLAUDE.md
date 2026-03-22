@@ -25,8 +25,8 @@ TROPT (Textual Trigger Optimization Toolbox) is a research platform for optimizi
 
 ### Setup
 ```bash
-# Install in development mode with all dependencies
-pip install -e ".[dev]"
+# Install in development mode with all dependencies (using uv)
+uv sync --all-extras
 
 # Install pre-commit hooks
 pre-commit install
