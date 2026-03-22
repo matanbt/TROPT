@@ -10,6 +10,7 @@ import transformers
 from accelerate.utils.memory import clear_device_cache, find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
+from transformers.cache_utils import DynamicCache
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
@@ -109,7 +110,7 @@ class _HFTokenInputManager(TokenInputManager):
                     attention_mask=curr_attn_mask,
                     use_cache=True,
                 )
-                curr_prefix = output.past_key_values.to_legacy_cache()
+                curr_prefix = tuple((item[0], item[1]) for item in output.past_key_values)
                 # tuple(layers) of tuple(k, v) where k,v are (1, n_head, seq_len, head_dim)
                 prefix_cache.append(curr_prefix)
 
@@ -315,7 +316,7 @@ class _HFTokenInputManager(TokenInputManager):
             saved_kv = tuple(
                 (k.to(self.device), v.to(self.device)) for k, v in saved_kv
             )
-            past_key_values = transformers.DynamicCache.from_legacy_cache(saved_kv)
+            past_key_values = DynamicCache(ddp_cache_data=saved_kv)
             return dict(
                 past_key_values=past_key_values,
                 use_cache=True,
@@ -343,7 +344,7 @@ class _HFTokenInputManager(TokenInputManager):
         self._prefix_cache_kwargs_mem[mem_key] = cache_cpu
 
         # Convert to DynamicCache and return with values on device
-        past_key_values = transformers.DynamicCache.from_legacy_cache(past_key_values)
+        past_key_values = DynamicCache(ddp_cache_data=past_key_values)
         return dict(
             past_key_values=past_key_values,
             use_cache=True,
