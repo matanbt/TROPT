@@ -88,6 +88,10 @@ dev = [
   "tropt[all]",
   "litellm[proxy]",
 
+  # Analysis & visualization
+  "matplotlib>=3.7.0",
+  "seaborn>=0.13.0",
+
   # Documentation
   "sphinx>=5.0.0",
   "sphinx_rtd_theme>=1.0.0",
@@ -132,9 +136,6 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
-
-[tool.ty.environment]
-python = ".venv"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
