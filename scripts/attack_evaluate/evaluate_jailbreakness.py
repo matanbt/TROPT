@@ -4,14 +4,14 @@ https://strong-reject.readthedocs.io/en/latest/api/index.html
 `pip install git+https://github.com/dsbowen/strong_reject.git@main`
 """
 from typing import Any, Dict, List
+import torch
 
 import pandas as pd
-import torch
-import wandb
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
 from transformers import pipeline
 
+import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 
 
@@ -130,7 +130,7 @@ def evaluate_triggers(
             instructions=df['message'].tolist(),
             responses=df['response'].tolist(),
             override_evaluators=["strongreject_finetuned"],  # TODO make configurable
-            batch_size=32,  # TODO make configurable
+            batch_size=16,  # TODO make configurable
         )
 
         # Add metrics to df (one column per metric)
@@ -145,7 +145,7 @@ def evaluate_triggers(
     return final_df
 
 #### Helper scripts to run evaluation from Wandb runs ####
-WANDB_ENTITY = "my_username_or_team"
+WANDB_ENTITY = "my_username_or_team"  # modify to your wandb entity (username or team name)
 WANDB_PROJECT = "tropt-runs"
 DATASET_PATH = "scripts/attack_evaluate/advbench_plus.csv"
 def wandb_to_trigger_eval_pipeline(

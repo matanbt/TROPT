@@ -33,10 +33,10 @@ from tropt.tracker import WandbTracker
 from tropt.utils.refusal_dir import compute_refusal_directions
 
 # Default list from original script
-DEFAULT_INDICES = [ 
+DEFAULT_INDICES = [
     225, 
     # 89, 155, 78, 283, 162, 236, 389, 568, 695,
-    # 128, 342, 456, 509, 634, 721, 
+    128, 342, 456, 509, 634, 721, 
 ]
 INITIAL_TRIGGER = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
 RANDOM_SEED = 42
@@ -272,11 +272,20 @@ def tropt_zoo(
         help=f"Attack methods to run. Available: {_LLM_ZOO_METHODS}",
     ),
     seed: int = typer.Option(RANDOM_SEED, help="Random seed for reproducibility"),
+    skip_existing: bool = typer.Option(True, help="Skip runs whose name already exists as a finished wandb run"),
 ):
     """
     Run multiple LLM attack-zoo recipes on advbench samples.
     """
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Pre-fetch finished run names for skip logic
+    finished_run_names: set[str] = set()
+    if skip_existing:
+        api = wandb.Api()
+        for run in api.runs(f"{WANDB_ENTITY}/{WANDB_PROJECT}", filters={"state": "finished"}):
+            finished_run_names.add(run.name)
+        print(f"Found {len(finished_run_names)} finished runs in wandb.")
 
     df = pd.read_csv(DATASET_PATH)
     df["message_id"] = range(len(df))
@@ -301,6 +310,10 @@ def tropt_zoo(
             run_name = f"tropt[{method},{model_name.split('/')[-1]},m={message_id}]"
             if seed != RANDOM_SEED:
                 run_name += f"_s={seed}"
+
+            if skip_existing and run_name in finished_run_names:
+                print(f"Skipping (already finished): {run_name}")
+                continue
 
             tracker = WandbTracker(
                 run_name,
@@ -390,19 +403,18 @@ def eval_jailbreak_results(
     metadata_df['trigger_id'] = range(len(metadata_df))
 
     # Load Model
-    print(f"Loading model {model_name} for evaluation...")
-    model = LMHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
+    # print(f"Loading model {model_name} for evaluation...")
+    # model = LMHFModel(
+    #     model_name=model_name,
+    # )
 
     # Run Evaluation
-    eval_df = evaluate_triggers(  # TODO get from tropts
-        model=model,
+    eval_df = evaluate_triggers(
+        model_name=model_name,
         trigger_strs=metadata_df['trigger'].tolist(),
         trigger_ids=metadata_df['trigger_id'].tolist(),
         eval_dataset_path=DATASET_PATH,
-        batch_size=8
+        batch_size=16
     )
     eval_df['eval_model'] = model_name
 
