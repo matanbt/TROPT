@@ -405,7 +405,7 @@ class _HuggingFaceModelMixins:
         gumbel_softmax_temp: Optional[float] = None,
 
         # Additional config:
-        normalize_grads: bool = True,
+        normalize_grads: bool = False,
         return_loss: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
@@ -416,7 +416,7 @@ class _HuggingFaceModelMixins:
 
         This method supports two possible flows:
             (i) the "hard" trigger flow, starting from discrete token ids (attacks like GCG),
-            (ii) the ~"soft" trigger flow, starting from probability distributions over the vocabulary (attacks like GBDA).
+            (ii) the ~"continuous" trigger flow, starting from probability distributions over the vocabulary (attacks like GBDA).
 
         Args:
             loss_func: Loss function to optimize. Must be compatible with model outputs
@@ -426,26 +426,27 @@ class _HuggingFaceModelMixins:
                 Shape: (n_candidates, trigger_seq_len)
                 Mutually exclusive with `candidate_trigger_probs`.
 
-            candidate_trigger_probs: Probability distributions over vocabulary for semi-soft triggers.
+            candidate_trigger_probs: Probability distributions over vocabulary for continuous triggers.
                 Shape: (n_candidates, trigger_seq_len, vocab_size)
-                Mutually exclusive with `candidate_trigger_ids`.
-                Used for continuous optimization methods.
+                - Mutually exclusive with `candidate_trigger_ids`.
+                - Used for continuous optimization methods.
 
             do_gumbel_softmax: If True, apply Gumbel-softmax to `candidate_trigger_probs`
-                before embedding. Adds stochastic exploration for soft optimization.
-                Requires `gumbel_softmax_temp` to be set.
+                before embedding. That is, the provided `candidate_trigger_probs` are treated as logits, and Gumbel-softmax is applied to *draw* a `n_candidades` samples, each respective to its logits.
+                - A common pattern here is for `candidate_trigger_probs` to be a repeated tensor of the 
+                  *same* logits, so we can draw here multiple samples from the same distribution--which is often the one being optimized.
+                - Requires `gumbel_softmax_temp` to be set.
 
             gumbel_softmax_temp: Temperature for Gumbel-softmax sampling.
-                Lower values → more discrete (sharper), higher values → more uniform.
+                Lower values -> more discrete (sharper); higher values -> more uniform.
                 Only used when `do_gumbel_softmax=True`.
 
             normalize_grads: If True, L2-normalize the gradients along the vocab dimension.
-                Defaults to True, as this is usually desirable for fair comparison across token positions.
 
             return_loss: If True, also return the computed detached loss values for each candidate. Useful for debugging.
 
         Returns:
-            Normalized gradients w.r.t. one-hot token matrix.
+            Gradients w.r.t. one-hot token matrix.
             Shape: (n_candidates, trigger_seq_len, vocab_size)
 
             Gradients are L2-normalized along the vocab dimension (dim=-1) to enable
@@ -506,7 +507,7 @@ class _HuggingFaceModelMixins:
             all_grads = []  # of len `n_candidate // batch_size`
             all_losses = []  # per-batch mean losses (detached)
 
-            # Prepare the one-hot encoding matrix
+            # Prepare the one-hot encoding matrix (might be distribution-per-token for continuous trigger)
             # (n_candidates, trigger_seq_len, vocab_size)
             if candidate_trigger_probs is None:
                 candidate_ids_onehot_detached = torch.nn.functional.one_hot(
@@ -632,7 +633,7 @@ class _HuggingFaceModelMixins:
         loss_func: BaseLoss,
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
         return_loss: bool = False,
-        normalize_grads: bool = True,
+        normalize_grads: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"] | Tuple[Tensor, float]:
         """Compute gradients of loss w.r.t. trigger embeddings.
 

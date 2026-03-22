@@ -134,6 +134,7 @@ class GASLITEOptimizer(BaseOptimizer):
                 grads = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
                     loss_func=self.loss_func,
+                    normalize_grads=True,
                 )  # (n_trigger_vars, trigger_seq_len, vocab_size)
 
                 # Average the gradients to get the final approximation

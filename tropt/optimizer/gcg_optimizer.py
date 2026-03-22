@@ -111,6 +111,7 @@ class GCGOptimizer(BaseOptimizer):
                 self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_ids.unsqueeze(0),
                     loss_func=self.loss_func,
+                    normalize_grads=True,
                 ).squeeze(0)  # take the only trigger
             )  # shape: (trigger_seq_len, vocab_size)
             # Sample candidate token sequences based on the token gradient

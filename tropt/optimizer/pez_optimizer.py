@@ -110,6 +110,7 @@ class PEZOptimizer(BaseOptimizer):
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
                 loss_func=self.loss_func,
                 candidate_trigger_embeds=projected_embeds.unsqueeze(0),  # (1, trigger_seq_len, embed_dim)
+                normalize_grads=False,
                 return_loss=True,
             )  # Shape: (1, trigger_seq_len, embed_dim)
 
