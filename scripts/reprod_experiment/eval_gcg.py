@@ -13,8 +13,10 @@ from tropt.attack_zoo.BEAST import run_beast
 from tropt.attack_zoo.GASLITEPlus import run_gaslite_plus_llm
 from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
 from tropt.attack_zoo.GCGHij import run_gcghij
-from tropt.attack_zoo.IRIS import run_iris
+from tropt.attack_zoo.GBDA import run_gbda
+from tropt.attack_zoo.IRIS import run_iris, run_iris2
 from tropt.attack_zoo.RASLITEPlus import run_rasliteplus_llm
+from tropt.attack_zoo.SoftGCG import run_soft_gcg
 import typer
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -255,7 +257,7 @@ def tropt(
 
     
 # All LLM attack zoo methods available for tropt_zoo
-_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "gcg_hij", "gcg_perplexity", "rasliteplus_llm", "adv_jailbreak", "gasliteplus_llm", "qgasliteplus_llm"]
+_LLM_ZOO_METHODS = ["gcg", "beast", "iris", "iris2", "gcg_hij", "gcg_perplexity", "rasliteplus_llm", "adv_decoding", "adv_decoding2", "gasliteplus_llm", "qgasliteplus_llm", "gbda", "soft_gcg"]
 
 
 @app.command()
@@ -333,12 +335,25 @@ def tropt_zoo(
                 run_gcg_perplexity(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "rasliteplus_llm":
                 run_rasliteplus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
-            elif method == "adv_jailbreak":
+            elif method == "adv_decoding":
                 run_advdecoding_jailbreak(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "adv_decoding2":
+                run_advdecoding_jailbreak(instruction=instruction, target_response=target, model_obj=model, tracker=tracker, high_compute=True)
             elif method == "gasliteplus_llm":
                 run_gaslite_plus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
             elif method == "qgasliteplus_llm":
                 run_gaslite_plus_llm(instruction=instruction, target_response=target, model_obj=model, tracker=tracker, quick_variant=True)
+            elif method == "gbda":
+                run_gbda(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "soft_gcg":
+                run_soft_gcg(instruction=instruction, target_response=target, model_obj=model, tracker=tracker)
+            elif method == "iris2":
+                run_iris2(
+                    instruction=instruction,
+                    model_obj=model,
+                    tracker=tracker,
+                    initial_trigger=INITIAL_TRIGGER,
+                )
             else:
                 raise typer.BadParameter(f"Unknown method '{method}'. Available: {_LLM_ZOO_METHODS}")
 
