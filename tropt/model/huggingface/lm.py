@@ -22,6 +22,7 @@ from tropt.common import (
 )
 from tropt.loss import BaseLoss
 
+from tropt.model.model_base import track_flops_torch
 from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -252,6 +253,7 @@ class LMHFModel(
             targets=targets,
         )
 
+    @track_flops_torch
     @torch.no_grad()
     def compute_logits_from_tokens(
         self,

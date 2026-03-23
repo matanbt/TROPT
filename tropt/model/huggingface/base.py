@@ -25,6 +25,7 @@ from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
 )
+from tropt.model.model_base import track_flops_torch
 
 logger = logging.getLogger(__name__)
 
@@ -392,6 +393,7 @@ class _HuggingFaceModelMixins:
         """The raw embedding matrix from the model's embedding layer, without any enrichment."""
         return self.effective_embedding_matrix
 
+    @track_flops_torch
     def compute_grad_from_tokens(
         self,
         loss_func: BaseLoss,
@@ -628,6 +630,7 @@ class _HuggingFaceModelMixins:
 
         return all_grads
 
+    @track_flops_torch
     def compute_grad_from_embeds(
         self,
         loss_func: BaseLoss,
@@ -732,6 +735,7 @@ class _HuggingFaceModelMixins:
         return all_grads
 
 
+    @track_flops_torch
     @torch.no_grad()
     def compute_loss_from_tokens(
         self,

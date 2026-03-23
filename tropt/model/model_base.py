@@ -3,6 +3,7 @@ Base definitions, classes, and mixins for targeted text models.
 """
 
 from abc import ABC, abstractmethod
+from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -15,6 +16,33 @@ from tropt.common import DEFAULT_INIT_TRIGGER, MessageTargets, ModelOutput, Targ
 from tropt.model.inputs_manager import (
     TextInputManager,
 )
+
+
+def track_flops_torch(method):
+    """Decorator that wraps a `BaseModel`'s `compute_*` method with torch's FlopCounterMode when count_flops is enabled.
+
+    Uses ``torch.utils.flop_counter.FlopCounterMode`` under the hood. Other model backends may
+    implement FLOP tracking with different counters.
+
+    **Note**: FlopCounterMode only counts high-intensity ops (matmul, conv, attention), and currently suffers from 
+    several limitations. Nontheless, it is expected to give a good *relative* measure to compare across optimizers,
+    which is insightful enough to be included.
+    See https://github.com/pytorch/pytorch/issues/123800 for discussion on known limitations.
+    """
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if not getattr(self, "count_flops", False):
+            return method(self, *args, **kwargs)
+
+        from torch.utils.flop_counter import FlopCounterMode
+
+        with FlopCounterMode() as flop_counter:
+            result = method(self, *args, **kwargs)
+
+        self._update_usage_stats(flops=flop_counter.get_total_flops())
+        return result
+
+    return wrapper
 
 # ====================== Model Base Classes =======================
 
@@ -40,15 +68,24 @@ class BaseModel(ABC):
         """Returns the model identifier string."""
         return getattr(self, "_model_name", getattr(self, "model_name", type(self).__name__))
 
+    count_flops: bool = False
+    """
+    Whether to count FLOPs in compute_* methods (opt-in); known to incur a memory/compute overhead.
+    See `track_flops_torch()` decorator for details and limitations.
+    """
+
     def get_usage_stats(self) -> Dict[str, int]:
         """Returns summary of model usage statistics, namespaced under 'usage/' for W&B logging."""
-        return {
+        stats: dict[str, Any | int] = {
             "usage/total_tokens": getattr(self, "_token_used", 0),
             "usage/forward_calls": getattr(self, "_forward_call_count", 0),
             "usage/forward_samples": getattr(self, "_forward_sample_count", 0),
             "usage/grad_calls": getattr(self, "_grad_call_count", 0),
             "usage/grad_samples": getattr(self, "_grad_sample_count", 0),
         }
+        if self.count_flops:
+            stats["usage/total_flops"] = getattr(self, "_total_flops", 0)
+        return stats
 
     def _update_usage_stats(
         self,
@@ -57,6 +94,7 @@ class BaseModel(ABC):
         forward_samples: int = 0,
         grad_calls: int = 0,
         grad_samples: int = 0,
+        flops: int = 0,
     ):
         """Updates the usage statistics.
 
@@ -71,12 +109,14 @@ class BaseModel(ABC):
             self._forward_sample_count = 0
             self._grad_call_count = 0
             self._grad_sample_count = 0
+            self._total_flops = 0
 
         self._token_used += tokens
         self._forward_call_count += forward_calls
         self._forward_sample_count += forward_samples
         self._grad_call_count += grad_calls
         self._grad_sample_count += grad_samples
+        self._total_flops += flops
 
     def reset_usage_stats(self):
         """Resets the usage statistics."""
@@ -85,6 +125,7 @@ class BaseModel(ABC):
         self._forward_sample_count = 0
         self._grad_call_count = 0
         self._grad_sample_count = 0
+        self._total_flops = 0
 
     @property
     def device(self) -> torch.device:
