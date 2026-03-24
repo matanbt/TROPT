@@ -51,7 +51,7 @@ class TextInputManager(InputsManager):
     def __init__(
         self,
         templates: TextTemplates,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
     ):
         assert isinstance(templates, list), "templates must be a list of strings."
@@ -137,7 +137,7 @@ class DefaultTokenInputManager(TokenInputManager):
         tokenizer: Any,
         tok_ids: List[List[int]],
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
         **kwargs,
     ):
         self.tokenizer = tokenizer

@@ -52,9 +52,9 @@ class EncoderHFModel(
 ):
     def __init__(
         self,
-        model_name: str = None,
-        device: str = None,
-        dtype: str| torch.dtype = None,
+        model_name: Optional[str] = None,
+        device: Optional[str] = None,
+        dtype: Optional[str| torch.dtype] = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
@@ -193,7 +193,7 @@ class EncoderHFModel(
     def set_inputs_from_tokens(
         self,
         templates: TextTemplates,  # n_templates templates
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> None:
         """Prepare and store the given templates in the inputs manager."""
         assert isinstance(templates, list), "templates must be a string or a list of strings."

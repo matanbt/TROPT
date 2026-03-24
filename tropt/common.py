@@ -7,8 +7,6 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
-# TODO arrange the comments and structure here
-
 # =========== Common constants and utilities for TTOP ==========
 # Defines a placeholder string for optimized triggers
 OPTIMIZED_TRIGGER_PLACEHOLDER: str = "{{OPTIMIZED_TRIGGER}}"
@@ -238,7 +236,7 @@ class ModelInput(pydantic.BaseModel):
     """
 
     # === Targets (used by loss functions) ===
-    message_targets: Optional[MessageTargets] = None  # TODO --> message_targets ? this is way clearer!
+    message_targets: Optional[MessageTargets] = None
     """Target data required by loss functions.
 
     A `MessageTargets` instance containing the target data for a single message.
@@ -338,6 +336,12 @@ class ModelOutput(pydantic.BaseModel):
     """Logits for generated tokens from language model generation.
     Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
     Response lengths may vary across samples.
+    """
+
+    # === Classification outputs (Classifier models) ===
+    output_class_logits: Optional[Float[Tensor, "bsz n_classes"]] = None
+    """Classification logits from classifier models (pre-softmax).
+    Shape: (batch_size, num_classes)
     """
 
     # === Full template ===

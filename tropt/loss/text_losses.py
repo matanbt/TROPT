@@ -191,7 +191,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
 
 
 @dataclass
-class InputReadabilityLoss(BinaryLMJudgeLoss):
+class InputFluencyLoss(BinaryLMJudgeLoss):
     """
     Loss that encourages readable/fluent trigger text (operates on the whole trigger-combined prompt).
     Minimizing this loss maximizes readability.

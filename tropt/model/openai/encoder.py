@@ -142,8 +142,8 @@ class EncoderOpenAIModel(
         self,
         model_name: str = "text-embedding-3-small",
         d_model: Optional[int] = None,
-        api_key: str = None,
-        base_url: str = None,
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -225,7 +225,7 @@ class EncoderOpenAIModel(
     def set_inputs_from_tokens(
         self,
         templates: TextTemplates,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> None:
         """
         Prepares and stores the inputs manager from raw texts.

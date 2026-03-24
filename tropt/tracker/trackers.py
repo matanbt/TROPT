@@ -1,7 +1,7 @@
 import json
 import os
 from collections import defaultdict
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import livelossplot
 import wandb
@@ -13,7 +13,7 @@ class DummyTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
     ):
         super().__init__(experiment_name, config_dump)
 
@@ -30,7 +30,7 @@ class JSONTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
         log_file_path: str = "./logs/{experiment_name}.json",
     ):
         super().__init__(experiment_name, config_dump)
@@ -57,7 +57,7 @@ class WandbTracker(BaseTracker):
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         project_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
         **wandb_kwargs
     ):
         """
@@ -89,6 +89,39 @@ class WandbTracker(BaseTracker):
     def finish(self):
         wandb.finish()
 
+class DictTracker(BaseTracker):
+    """Accumulates logged values in plain Python dicts.
+
+    Attributes:
+        records (list[dict]): Each ``log()`` call appends one record (the raw dict).
+        history (dict[str, list]): Per-key view — ``history[key]`` contains only values
+            from records that included *key*. Convenient but records from different keys
+            may not be index-aligned; use ``records`` when you need to join across keys.
+        metadata (dict): Run metadata, if logged.
+    """
+
+    def __init__(
+        self,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+        config_dump: Optional[dict] = None,
+    ):
+        super().__init__(experiment_name, config_dump)
+        self.records: list[dict] = []
+        self.history: Dict[str, list] = defaultdict(list)
+        self.metadata: dict = {}
+
+    def log(self, data: dict):
+        self.records.append(data)
+        for key, value in data.items():
+            self.history[key].append(value)
+
+    def log_metadata(self, metadata: dict):
+        self.metadata = metadata
+
+    def finish(self):
+        pass
+
+
 # TODO Add HF's trackio integration
 
 class PrintTracker(BaseTracker):
@@ -104,7 +137,7 @@ class PrintTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
         print_keys: tuple = ("loss", "best_trigger_str"),
     ):
         super().__init__(experiment_name, config_dump)
@@ -136,7 +169,7 @@ class LiveLossPlotTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
         focus_on_metrics: tuple = ("loss",),
         **llp_kwargs
     ):

@@ -53,7 +53,7 @@ class _HFTokenInputManager(TokenInputManager):
         embed_func: torch.nn.Module,
         optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
         use_prefix_cache: Optional[bool] = False,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ):
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
@@ -157,8 +157,8 @@ class _HFTokenInputManager(TokenInputManager):
     def get_triggered_inputs(
         self,
         # trigger options:
-        trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"] = None,
-        trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embd_dim"] = None,
+        trigger_ids: Optional[Float[Tensor, "n_candidates trigger_seq_len"]] = None,
+        trigger_embeds: Optional[Float[Tensor, "n_candidates trigger_seq_len embd_dim"]] = None,
         append_embeds: Optional[List[Float[Tensor, "n_app_ids embd_dim"]]] = None,  # of length n_templates
         do_append_embeds: bool = False,
         chosen_template_idx: Optional[int] = None,
@@ -299,7 +299,7 @@ class _HFTokenInputManager(TokenInputManager):
         )
 
     def _get_prefix_cache_kwargs(
-        self, batch_size: int = 1, template_idx: int = None
+        self, batch_size: int = 1, template_idx: Optional[int] = None
     ) -> Dict[str, Any]:
         """Returns kwargs for model forward pass to use the prefix cache, if available."""
         if not self.use_prefix_cache:
@@ -399,10 +399,10 @@ class _HuggingFaceModelMixins:
         loss_func: BaseLoss,
 
         # Hard trigger input:
-        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"]=None,
+        candidate_trigger_ids: Optional[Int[Tensor, "n_candidates trigger_seq_len"]] = None,
 
         # Semi-Soft trigger input:
-        candidate_trigger_probs: Float[Tensor, "n_candidates trigger_seq_len vocab_size"] = None,
+        candidate_trigger_probs: Optional[Float[Tensor, "n_candidates trigger_seq_len vocab_size"]] = None,
         do_gumbel_softmax: bool = False,
         gumbel_softmax_temp: Optional[float] = None,
 

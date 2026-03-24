@@ -36,7 +36,7 @@ def track_flops_torch(method):
 
         from torch.utils.flop_counter import FlopCounterMode
 
-        with FlopCounterMode() as flop_counter:
+        with FlopCounterMode(display=False) as flop_counter:
             result = method(self, *args, **kwargs)
 
         self._update_usage_stats(flops=flop_counter.get_total_flops())
@@ -222,6 +222,48 @@ class EncoderBaseModel(BaseModel):
     @abstractmethod
     def d_model(self) -> int:
         """Returns the dimensionality of the output embeddings."""
+        raise NotImplementedError
+
+
+class ClassifierBaseModel(BaseModel):
+    """Classifier model base class."""
+
+    def __call__(
+        self,
+        input_texts: List[str],
+        return_full_output: bool = False,
+        **kwargs
+    ) -> Float[Tensor, "n_texts n_classes"] | ModelOutput:
+        """
+        Compute classification logits for the given input texts.
+
+        Args:
+            input_texts (List[str]): List of input strings to classify.
+            return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the class logits.
+        """
+        result: ModelOutput = self.invoke_from_texts(input_texts=input_texts, **kwargs)
+        if return_full_output:
+            return result
+        assert result.output_class_logits is not None, "Model did not return class logits"
+        return result.output_class_logits
+
+    @abstractmethod
+    def invoke_from_texts(
+        self,
+        input_texts: List[str],
+        **kwargs
+    ) -> ModelOutput:
+        """
+        Compute classification logits for the given input texts.
+        Always returns ModelOutput with at least `output_class_logits` populated.
+        This method also updates the usage stats.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def n_classes(self) -> int:
+        """Returns the number of output classes."""
         raise NotImplementedError
 
 

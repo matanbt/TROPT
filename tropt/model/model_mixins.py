@@ -43,7 +43,7 @@ class TokenAccessMixin(ABC):
     def set_inputs_from_tokens(
         self,
         templates: TextTemplates,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> None:
         """Prepare and store the inputs manager as self._token_input_manager.
 
@@ -80,7 +80,7 @@ class InvokeTokenAccessMixin(TokenAccessMixin):
     @abstractmethod
     def invoke_from_tokens(
         self,
-        input_ids: Float[Tensor, "bsz seq_len"] = None,
+        input_ids: Optional[Float[Tensor, "bsz seq_len"]] = None,
 
         message_targets: Optional[MessageTargets] = None,
         do_prefill_target_response: bool = False,
@@ -160,7 +160,7 @@ class TextAccessMixin(ABC):
     def set_inputs_from_texts(
         self,
         templates: TextTemplates,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> None:
         """Prepare and store the text-based inputs manager."""
         self._text_input_manager = TextInputManager(

@@ -84,8 +84,8 @@ class LMHFModel(
     def __init__(
         self,
         model_name: str,
-        device: str = None,
-        dtype: str = None,
+        device: Optional[str] = None,
+        dtype: Optional[str] = None,
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 32,
         # more args:
@@ -218,12 +218,6 @@ class LMHFModel(
             templates: List of input templates containing the trigger placeholder.
             targets: Optional Targets object containing target response strings to optimize towards.
         """
-        # To make sure the placeholder will be tokenizer as is
-        # [TODO isn't it already done? we're just overloading the token!]
-        self._tokenizer.add_special_tokens(
-            {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-        )
-
         assert isinstance(templates, list) and all(isinstance(t, str) for t in templates), "templates must be a list of strings."
         assert all(
             [t.count(OPTIMIZED_TRIGGER_PLACEHOLDER) == 1 for t in templates]
@@ -361,8 +355,8 @@ class LMHFModel(
 
     def invoke_from_tokens(
         self,
-        input_embeds: Float[Tensor, "bsz seq_len embd_dim"] = None,
-        input_attention_mask: Float[Tensor, "bsz seq_len"] = None,
+        input_embeds: Float[Tensor, "bsz seq_len embd_dim"],
+        input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
         input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
         input_slices: Optional[Dict[str, slice]] = None,
         # TODO make input_ids a second-priority option
@@ -398,6 +392,10 @@ class LMHFModel(
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
+            )
+        if return_attentions and input_prefix_cache_kwargs:
+            raise ValueError(
+                "Attention-based losses are incompatible with prefix caching; initialize model with `use_prefix_cache=False`. "
             )
         if input_attention_mask is None:
             input_attention_mask = torch.ones(input_embeds.shape[:2], device=input_embeds.device)

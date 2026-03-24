@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import torch
 
@@ -27,7 +27,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
 
         """
         # Import google.genai only when instantiating (optional dependency)
-        from google import genai  # ty:ignore[unresolved-import]
+        from google import genai
 
         self._client = genai.Client()
         self.model_name = model_name
@@ -44,7 +44,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
     def invoke_from_texts(
         self,
         input_texts: List[str],
-        text_type: str = None,
+        text_type: Optional[str] = None,
     ) -> ModelOutput:
         """
         Generates embeddings for the given texts using the Gemini API.
@@ -63,7 +63,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         ), f"Unsupported text_type {text_type}"
         task_type = self._text_to_task_type.get(text_type, None)
 
-        import google.genai as genai  # ty: ignore[unresolved-import]  # optional dependency
+        import google.genai as genai  # optional dependency
 
         response = self._client.models.embed_content(
             contents=input_texts,

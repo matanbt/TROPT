@@ -1,6 +1,7 @@
 # Base models:
 from .model_base import (  # noqa: I001
     BaseModel,
+    ClassifierBaseModel,
     EncoderBaseModel,
     LMBaseModel,
     BaseTokenizer,
@@ -35,6 +36,7 @@ from .google.encoder import EncoderGeminiModel
 from .huggingface.encoder import EncoderHFModel, EncoderHFTokenInputManager
 
 # Import all HF models:
+from .huggingface.classifier import ClassifierHFModel
 from .huggingface.lm import LMHFModel, LMHFTokenInputManager
 
 # Import LiteLLM models:

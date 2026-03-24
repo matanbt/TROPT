@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Optional
 
 DEFAULT_EXPERIMENT_NAME = "tropt_experiment"
 
@@ -10,7 +11,7 @@ class BaseTracker(ABC):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: dict = None,
+        config_dump: Optional[dict] = None,
     ):
         self.experiment_name = experiment_name
         self.config_dump = config_dump

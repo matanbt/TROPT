@@ -260,7 +260,7 @@ class AttentionBasedLoss(BaseLoss):
 class AttentionEnhLoss(AttentionBasedLoss):
     """
     Encourages attention from the trigger tokens to the chat template after the adversarial trigger.
-    Note: the sign of the loss is set such that minimizing the loss maximizes the attention.
+    *Note*: the sign of the loss is set such that minimizing the loss maximizes the attention.
 
     Enable to instantiate the (different) losses from:
     https://arxiv.org/abs/2506.12880, https://arxiv.org/abs/2410.09040
@@ -440,4 +440,66 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         # Keep positive so minimizing loss minimizes dot product
 
         return loss
+
+
+############################
+@dataclass
+class ClassificationBasedLoss(BaseLoss):
+    """Loss computed on classifier logits (`output_class_logits`)."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        output_class_logits: Float[Tensor, "bsz n_classes"],
+        **kwargs,
+    ) -> Float[Tensor, "bsz"]:
+        pass
+
+
+@dataclass
+class MisclassCELoss(ClassificationBasedLoss):
+    """Encourages misclassification via cross-entropy on classifier logits.
+
+    Two modes:
+    - Untargeted (targeted=False): minimizes probability of `true_class_idx`.
+    - Targeted (targeted=True): maximizes probability of `target_class_idx`.
+    """
+
+    true_class_idx: Optional[int] = None
+    target_class_idx: Optional[int] = None
+    targeted: bool = False
+
+    def __post_init__(self):
+        if self.targeted:
+            assert self.target_class_idx is not None, (
+                "target_class_idx must be provided for targeted misclassification."
+            )
+        else:  # untargeted mode
+            assert self.true_class_idx is not None, (
+                "true_class_idx must be provided for untargeted misclassification."
+            )
+
+    def __call__(
+        self,
+        output_class_logits: Float[Tensor, "bsz n_classes"],
+    ) -> Float[Tensor, "bsz"]:
+        bsz = output_class_logits.shape[0]
+        device = output_class_logits.device
+
+        if self.targeted:
+            # Minimize CE w.r.t. target class => maximize target class probability
+            target = torch.full(
+                (bsz,), self.target_class_idx, dtype=torch.long, device=device
+            )
+            return torch.nn.functional.cross_entropy(
+                output_class_logits, target, reduction="none"
+            )
+        else:  # untargeted mode
+            # Negate CE w.r.t. true class => minimize true class probability
+            target = torch.full(
+                (bsz,), self.true_class_idx, dtype=torch.long, device=device
+            )
+            return -torch.nn.functional.cross_entropy(
+                output_class_logits, target, reduction="none"
+            )
 

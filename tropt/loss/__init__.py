@@ -5,29 +5,29 @@ from .base import (
 from .losses import (
     AttentionBasedLoss,
     AttentionEnhLoss,
+    ClassificationBasedLoss,
     EmbeddingBasedLoss,
     HiddenStateBasedLoss,
-    PrefillBasedLoss,
-    TriggerLogitBasedLoss,
-
     # Concrete losses:
+    MisclassCELoss,
+    PrefillBasedLoss,
     PrefillCELoss,
     PrefillCWLoss,
     PrefillMellowMaxLoss,
     SimilarityLoss,
     SteeringActivationLoss,
+    TriggerLogitBasedLoss,
     TriggerPerplexityLoss,
 )
 
 from .text_losses import (
-    TextBasedLoss,
-    GeneratedResponseBasedLoss,
     BinaryLMJudgeLoss,
-
     # Concrete text losses
     ExternalTriggerPerplexityLoss,
-    InputReadabilityLoss,
+    GeneratedResponseBasedLoss,
+    InputFluencyLoss,
     ResponseHarmfulnessLoss,
+    TextBasedLoss,
 )
 
 from .resolution import (
