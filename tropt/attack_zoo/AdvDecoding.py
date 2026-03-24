@@ -16,10 +16,23 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.beamsearch_optimizer import BeamSearchOptimizer
 from tropt.tracker import BaseTracker
 
+UTIL_LM_PAPER = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+PAPER_PARAMS = dict(
+    num_steps=30,  # num steps = length of trigger to generate; Paper uses 30
+    beam_size=30,   # `m` in the paper; mostly use 30
+    branching_factor=10,
+    top_k=10,   # Paper uses top_k=10 logits filtering
+)
+HIGH_COMP_PARAMS = dict(
+    num_steps=50,
+    beam_size=60,
+    branching_factor=15,
+    top_k=15,
+)
 
 def run_advdecoding_retrieval(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-    util_lm_name: str = "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    util_lm_name: str = UTIL_LM_PAPER,
     mal_info_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
         1, 384
@@ -55,15 +68,11 @@ def run_advdecoding_retrieval(
     util_lm = LMHFModel(model_name=util_lm_name, use_prefix_cache=False)
 
     if not high_compute:
-        num_steps = 30  # num steps = length of trigger to generate; Paper uses 30
-        beam_size = 30   # `m` in the paper; mostly use 30
-        branching_factor = 10
-        top_k = 10   # Paper uses top_k=10 logits filtering
         loss = CombinedLoss([
             SimilarityLoss(),  # Main attack loss: align to target embedding
             InputFluencyLoss(),
 
-            # InputFluencyLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
+            # InputFluencyLoss(model_name_or_path=UTIL_LM_PAPER),  # <-- can use this instead to exactly follow the paper's setup
          ], weights=[
              1.0,
              1.0,
@@ -71,10 +80,6 @@ def run_advdecoding_retrieval(
         )
     else:
         # Prioritize main-loss ASR with wider search; may be traded off with fluency
-        num_steps = 50
-        beam_size = 60
-        branching_factor = 15
-        top_k = 15
         loss = SimilarityLoss()
 
 
@@ -84,23 +89,17 @@ def run_advdecoding_retrieval(
         loss=loss,
         util_lm=util_lm,
         tracker=tracker,
-        num_steps=num_steps,
-        beam_size=beam_size,
-        top_k=top_k,
-        branching_factor=branching_factor,
+        **(HIGH_COMP_PARAMS if high_compute else PAPER_PARAMS),
         temperature=1.0,  # as there is no sampling anyway
         use_model_with_token_inputs=False,  # computes the target model loss in text-level
         # a prompt for util LM to compute logits of the trigger; prompt is taken from the paper:
-        util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",
+        # util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",
     )
 
-    # Run optimization
-    result = optimizer.optimize_trigger(
-        templates=[mal_info_template],  # templates for the target model
-        targets=Targets(target_vectors=target_vector),  # target is to align with this embedding
+    return optimizer.optimize_trigger(
+        templates=[mal_info_template],
+        targets=Targets(target_vectors=target_vector),
     )
-
-    return result
 
 
 def run_advdecoding_jailbreak(
@@ -110,6 +109,7 @@ def run_advdecoding_jailbreak(
     model_obj: Optional[LMHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     high_compute: bool = False,
+    util_lm_name: str = UTIL_LM_PAPER,
 ) -> OptimizerResult:
     """
     Run the AdvDecoding LM jailbreak attack.
@@ -133,40 +133,29 @@ def run_advdecoding_jailbreak(
     if not high_compute:
         util_lm = LMHFModel(
             model_name="HuggingFaceTB/SmolLM2-135M",
-            # model_name="meta-llama/Meta-Llama-3.1-8B-Instruct",  # <-- can use this instead to exactly follow the paper's setup
+            # model_name=UTIL_LM_PAPER,  # <-- for exact paper setup
             use_prefix_cache=False,
         )
-        num_steps = 30
-        beam_size = 30
-        top_k = 10
-        branching_factor = 10
         loss = CombinedLoss(
             loss_funcs=[PrefillCELoss(), InputFluencyLoss()],
             weights=[1.0, 1.0],
         )
     else:
-        # Stronger utility LM + wider search for better ASR
         util_lm = LMHFModel(
             model_name="HuggingFaceTB/SmolLM2-1.7B",
             dtype=torch.bfloat16,
             use_prefix_cache=False,
         )
-        num_steps = 50
-        beam_size = 60
-        branching_factor = 15
-        top_k = 15
         loss = PrefillCELoss()
+
 
     optimizer = BeamSearchOptimizer(
         model=model,
         loss=loss,
         util_lm=util_lm,
         tracker=tracker,
-        util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",  # to seed the util LM; from the paper
-        num_steps=num_steps,
-        beam_size=beam_size,
-        top_k=top_k,
-        branching_factor=branching_factor,
+        util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",  # from the paper
+        **(HIGH_COMP_PARAMS if high_compute else PAPER_PARAMS),
         temperature=1.0,
     )
 
