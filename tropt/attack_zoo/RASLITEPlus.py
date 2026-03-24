@@ -83,7 +83,7 @@ def run_rasliteplus(
         # [Optional] Advanced features:
         # decline_n_flip_from_step=0.5, # Optional
         # early_stopping_patience=None, # Optional
-        # n_grad=1, # Default to 1 (no averaging) unless specified, as RASLITE uses logits directly
+        # n_logit_samples=1, # Default to 1 (no averaging) unless specified, as RASLITE uses logits directly
     )
 
     return optimizer.optimize_trigger(

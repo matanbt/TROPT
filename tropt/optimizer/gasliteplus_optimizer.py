@@ -383,7 +383,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             best_trigger_ids=best.trigger_ids,
             losses=best.losses,
             trigger_strs=best.trigger_strs,
-            full_prompt=full_prompt,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
         self.model.reset_inputs_from_tokens()

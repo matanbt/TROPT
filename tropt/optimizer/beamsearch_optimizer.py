@@ -46,8 +46,8 @@ class BeamSearchOptimizer(BaseOptimizer):
         tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
         # attack parameters:
-        util_lm: LMBaseModel = None,  # if None, use the same as `model`
-        util_lm_prefix: str = None,
+        util_lm: Optional[LMBaseModel] = None,  # if None, use the same as `model`
+        util_lm_prefix: Optional[str] = None,
         num_steps: int = 40,
         beam_size: int = 15,
         branching_factor: int = 15,
@@ -110,6 +110,7 @@ class BeamSearchOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         templates: TextTemplates,
+        initial_trigger: Optional[str] = None,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
         """

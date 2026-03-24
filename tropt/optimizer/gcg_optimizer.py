@@ -75,7 +75,7 @@ class GCGOptimizer(BaseOptimizer):
     def optimize_trigger(
         self,
         templates: TextTemplates,
-        initial_trigger: str = DEFAULT_INIT_TRIGGER,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         # objective-specific args:
         targets: Optional[Targets] = None,  # depends on the objective
     ) -> OptimizerResult:

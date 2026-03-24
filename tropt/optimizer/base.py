@@ -72,7 +72,7 @@ class BaseOptimizer(ABC):
     def optimize_trigger(
         self,
         templates: TextTemplates,
-        initial_trigger: Optional[str | TokenTrigger] = None,
+        initial_trigger: Optional[str] = None,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
         """Optimize the trigger to minimize the loss on the given inputs.
@@ -90,7 +90,7 @@ class BaseOptimizer(ABC):
     def _log_run_config_to_tracker(
         self,
         templates: TextTemplates,
-        initial_trigger: Optional[str | TokenTrigger] = None,
+        initial_trigger: Optional[str] = None,
         targets: Optional[Targets] = None,
     ):
         """Logs run metadata to the tracker at the start of optimization."""

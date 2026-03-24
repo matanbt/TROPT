@@ -1,7 +1,7 @@
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import List
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -10,21 +10,35 @@ UNUSED_TOKEN_REGEX = r"<unused\d+>"
 @dataclass
 class TokenConstraints:
     disallow_non_ascii: bool = True
-    disallow_special_tokens: bool = (
-        True  # it is reccomended to always disallow special tokens as these may be escaped (by defender) when trigger is used
-    )
-    disallow_unused_tokens: bool = False  # disallow `<unused*>` tokens, which can be filtered (by defender) when trigger is used [TODO test this on multiple models and then set to True by default]
+    """
+    Disallow non-ASCII tokens, which may be escaped by a defender when the trigger is used.
+    """
+
+    disallow_special_tokens: bool = True
+    """
+    Disallow special tokens (e.g., bos, eos, unk), which may be escaped by a defender when the trigger is used.
+    """
+
+    disallow_unused_tokens: bool = True
+    """
+    disallow `<unused*>` tokens, which can be filtered by a defender.
+    In many cases there are not part of the special tokens, thus require special care.
+    """
+
     disallow_custom_token_ids: List[int] = field(default_factory=list)
+    """
+    Disallow any additional custom token ids.
+    """
+    
     _cache: dict = field(
         default_factory=dict, init=False, repr=False, hash=False, compare=False
     )
 
-    def get_blacklist_ids(self, tokenizer, vocab_size: int = None) -> List[int]:
+    def get_blacklist_ids(self, tokenizer, vocab_size: Optional[int] = None) -> List[int]:
         """
         Returns a list of token IDs that should be blacklisted based on the constraints.
         """
 
-        # HACK for caching:
         cache_key = (
             tokenizer.name_or_path,
             self.disallow_non_ascii,
@@ -68,7 +82,7 @@ class TokenConstraints:
             for i in range(vocab_size):
                 if i in blacklist_ids:
                     continue  # skip already blacklisted ids fr efficiency
-                # Get the token string directly from the tokenizer's vocabulary [TODO better??]
+                # Get the raw token string from the vocabulary (not decode(), which may post-process)
                 token_str = tokenizer.convert_ids_to_tokens([i])[0]
                 if token_str and unused_pattern.match(token_str):
                     blacklist_ids.add(i)

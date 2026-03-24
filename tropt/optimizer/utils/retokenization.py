@@ -17,7 +17,7 @@ from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
 
 logger = logging.getLogger(__name__)
 
-# TODO need to profile whether these functions are bottlenecks, and if so parallelize them.
+# TODO need to profile whether these functions are bottlenecks, and if so parallelize them. (e.g., `retokenize_filtering` loop over the vocab can be parallelized)
 
 def retokenize_filtering(
         ids: Float[Tensor, "bsz n_ids"],
@@ -42,7 +42,6 @@ def retokenize_filtering(
     ids_decoded = tokenizer.batch_decode(ids)
     filtered_ids = []
 
-    # TODO multi-thread this loop if becomes a bottleneck / batch encode in advance
     for i in range(len(ids_decoded)):
         # Retokenize the decoded token ids
         ids_encoded = tokenizer(

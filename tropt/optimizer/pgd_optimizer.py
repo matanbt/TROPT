@@ -22,6 +22,7 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_transform
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -145,7 +146,7 @@ class PGDOptimizer(BaseOptimizer):
 
             # Center: uniform over non-zero entries
             center = torch.zeros_like(si)
-            center[non_zero_mask] = 1.0 / d
+            center[non_zero_mask] = (1.0 / d).to(si.dtype)
 
             # Radius from target entropy
             radius_sq = max(0.0, 1.0 - target_entropy - 1.0 / d.item())
@@ -233,8 +234,10 @@ class PGDOptimizer(BaseOptimizer):
         self,
         templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: Targets = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+        raise NotImplementedError("PGD optimization is WIP and not fully implemented.")
+
         self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Initialization ---
@@ -273,15 +276,7 @@ class PGDOptimizer(BaseOptimizer):
             milestones=[self.lr_warmup_steps],
         )
 
-        # --- Tracking ---
-        loss_per_step = []
-        trigger_strings = []
-
-        # Best tracking / early stopping (Algorithm 1, lines 11-12)
-        best_loss = float("inf")
-        best_trigger_ids = None
-        best_trigger_str = None
-        best_trigger_probs = None  # for patience resets
+        best = RunningBest()
         steps_since_improvement = 0
         relaxation_gap = 1.0  # starts at 1 (no weakening)
 
@@ -360,34 +355,28 @@ class PGDOptimizer(BaseOptimizer):
                 relaxation_gap = 1.0
 
             # --- Best tracking (Algorithm 1, lines 11-12) ---
-            if current_loss < best_loss:
-                best_loss = current_loss
-                best_trigger_ids = current_trigger_ids.clone()
-                best_trigger_str = current_trigger_str
-                best_trigger_probs = trigger_probs.data.clone()
+            improved = best.update(
+                loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str
+            )
+            if improved:
                 steps_since_improvement = 0
             else:
                 steps_since_improvement += 1
 
             # --- Patience: reset to best (Appendix A) ---
             if self.patience > 0 and steps_since_improvement >= self.patience:
-                if best_trigger_probs is not None:
+                if best.trigger_ids is not None:
                     with torch.no_grad():
-                        # Reinitialize to one-hot of best discrete trigger
                         reset_probs = F.one_hot(
-                            best_trigger_ids, num_classes=vocab_size
+                            best.trigger_ids, num_classes=vocab_size
                         ).to(dtype=dtype, device=device)
                         trigger_probs.data.copy_(reset_probs)
                     steps_since_improvement = 0
                     logger.debug(f"Patience reset at step {step}")
 
-            # --- Logging ---
-            loss_per_step.append(current_loss)
-            trigger_strings.append(current_trigger_str)
-
             self.tracker.log({
                 "loss": current_loss,
-                "best_loss": best_loss,
+                "best_loss": best.loss,
                 "entropy_target": current_entropy_target,
                 "lr": scheduler.get_last_lr()[0],
                 **self.loss_func.get_loss_log_dict(),
@@ -395,32 +384,24 @@ class PGDOptimizer(BaseOptimizer):
             })
 
             pbar.set_description(
-                f"loss={current_loss:.4f} best={best_loss:.4f} "
+                f"loss={current_loss:.4f} best={best.loss:.4f} "
                 f"trigger={current_trigger_str[:30]}"
             )
 
         # --- Use the best trigger found during optimization ---
-        if best_trigger_ids is None:
-            best_trigger_ids = self._discretize(trigger_probs.data, tokenizer)
-            best_trigger_str = tokenizer.decode(
-                best_trigger_ids, skip_special_tokens=True
-            )
-            best_loss = loss_per_step[-1] if loss_per_step else float("inf")
+        if best.trigger_ids is None:
+            best_ids = self._discretize(trigger_probs.data, tokenizer)
+            best_str = tokenizer.decode(best_ids, skip_special_tokens=True)
+            best_loss = best.losses[-1] if best.losses else float("inf")
+            best.update(loss=best_loss, trigger_ids=best_ids, trigger_str=best_str)
 
-        # Construct full prompts
-        assert isinstance(best_trigger_str, str)
-        full_prompt = [
-            t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str)
-            for t in templates
-        ]
 
         result = OptimizerResult(
-            best_loss=best_loss,
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=best_trigger_ids,
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
+            best_loss=best.loss,
+            best_trigger_str=best.trigger_str,
+            best_trigger_ids=best.trigger_ids,
+            losses=best.losses,
+            trigger_strs=best.trigger_strs,
         )
 
         self.tracker.log({

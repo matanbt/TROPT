@@ -55,7 +55,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 100,
-        n_grad: int = None,  # TODO rename
+        n_logit_samples: Optional[int] = None,
         n_flip: int | float = 20,
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
@@ -82,7 +82,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             seed (int, optional): Random seed for reproducibility.
 
             num_steps (int): Number of optimization iterations.
-            n_grad (int): Number of random flips for logit averaging on util_model.
+            n_logit_samples (int): Number of random flips for logit averaging on util_model.
             n_flip (int): Number of token positions to greedily optimize per step.
             n_candidates (int): Number of top candidate tokens to evaluate for each position.
 
@@ -105,7 +105,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         # save params:
         self.num_steps = num_steps
-        self.n_grad = n_grad
+        self.n_logit_samples = n_logit_samples
         self.n_flip = n_flip
         self.n_candidates = n_candidates
         self.token_constraints = token_constraints
@@ -215,7 +215,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                     trigger_seq_len, util_vocab_size, device=self.util_model.device
                 )
             else:
-                if self.n_grad is not None and self.n_grad > 1:
+                if self.n_logit_samples is not None and self.n_logit_samples > 1:
                     # Average logits over variations
                     trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size, device=self.util_model.device)
                     logits = self.util_model.compute_logits_from_tokens(
@@ -391,17 +391,17 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         trigger_ids: Float[Tensor, "trigger_seq_len"],
         vocab_size: int,
         device: torch.device,
-    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
+    ) -> Float[Tensor, "n_logit_samples trigger_seq_len"]:
         """
-        Creates a list of `n_grad` trigger variations. The first is the
+        Creates a list of `n_logit_samples` trigger variations. The first is the
         original trigger, and the rest are random single-token flips.
         """
         trigger_seq_len = len(trigger_ids)
         trigger_vars_ids = trigger_ids.repeat(
-            self.n_grad, 1
-        )  # shape: (n_grad, trigger_seq_len)
+            self.n_logit_samples, 1
+        )  # shape: (n_logit_samples, trigger_seq_len)
 
-        for idx in range(1, self.n_grad):  # (keep the first intact)
+        for idx in range(1, self.n_logit_samples):  # (keep the first intact)
             # select a random position and a random token
             pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
             tok_to_flip_to = int(torch.randint(0, vocab_size, (1,), device=device).item())

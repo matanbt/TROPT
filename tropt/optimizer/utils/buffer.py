@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch
 
 
@@ -12,8 +14,8 @@ class TriggerBuffer:
 
     def __init__(
             self,
-            triggers: list[torch.Tensor] = None,
-            losses: list[float] = None,
+            triggers: Optional[list[torch.Tensor]] = None,
+            losses: Optional[list[float]] = None,
         ):
         self.triggers = triggers or []  # List of trigger token ID tensors
         self.losses = losses or []  # Corresponding list of losses

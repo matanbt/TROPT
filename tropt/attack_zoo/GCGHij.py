@@ -34,7 +34,11 @@ def run_gcghij(
         flavor: The flavor of the attack to run ("Hijack" or "AttnGCG").
     """
     if model_obj is None:
-        model_obj = LMHFModel(model_name=model_name, use_eager_attention=True)
+        model_obj = LMHFModel(
+            model_name=model_name,
+            use_eager_attention=True,
+            use_prefix_cache=False,  # prefix cache is incompatible with attention-based losses
+        )
     elif model_obj._model.config._attn_implementation != "eager":
         raise ValueError(
             "run_gcghij requires eager attention (AttentionEnhLoss). "
@@ -53,7 +57,7 @@ def run_gcghij(
                     dst_slc_name=SliceKey.INPUT_AFTER,
                     )
                 ],
-            weights=[1.0, -100],
+            weights=[1.0, 100],
         )
     elif flavor == "AttnGCG":
         # For the loss of the `AttnGCG` paper, use only this term instead of `AttentionEnhLoss`:
@@ -66,7 +70,7 @@ def run_gcghij(
                     dst_slc_name=SliceKey.APPENDED,
                     )
                 ],
-            weights=[1.0, -100],
+            weights=[1.0, 100],
         )
     else:
         raise ValueError(f"Invalid flavor: {flavor}. Must be 'Hijack' or 'AttnGCG'.")

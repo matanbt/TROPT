@@ -1,5 +1,6 @@
 import random
 import string
+from typing import Optional
 
 import transformers
 from jaxtyping import Float
@@ -9,7 +10,7 @@ from torch import Tensor
 def get_printable_random_trigger(
     trigger_len: int,
     return_ids: bool = False,
-    tokenizer: transformers.PreTrainedTokenizer = None,
+    tokenizer: Optional[transformers.PreTrainedTokenizer] = None,
 ) -> str | Float[Tensor, "trigger_seq_len"]:
     """
     Generates a random initial trigger consisting of printable ASCII english letters.

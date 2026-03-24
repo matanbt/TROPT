@@ -76,7 +76,7 @@ def run_gaslite_plus_encoder(
         tracker=tracker,
         token_constraints=_TOKEN_CONSTRAINTS,
         use_retokenize=True,
-        **params,  # ty: ignore[invalid-argument-type]
+        **params,
     )
 
     return optimizer.optimize_trigger(
@@ -123,7 +123,7 @@ def run_gaslite_plus_llm(
         tracker=tracker,
         token_constraints=_TOKEN_CONSTRAINTS,
         use_retokenize=True,
-        **params,  # ty: ignore[invalid-argument-type]
+        **params,
     )
 
     return optimizer.optimize_trigger(

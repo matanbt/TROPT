@@ -131,6 +131,21 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
 
+[tool.ty.src]
+include = ["tropt/"]
+
+[tool.ty.rules]
+unresolved-attribute = "ignore"   # HF/ST models expose attrs dynamically (e.g. .generate, .encode, .config)
+invalid-argument-type = "ignore"  # jaxtyping annotations (Float[Tensor, ...]) confuse ty's type narrowing
+call-non-callable = "ignore"      # ST's _first_module(), .encode(), HF's .generate() seen as Tensor|Module union
+unresolved-import = "ignore"      # optional deps imported at runtime (google.genai)
+invalid-method-override = "ignore"  # model/loss subclasses intentionally specialize abstract signatures
+no-matching-overload = "ignore"   # torch.full, dict.get, str.replace with dynamic union args
+unknown-argument = "ignore"       # self.GDOptimizer is assigned dynamically (Adam/SGD), ty sees base Optimizer
+missing-argument = "ignore"       # same as above — GDOptimizer's __init__ resolved against wrong overload
+invalid-assignment = "ignore"     # HF's apply_chat_template return type; copy.copy narrows to BaseModel
+invalid-return-type = "ignore"    # HF config.id2label typed as generic dict, not Dict[int, str]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

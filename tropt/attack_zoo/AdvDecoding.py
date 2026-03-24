@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Float
 
 from tropt.common import Targets
-from tropt.loss import CombinedLoss, InputReadabilityLoss, PrefillCELoss, SimilarityLoss
+from tropt.loss import CombinedLoss, InputFluencyLoss, PrefillCELoss, SimilarityLoss
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
@@ -61,9 +61,9 @@ def run_advdecoding_retrieval(
         top_k = 10   # Paper uses top_k=10 logits filtering
         loss = CombinedLoss([
             SimilarityLoss(),  # Main attack loss: align to target embedding
-            InputReadabilityLoss(),
+            InputFluencyLoss(),
 
-            # InputReadabilityLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
+            # InputFluencyLoss(model_name_or_path="meta-llama/Meta-Llama-3.1-8B-Instruct"),  # <-- can use this instead to exactly follow the paper's setup
          ], weights=[
              1.0,
              1.0,
@@ -141,7 +141,7 @@ def run_advdecoding_jailbreak(
         top_k = 10
         branching_factor = 10
         loss = CombinedLoss(
-            loss_funcs=[PrefillCELoss(), InputReadabilityLoss()],
+            loss_funcs=[PrefillCELoss(), InputFluencyLoss()],
             weights=[1.0, 1.0],
         )
     else:
