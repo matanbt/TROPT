@@ -24,7 +24,7 @@ from .inputs_manager import (
     TextInputManager,
     TokenInputManager,
 )
-from .model_base import BaseTokenizer
+from .model_base import BaseTokenizer, track_flops_torch
 
 # ======================================================================
 # Token Access Flow
@@ -176,6 +176,7 @@ class TextAccessMixin(ABC):
 class LossTextAccessMixin(TextAccessMixin):
     """Mixin for models that compute losses based on text-level inputs (black-box access)."""
 
+    @track_flops_torch
     @torch.no_grad()  # in case using torch model
     def compute_loss_from_texts(
         self,
