@@ -1,10 +1,12 @@
 <div align="center">
 
-# TROPT
+<!-- # TROPT -->
+
+# <img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="80%">
+
 
 **Discrete text trigger optimization toward any goal, with any optimizer, for any NLP model**
 
-<img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="80%">
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Transformers](https://img.shields.io/badge/transformers-%E2%89%A54.40-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
@@ -33,7 +35,7 @@ It supports any optimization approach that minimizes a quantifiable objective by
 
 Install the core package (includes HuggingFace model support):
 
-```bash
+```sh
 # Install the core package dependencies:
 pip install tropt
 ```
@@ -42,13 +44,13 @@ It is possible to manually choose the desired optional dependencies (e.g., model
 
 For example, for only adding OpenAI support:
 
-```bash
+```sh
 pip install tropt[openai]
 ```
 
 Alternatively, it is possible to install all optional dependencies at once:
 
-```bash
+```sh
 pip install tropt[all]
 ```
 
@@ -57,7 +59,7 @@ pip install tropt[all]
 
 For contributing or local development, we use [uv](https://docs.astral.sh/uv/) for dependency management:
 
-```bash
+```sh
 git clone https://github.com/matanbt/tropt.git
 cd tropt
 pip install uv
@@ -66,7 +68,7 @@ uv sync --extra dev
 
 Then run commands via `uv run` (no need to activate the venv):
 
-```bash
+```sh
 uv run pytest
 uv run ruff check .
 ```

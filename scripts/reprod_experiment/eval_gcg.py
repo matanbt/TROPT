@@ -34,14 +34,14 @@ from tropt.utils.refusal_dir import compute_refusal_directions
 
 # Default list from original script
 DEFAULT_INDICES = [
-    225, 
-    # 89, 155, 78, 283, 162, 236, 389, 568, 695,
-    128, 342, 456, 509, 634, 721, 
+    # 225, 
+    128, 342, 456, 
+    # 89, 155, 78, 283, 162, 236, 389, 568, 695, 509, 634, 721,
 ]
 INITIAL_TRIGGER = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
 RANDOM_SEED = 42
 WANDB_ENTITY = "matanbt"
-WANDB_PROJECT = "reprod_gcg"
+WANDB_PROJECT = "reprod_gcg3"
 DATASET_PATH = "scripts/reprod_experiment/data/advbench_plus.csv"
 app = typer.Typer()
 
@@ -300,6 +300,7 @@ def tropt_zoo(
         dtype="bfloat16",
         use_eager_attention="gcg_hij" in methods,
     )
+    model.count_flops = True  # Enable FLOP counting for all methods (some may choose to ignore it)
 
     for message_id in sample_indices:
         row = df.loc[df.message_id == message_id].iloc[0]
