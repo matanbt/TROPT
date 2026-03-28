@@ -216,15 +216,15 @@ class EncoderHFModel(
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
         input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
+        count_backward: bool = False,
         **kwargs
     ) -> ModelOutput:
-        """
-        Perform a white-box forward pass through the model using input embeddings.
+        """Perform a white-box forward pass through the model using input embeddings.
 
         Args:
             input_embeds: Input embeddings tensor (bsz, seq_len, d_model).
             input_attention_mask: Attention mask tensor (bsz, seq_len).
-            reference_loss_func: Optional reference loss function.
+            count_backward: Whether this forward pass will be back-propagated through.
 
         Returns:
             ModelOutput: The output from the model.
@@ -242,10 +242,11 @@ class EncoderHFModel(
                 attention_mask=input_attention_mask,  # (bsz, seq_len)
             )
         )
-        self._update_usage_stats(
-            forward_calls=1,
-            forward_samples=len(input_embeds),
-            tokens=int(input_attention_mask.sum().item()),
+
+        self._update_invoke_stats(
+            n_tokens=int(input_attention_mask.sum().item()),
+            n_samples=input_embeds.shape[0],
+            count_backward=count_backward,
         )
         output_emb = outputs["sentence_embedding"]  # (bsz, d_model)
 
@@ -268,10 +269,9 @@ class EncoderHFModel(
         assert isinstance(input_texts, list)
 
         emb = self._model.encode(input_texts, convert_to_tensor=True, show_progress_bar=False)
-        self._update_usage_stats(
-            forward_calls=1,
-            forward_samples=len(input_texts),
-            tokens=sum(len(ids) for ids in self._tokenizer(input_texts)["input_ids"]),
+        self._update_invoke_stats(
+            n_tokens=sum(len(ids) for ids in self._tokenizer(input_texts)["input_ids"]),
+            n_samples=len(input_texts),
         )
 
         return ModelOutput(

@@ -137,6 +137,7 @@ class ClassifierHFModel(
         self,
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
         input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None,
+        count_backward: bool = False,
         **kwargs,
     ) -> ModelOutput:
         assert input_embeds is not None
@@ -149,10 +150,11 @@ class ClassifierHFModel(
             inputs_embeds=input_embeds,
             attention_mask=input_attention_mask,
         )
-        self._update_usage_stats(
-            forward_calls=1,
-            forward_samples=len(input_embeds),
-            tokens=int(input_attention_mask.sum().item()),
+
+        self._update_invoke_stats(
+            n_tokens=int(input_attention_mask.sum().item()),
+            n_samples=input_embeds.shape[0],
+            count_backward=count_backward,
         )
 
         return ModelOutput(
@@ -177,10 +179,9 @@ class ClassifierHFModel(
         ).to(self.device)
 
         outputs = self._model(**inputs)
-        self._update_usage_stats(
-            forward_calls=1,
-            forward_samples=len(input_texts),
-            tokens=int(inputs["attention_mask"].sum().item()),
+        self._update_invoke_stats(
+            n_tokens=int(inputs["attention_mask"].sum().item()),
+            n_samples=len(input_texts),
         )
 
         return ModelOutput(

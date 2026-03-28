@@ -25,7 +25,6 @@ from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
 )
-from tropt.model.model_base import track_flops_torch
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +392,6 @@ class _HuggingFaceModelMixins:
         """The raw embedding matrix from the model's embedding layer, without any enrichment."""
         return self.effective_embedding_matrix
 
-    @track_flops_torch
     def compute_grad_from_tokens(
         self,
         loss_func: BaseLoss,
@@ -587,6 +585,7 @@ class _HuggingFaceModelMixins:
                         do_generate=loss_func.requires_generation,
                         return_hidden_states=loss_func.requires_hidden_states,
                         return_attentions=loss_func.requires_attentions,
+                        count_backward=True,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                     batch_losses.append(loss)
@@ -596,12 +595,6 @@ class _HuggingFaceModelMixins:
                     batch_losses, dim=0
                 )  # (n_templates, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
-
-                # Update usage stats
-                self._update_usage_stats(
-                    grad_calls=1,
-                    grad_samples=len(batch_losses) * n_templates
-                )
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
                 candidate_onehot_grad = torch.autograd.grad(
@@ -630,7 +623,6 @@ class _HuggingFaceModelMixins:
 
         return all_grads
 
-    @track_flops_torch
     def compute_grad_from_embeds(
         self,
         loss_func: BaseLoss,
@@ -694,6 +686,7 @@ class _HuggingFaceModelMixins:
                         do_generate=loss_func.requires_generation,
                         return_hidden_states=loss_func.requires_hidden_states,
                         return_attentions=loss_func.requires_attentions,
+                        count_backward=True,
                     )
 
                     # 4. Compute Loss
@@ -703,12 +696,6 @@ class _HuggingFaceModelMixins:
                 # Collect losses & average over messages
                 batch_losses = torch.stack(batch_losses, dim=0) # (n_templates, bsz_triggers)
                 batch_losses = batch_losses.mean(dim=0)
-
-                # Update usage stats
-                self._update_usage_stats(
-                    grad_calls=1,
-                    grad_samples=len(batch_losses) * n_templates
-                )
 
                 # 5. Compute gradients w.r.t. the embeddings
                 candidate_embeds_grad = torch.autograd.grad(
@@ -735,7 +722,6 @@ class _HuggingFaceModelMixins:
         return all_grads
 
 
-    @track_flops_torch
     @torch.no_grad()
     def compute_loss_from_tokens(
         self,
@@ -825,6 +811,7 @@ class _HuggingFaceModelMixins:
         do_generate: bool = False,
         return_hidden_states: bool = False,
         return_attentions: bool = False,
+        count_backward: bool = False,
         **kwargs,
     ) -> ModelOutput:
         """Performs a forward pass with the given token-based model input. Forward pass is expected to be done on `input_embeds`.
@@ -842,45 +829,11 @@ class _HuggingFaceModelMixins:
                 whether to return the hidden states from the model output.
             return_attentions: bool
                 whether to return the attention weights from the model output.
+            count_backward: bool
+                whether this forward pass will be back-propagated through (set by gradient methods). Could be used by FLOP counters.
 
         Returns:
             ModelOutput
                 the model output containing logits, embeddings, attentions, etc.
         """
         pass
-
-    # A heuristic to transform tokens from one tokenizer to another [Currently disabled]
-    # @staticmethod
-    # def cast_to_model_tokenizer(
-    #     old_ids: Float[Tensor, "bsz seq_len"],
-    #     model_from: "_HuggingFaceModelMixins",
-    #     model_to: "_HuggingFaceModelMixins",
-    # ) -> Tuple[Float[Tensor, "bsz len_old"], Float[Tensor, "bsz len_new"]]:
-    #     """
-    #     Given `ids` in the `model_from` tokenizer, heurisically casts them to the
-    #     `model_to` tokenizer, while filtering out mismatches.
-    #     """
-    #     # a. decode w/ util-model tokenizer
-    #     strs = model_from.tokenizer.batch_decode(old_ids)
-
-    #     # b. encode w/ model tokenizer
-    #     new_ids = [
-    #         model_to.tokenizer.encode(s, return_tensors="pt", add_special_tokens=False)
-    #         .to(model_to.device)
-    #         .squeeze(0)
-    #         for s in strs
-    #     ]
-
-    #     # c'. pick the maximal length with which most triggers fit (to avoid cutting too much)
-    #     lengths = [ids.shape[-1] for ids in new_ids]
-    #     counts = np.bincount(lengths)
-    #     _min_len = np.argmax(counts)  # so most ids will be kept as fully
-    #     # smaller than min -> drop
-    #     to_drop_indices = set([i for i, l in enumerate(lengths) if l < _min_len])
-    #     old_ids = old_ids[[i for i in range(len(new_ids)) if i not in to_drop_indices]]
-    #     new_ids = [ids for i, ids in enumerate(new_ids) if i not in to_drop_indices]
-    #     # longer than min -> trim
-    #     new_ids = [ids[..., :_min_len] for ids in new_ids]
-    #     new_ids = torch.stack(new_ids, dim=0)  # (<= bsz, min_len)
-
-    #     return old_ids, new_ids.to(model_to.device, torch.int64)

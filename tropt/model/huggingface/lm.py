@@ -21,8 +21,6 @@ from tropt.common import (
     TextTemplates,
 )
 from tropt.loss import BaseLoss
-
-from tropt.model.model_base import track_flops_torch
 from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -247,7 +245,6 @@ class LMHFModel(
             targets=targets,
         )
 
-    @track_flops_torch
     @torch.no_grad()
     def compute_logits_from_tokens(
         self,
@@ -366,6 +363,7 @@ class LMHFModel(
         do_generate: bool = False,
         return_hidden_states: bool = False,
         return_attentions: bool = False,
+        count_backward: bool = False,
         # generation kwargs (only used when do_generate=True):
         max_new_tokens: int = 128,
         greedy_decode: bool = True,
@@ -384,6 +382,7 @@ class LMHFModel(
             do_generate: Whether to perform generation, in addition to forward pass.
             return_hidden_states: Whether to return hidden states in the output.
             return_attentions: Whether to return attentions in the output.
+            count_backward: Whether this forward pass will be back-propagated through (set by gradient methods).
 
         Returns:
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
@@ -409,10 +408,11 @@ class LMHFModel(
             output_hidden_states=return_hidden_states,
             **(input_prefix_cache_kwargs or {})
         )
-        self._update_usage_stats(
-            forward_calls=1,
-            forward_samples=input_embeds.shape[0],
-            tokens=int(input_attention_mask.sum().item()),
+
+        self._update_invoke_stats(
+            n_tokens=int(input_attention_mask.sum().item()),
+            n_samples=input_embeds.shape[0],
+            count_backward=count_backward,
         )
 
         # Extract prefill logits, if exist and requested
@@ -447,7 +447,6 @@ class LMHFModel(
             generated_response_strs = self._tokenizer.batch_decode(generated_response_ids, skip_special_tokens=True)
             self._update_usage_stats(
                 tokens=sum(len(t) for t in generated_response_ids),
-                forward_samples=0, forward_calls=0,  # already counted above
             )
 
         return ModelOutput(

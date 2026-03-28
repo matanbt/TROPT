@@ -3,7 +3,6 @@ Base definitions, classes, and mixins for targeted text models.
 """
 
 from abc import ABC, abstractmethod
-from functools import wraps
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
@@ -13,36 +12,10 @@ from torch import Tensor
 from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import DEFAULT_INIT_TRIGGER, MessageTargets, ModelOutput, Targets
+from tropt.model.flop_counter import ManualFlopCounter, FlopCounterBase
 from tropt.model.inputs_manager import (
     TextInputManager,
 )
-
-
-def track_flops_torch(method):
-    """Decorator that wraps a `BaseModel`'s `compute_*` method with torch's FlopCounterMode when count_flops is enabled.
-
-    Uses ``torch.utils.flop_counter.FlopCounterMode`` under the hood. Other model backends may
-    implement FLOP tracking with different counters.
-
-    **Note**: FlopCounterMode only counts high-intensity ops (matmul, conv, attention), and currently suffers from 
-    several limitations. Nontheless, it is expected to give a good *relative* measure to compare across optimizers,
-    which is insightful enough to be included.
-    See https://github.com/pytorch/pytorch/issues/123800 for discussion on known limitations.
-    """
-    @wraps(method)
-    def wrapper(self, *args, **kwargs):
-        if not getattr(self, "count_flops", False):
-            return method(self, *args, **kwargs)
-
-        from torch.utils.flop_counter import FlopCounterMode
-
-        with FlopCounterMode(display=False) as flop_counter:
-            result = method(self, *args, **kwargs)
-
-        self._update_usage_stats(flops=flop_counter.get_total_flops())
-        return result
-
-    return wrapper
 
 # ====================== Model Base Classes =======================
 
@@ -68,11 +41,34 @@ class BaseModel(ABC):
         """Returns the model identifier string."""
         return getattr(self, "_model_name", getattr(self, "model_name", type(self).__name__))
 
-    count_flops: bool = False
+    _model: Optional[Any] = None
+    """The underlying model object. Set by subclass ``__init__``.
+
+    For HuggingFace models this is a ``PreTrainedModel``; for black-box
+    models it may be ``None``.
     """
-    Whether to count FLOPs in compute_* methods (opt-in); known to incur a memory/compute overhead.
-    See `track_flops_torch()` decorator for details and limitations.
+
+    _flop_counter: Optional[FlopCounterBase] = None
+    """Active counter object (set by :meth:`set_flop_counting`).
+
+    Must implement ``count_forward(n_tokens) -> int`` and
+    ``count_forward_backward(n_tokens) -> int``.
     """
+
+    def set_flop_counting(self, mode: Literal["manual", "none"] = "manual"):
+        """Enable or disable FLOP counting.
+
+        Args:
+            mode: The method to use for counting FLOPs. Options:
+                -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires ``_model`` to be a HuggingFace ``PreTrainedModel``. This is the default.
+                -> "none": Disables FLOP counting.
+        
+        - FLOP counting will appear in :meth:`get_usage_stats` under ``"usage/total_flops"``.
+        """
+        if mode == "manual":
+            self._flop_counter = ManualFlopCounter(self._model)
+        else:
+            self._flop_counter = None
 
     def get_usage_stats(self) -> Dict[str, int]:
         """Returns summary of model usage statistics, namespaced under 'usage/' for W&B logging."""
@@ -83,9 +79,44 @@ class BaseModel(ABC):
             "usage/grad_calls": getattr(self, "_grad_call_count", 0),
             "usage/grad_samples": getattr(self, "_grad_sample_count", 0),
         }
-        if self.count_flops:
+        if self._flop_counter is not None:
             stats["usage/total_flops"] = getattr(self, "_total_flops", 0)
         return stats
+
+    def _update_invoke_stats(
+        self,
+        *,
+        n_tokens: int,
+        n_samples: int,
+        count_backward: bool = False,
+    ):
+        """Record usage stats and FLOPs for a single model invocation.
+
+        Call this inside ``invoke_from_tokens`` / ``invoke_from_texts`` after
+        each *raw* model call (!), to avoid double-counting.  It handles forward/backward counters **and** FLOP
+        computation.
+
+        Args:
+            n_tokens: Total tokens processed in this invocation.
+            n_samples: Batch size (number of sequences).
+            count_backward: Whether this forward pass will also be
+                back-propagated through (set by gradient methods).
+        """
+        flops = 0
+        if self._flop_counter is not None:
+            if count_backward:
+                flops = self._flop_counter.count_forward_backward(n_tokens)
+            else:
+                flops = self._flop_counter.count_forward(n_tokens)
+
+        self._update_usage_stats(
+            tokens=n_tokens,
+            forward_calls=1,
+            forward_samples=n_samples,
+            flops=flops,
+            grad_calls=1 if count_backward else 0,
+            grad_samples=n_samples if count_backward else 0,
+        )
 
     def _update_usage_stats(
         self,
@@ -96,14 +127,8 @@ class BaseModel(ABC):
         grad_samples: int = 0,
         flops: int = 0,
     ):
-        """Updates the usage statistics.
-
-        Call this immediately after any model call (e.g. self._model(...)),
-        at the same call site. It is best to AVOID calling from higher-level wrappers (compute_loss_from_tokens,
-        compute_grad_from_tokens, etc.) to avoid double-counting.
-        """
+        """Low-level accumulator. Prefer :meth:`_update_invoke_stats`."""
         if not hasattr(self, "_token_used"):
-            # Initialize stats if not present
             self._token_used = 0
             self._forward_call_count = 0
             self._forward_sample_count = 0
@@ -178,7 +203,7 @@ class LMBaseModel(BaseModel):
             do_generate (bool): Whether to perform autoregressive generation after the forward pass (for LMs).
 
         Always returns ModelOutput with at least `generated_response_strs` populated.
-        This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+        This method also updates the usage stats (e.g., token counts, forward call counts, etc.). It must call `_update_invoke_stats` after each raw model call.
         """
         raise NotImplementedError
 
@@ -215,6 +240,7 @@ class EncoderBaseModel(BaseModel):
         Computes encoder embeddings for the given input texts.
         Always returns ModelOutput with at least `output_embeddings` populated.
         This method also updates the usage stats (e.g., token counts, forward call counts, etc.).
+        It must call `_update_invoke_stats` after each raw model call.
         """
         raise NotImplementedError
 
@@ -257,6 +283,7 @@ class ClassifierBaseModel(BaseModel):
         Compute classification logits for the given input texts.
         Always returns ModelOutput with at least `output_class_logits` populated.
         This method also updates the usage stats.
+        It must call `_update_invoke_stats` after each raw model call.
         """
         raise NotImplementedError
 

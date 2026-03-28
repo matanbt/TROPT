@@ -7,6 +7,9 @@ from .model_base import (  # noqa: I001
     BaseTokenizer,
 )
 
+# FLOP counting:
+from .flop_counter import ManualFlopCounter
+
 # Input classes:
 from .inputs_manager import (
     InputsManager,
