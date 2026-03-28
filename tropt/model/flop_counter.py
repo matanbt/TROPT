@@ -6,7 +6,7 @@ statistics and FLOPs are tracked. Non-invoke computation in ``compute_*``
 methods (tensor stacking, loss aggregation, etc.) is negligible compared to
 the model forward/backward passes.
 
-Uses the Kaplan et al. (2020) approximation:
+Uses the Kaplan et al. (2020) approximation (https://arxiv.org/abs/2001.08361):
 ``FLOPs_fwd ≈ 2·N·T``, ``FLOPs_bwd ≈ 4·N·T``.
 Cheap and deterministic. Requires ``_model`` to be a HuggingFace
 ``PreTrainedModel``.

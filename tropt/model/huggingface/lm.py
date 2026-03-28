@@ -445,8 +445,9 @@ class LMHFModel(
             generated_response_ids = [generation_output.sequences[i] for i in range(input_embeds.shape[0])]
             generated_response_logits = torch.stack(generation_output.logits, dim=1)  # (bsz, gen_len, vocab)
             generated_response_strs = self._tokenizer.batch_decode(generated_response_ids, skip_special_tokens=True)
-            self._update_usage_stats(
-                tokens=sum(len(t) for t in generated_response_ids),
+            self._update_invoke_stats(
+                n_tokens=sum(len(t) for t in generated_response_ids),
+                n_samples=input_embeds.shape[0],
             )
 
         return ModelOutput(
@@ -555,10 +556,9 @@ class LMHFModel(
         # 5b. Early return if generation not requested
         n_prompt_tokens = inputs.input_ids.numel()
         if not do_generate:
-            self._update_usage_stats(
-                tokens=n_prompt_tokens,
-                forward_calls=1,
-                forward_samples=len(input_texts),
+            self._update_invoke_stats(
+                n_tokens=n_prompt_tokens,
+                n_samples=len(input_texts),
             )
             return ModelOutput(
                 prefill_response_logits=prefill_response_logits
@@ -586,10 +586,9 @@ class LMHFModel(
         )
         n_gen_tokens = sum(len(t) for t in generated_toks)
 
-        self._update_usage_stats(
-            tokens=n_prompt_tokens + n_gen_tokens,
-            forward_calls=1,
-            forward_samples=len(generated_toks),
+        self._update_invoke_stats(
+            n_tokens=n_prompt_tokens + n_gen_tokens,
+            n_samples=len(generated_toks),
         )
 
         full_strs = self._tokenizer.batch_decode(

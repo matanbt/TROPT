@@ -214,10 +214,9 @@ class EncoderOpenAIModel(
         result = torch.tensor(embeddings, dtype=torch.float32)
 
         # Update token usage
-        self._update_usage_stats(
-            tokens=response.usage.total_tokens,
-            forward_calls=1,
-            forward_samples=len(input_texts)
+        self._update_invoke_stats(
+            n_tokens=response.usage.total_tokens,
+            n_samples=len(input_texts),
         )
 
         return ModelOutput(output_embeddings=result)

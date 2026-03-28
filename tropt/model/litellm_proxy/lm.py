@@ -110,10 +110,9 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0)
             for output in outputs
         )
-        self._update_usage_stats(
-            tokens=total_tokens,
-            forward_calls=1, # One batch call
-            forward_samples=len(input_texts)
+        self._update_invoke_stats(
+            n_tokens=total_tokens,
+            n_samples=len(input_texts),
         )
 
         return ModelOutput(

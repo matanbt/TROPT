@@ -83,10 +83,9 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         if hasattr(response, 'usage_metadata') and response.usage_metadata:
             total_tokens = getattr(response.usage_metadata, 'total_token_count', 0)
 
-        self._update_usage_stats(
-            tokens=total_tokens,
-            forward_calls=1,
-            forward_samples=len(input_texts)
+        self._update_invoke_stats(
+            n_tokens=total_tokens,
+            n_samples=len(input_texts),
         )
 
         return ModelOutput(
