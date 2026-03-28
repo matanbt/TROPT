@@ -151,7 +151,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
     def _get_trigger_variations(
         self,
         trigger_ids: Float[Tensor, "trigger_seq_len"],
-        vocab_size: int,
+        valid_token_ids: Float[Tensor, "n_valid"],
     ) -> Float[Tensor, "n_grad trigger_seq_len"]:
         """
         Creates a list of `n_grad` trigger variations. The first is the
@@ -165,9 +165,10 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
         for idx in range(1, self.n_grad):  # (keep the first intact)
             # select a random position and a random token
-            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
-            tok_to_flip_to = int(torch.randint(0, vocab_size, (1,), device=device).item())
-            # apply the flip
+            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok_to_flip_to = valid_token_ids[
+                torch.randint(0, len(valid_token_ids), (1,), device=device)
+            ].item()  # apply the flip
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 
         return trigger_vars_ids
@@ -190,6 +191,10 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
+
+        token_mask = torch.ones(vocab_size, device=self.model.device, dtype=torch.bool)
+        token_mask[blacklist_ids] = False
+        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
@@ -221,7 +226,8 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             losses=[losses[i].item() for i in range(self.buffer_size)],
         )
 
-        self.tracker.log({"loss": buffer.get_lowest_loss()})
+        trigger_str = tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
+        self.tracker.log({"loss": buffer.get_lowest_loss(), "trigger_str": trigger_str})
 
         for step in pbar:
             n_flip = self.n_flip_scheduler.get_n_flip(step)
@@ -242,7 +248,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 )
             else:
                 # Compute grad over a list of `n_grad` triggers one-flip away from the current
-                trigger_vars = self._get_trigger_variations(trigger_ids, vocab_size)
+                trigger_vars = self._get_trigger_variations(trigger_ids, valid_token_ids)
                 grads = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
                     loss_func=self.loss_func,
@@ -345,7 +351,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # Logging:
-            self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             if self.time_limit is not None:

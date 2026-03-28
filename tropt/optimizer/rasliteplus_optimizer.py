@@ -197,7 +197,8 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             losses=[losses[i].item() for i in range(self.buffer_size)],
         )
 
-        self.tracker.log({"loss": buffer.get_lowest_loss()})
+        trigger_str = util_tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
+        self.tracker.log({"loss": buffer.get_lowest_loss(), "trigger_str": trigger_str})
 
         for step in pbar:
             pbar.set_description(
@@ -338,7 +339,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         n_flip = max(1, math.ceil(self.n_flip * ratio))
 
             # Logging:
-            self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(util_trigger_ids)

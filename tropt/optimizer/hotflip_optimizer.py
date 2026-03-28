@@ -86,13 +86,7 @@ class HotFlipOptimizer(BaseOptimizer):
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0), loss_func=self.loss_func
         ).item()
-        self.tracker.log(
-            {
-                "loss": current_loss,
-                **self.loss_func.get_loss_log_dict(),
-                **self.model.get_usage_stats(),
-            }
-        )
+        self.tracker.log({"loss": current_loss, "trigger_str": initial_trigger, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
 
         pbar = tqdm(range(self.num_steps))
 
@@ -116,15 +110,8 @@ class HotFlipOptimizer(BaseOptimizer):
             current_loss = self.model.compute_loss_from_tokens(
                 trigger_ids.unsqueeze(0), loss_func=self.loss_func
             ).item()
-            self.tracker.log(
-                {
-                    "loss": current_loss,
-                    **self.loss_func.get_loss_log_dict(),
-                    **self.model.get_usage_stats(),
-                }
-            )
-
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
             best.update(
                 loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str
             )

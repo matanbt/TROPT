@@ -133,6 +133,9 @@ class MyOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+        # 0. Log run configuration (hyperparams, templates, targets, etc.)
+        self._log_run_config_to_tracker(templates, initial_trigger, targets)
+
         # 1. Setup: prepare model inputs
         #    Choose the flow matching your access level:
         #    self.model.set_inputs_from_{tokens|texts}(templates, targets)
@@ -147,8 +150,8 @@ class MyOptimizer(BaseOptimizer):
             )
             # ... generate candidates, evaluate, update trigger ...
 
-            # Log metrics each step
-            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
+            # Log metrics each step (trigger_str + loss details + model usage stats)
+            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
 
         # 3. Cleanup: release stored model state
         self.model.reset_inputs_from_tokens()
