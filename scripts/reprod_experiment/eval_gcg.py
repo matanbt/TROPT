@@ -300,7 +300,7 @@ def tropt_zoo(
         dtype="bfloat16",
         use_eager_attention="gcg_hij" in methods,
     )
-    model.count_flops = True  # Enable FLOP counting for all methods (some may choose to ignore it)
+    model.set_flop_counting("manual")  # Enable FLOP counting
 
     for message_id in sample_indices:
         row = df.loc[df.message_id == message_id].iloc[0]

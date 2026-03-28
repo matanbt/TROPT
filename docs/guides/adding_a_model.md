@@ -122,7 +122,7 @@ def invoke_from_texts(self, input_texts: List[str], **kwargs) -> ModelOutput:
 
 Key rules:
 - Input is always `List[str]`. Output is always a `ModelOutput` — the fields you populate determine which loss types are compatible (see [ModelOutput](#modeloutput)).
-- **Call `_update_usage_stats` at the same call site as the backend call** — not from higher-level wrappers. This avoids double-counting.
+- **Call `_update_usage_stats` (or `_update_invoke_stats` for models that support FLOP counting) at the same call site as the backend call** — not from higher-level wrappers. This avoids double-counting.
 
 Everything else — `set_inputs_from_texts`, `compute_loss_from_texts` — is provided by `LossTextAccessMixin`.
 
@@ -258,6 +258,17 @@ The key line is `resolve_and_compute_loss(model_output, model_input, loss_func)`
 
 `compute_grad_from_tokens` (required by `GradientTokenAccessMixin`) has the same per-template loop structure, but returns the **gradient of the loss w.r.t. the token input** instead of the loss itself. The returned tensor has shape `(n_candidates, trigger_seq_len, vocab_size)` — one gradient value per token position per vocabulary entry, telling the optimizer which substitutions would most reduce the loss. How you compute this gradient is up to your backend.
 
+### FLOP counting
+
+TROPT supports optional FLOP counting via invoke-level tracking (see [`tropt/models/flop_counter.py`](../../tropt/models/flop_counter.py)), using the [Kaplan et al. (2020)](https://arxiv.org/abs/2001.08361) approximation. Cheap and deterministic. Requires `_model` to be a HuggingFace `PreTrainedModel`.
+
+FLOP counting is handled entirely inside `invoke_from_tokens` / `invoke_from_texts` — these are the model-call bottleneck. To support it:
+
+1. **Call `_update_invoke_stats`** after each raw model call inside your invoke methods, passing `n_tokens`, `n_samples`, and optionally `count_backward`.
+2. For **gradient methods**: pass `count_backward=True` to `invoke_from_tokens` so it records the backward FLOPs correctly.
+
+`set_flop_counting("manual")` will raise a `TypeError` if `_model` is not a HuggingFace `PreTrainedModel`.
+
 ### File placement
 
 Same as for text-access models — one directory per backend, exported from `tropt/models/__init__.py`.
@@ -282,7 +293,7 @@ These methods are fully implemented and call `invoke_from_tokens` internally:
 
 All of these call **`invoke_from_tokens`** internally — the one method you must implement.
 
-The mixin also handles the template loop, batching, and loss resolution via `resolve_and_compute_loss`. You don't need to write any of that logic.
+The mixin also handles the template loop, batching, and loss resolution via `resolve_and_compute_loss`. **FLOP counting** (see [FLOP counting](#flop-counting) above) is handled inside `invoke_from_tokens` via `_update_invoke_stats`. Since `_model` is a `PreTrainedModel`, `set_flop_counting("manual")` works out of the box — you just need your `invoke_from_tokens` to call `_update_invoke_stats` with the correct token count and `count_backward` flag.
 
 ### What you implement
 
@@ -319,30 +330,23 @@ self._tokenizer.add_special_tokens(
 ```python
 def invoke_from_tokens(self, input_embeds, input_attention_mask,
                        input_prefix_cache_kwargs=None, input_slices=None,
-                       reference_loss_func=None) -> ModelOutput:
+                       count_backward=False, **kwargs) -> ModelOutput:
     outputs = self._model(
         inputs_embeds=input_embeds,
         attention_mask=input_attention_mask,
         **(input_prefix_cache_kwargs or {}),
     )
-    self._update_usage_stats(
-        forward_calls=1,
-        forward_samples=input_embeds.shape[0],
-        tokens=input_attention_mask.sum().item(),
+    self._update_invoke_stats(
+        n_tokens=int(input_attention_mask.sum().item()),
+        n_samples=input_embeds.shape[0],
+        count_backward=count_backward,
     )
     return ModelOutput(
         output_logits=outputs.logits,   # populate what your model provides
     )
 ```
 
-The `reference_loss_func` argument lets you conditionally enable expensive outputs only when needed. For example, `LMHFModel` enables `output_attentions=True` only for `AttentionBasedLoss`:
-
-```python
-output_attentions = (
-    reference_loss_func.contains_loss_type(AttentionBasedLoss)
-    if reference_loss_func else False
-)
-```
+The `count_backward` flag is set to `True` by gradient methods (`compute_grad_from_tokens`, `compute_grad_from_embeds`) so that FLOPs include the backward pass cost.
 
 **3. `set_inputs_from_tokens`** — Build an [`_HFTokenInputManager`](../../tropt/models/huggingface/base.py) (or a model-specific subclass) and store it:
 
@@ -411,7 +415,7 @@ class MyHFLMModel(
 
     def invoke_from_tokens(self, input_embeds, input_attention_mask,
                            input_prefix_cache_kwargs=None, input_slices=None,
-                           reference_loss_func=None): ...
+                           count_backward=False, **kwargs): ...
 
     def invoke_from_texts(self, input_texts, **kwargs): ...
 ```
@@ -427,4 +431,4 @@ After implementing your model:
 1. **Export** — Add your class to [`tropt/models/__init__.py`](../../tropt/models/__init__.py).
 2. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
 3. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
-4. **Usage stats** — Confirm `_update_usage_stats` is called at each backend call site (not from wrappers) and that `get_usage_stats()` returns sensible values after a run.
+4. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `_HuggingFaceModelMixins`. This takes care of usage tracking and FLOPs.
