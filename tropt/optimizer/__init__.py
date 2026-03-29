@@ -1,6 +1,6 @@
+from .base import BaseOptimizer, OptimizerResult
 from .arca_optimizer import ARCAOptimizer
 from .autoprompt_optimizer import AutoPromptOptimizer
-from .base import BaseOptimizer, OptimizerResult
 from .beamsearch_optimizer import BeamSearchOptimizer
 from .gaslite_optimizer import GASLITEOptimizer
 from .gasliteplus_optimizer import GASLITEPlusOptimizer

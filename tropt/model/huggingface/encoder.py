@@ -23,14 +23,14 @@ from tropt.model import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class EncoderHFTokenInputManager(_HFTokenInputManager):
+class EncoderHFTokenInputManager(HuggingFaceTokenInputManager):
     targets: Targets
     # includes `target_vectors` (n_templates, d_model) if target outputs are provided;
     # to optimize towards an vector per message
@@ -42,7 +42,7 @@ class EncoderHFTokenInputManager(_HFTokenInputManager):
 class EncoderHFModel(
     EncoderBaseModel,
     # adds implementation of common HF model methods:
-    _HuggingFaceModelMixins,
+    HuggingFaceBackendModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -94,6 +94,8 @@ class EncoderHFModel(
             except Exception as e:
                 logger.error(f"Error loading model `{model_name}`. Please make sure you load the model properly per the HuggingFace model card (e.g., you might need to pass `trust_remote_code=True` to `{self.__class__.__name__}`): {e}")
                 raise e
+            
+        # Add tokenizer and embedding layer:
         self._tokenizer = self._model.tokenizer
         self._embedding_layer = self._get_input_embeddings()
 
@@ -125,22 +127,10 @@ class EncoderHFModel(
         logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
 
     @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
-    def device(self):
-        return self._model.device
-
-    @property
     def d_model(self):
         return self._model.get_sentence_embedding_dimension()
 
-    @property
-    def embedding_layer(self) -> torch.nn.Module:
-        return self._embedding_layer
-
-    def _get_input_embeddings(self):
+    def _get_input_embeddings(self) -> torch.nn.Module:
         # this is a bit hacky way to extract the embedding layer from sentence transformers,
         # but as models may differ in implementation, we try multiple methods.
 

@@ -22,7 +22,7 @@ from tropt.model.inputs_manager import (
 
 class BaseModel(ABC):
     def __init__(self, model_name: str):
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def __call__(self, *args, **kwargs):

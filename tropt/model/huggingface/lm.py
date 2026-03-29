@@ -28,14 +28,14 @@ from tropt.model import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 
 
 # ======================= Input/Output Handlers logic =======================
-class LMHFTokenInputManager(_HFTokenInputManager):
+class LMHFTokenInputManager(HuggingFaceTokenInputManager):
     targets: Targets
     """
     optioanlly includes `target_response_toks` (n_templates, target_seq_len) if target outputs are provided;
@@ -70,7 +70,7 @@ class LMHFTokenInputManager(_HFTokenInputManager):
 class LMHFModel(
     LMBaseModel,
     # adds implementation of common HF model methods
-    _HuggingFaceModelMixins,
+    HuggingFaceBackendModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -115,11 +115,14 @@ class LMHFModel(
                 **model_kwargs
             )
 
-        self.dtype = self._model.dtype
         logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
+
+        # Set tokenizer:
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)
         self._tokenizer = _tokenizer
+
+        # Set embedding layer:
         embedding_layer = self._model.get_input_embeddings()
         assert embedding_layer is not None, f"Model {model_name} has no input embeddings"
         self._embedding_layer: torch.nn.Module = embedding_layer
@@ -170,18 +173,6 @@ class LMHFModel(
                 raise ValueError(
                     "Tokenizer does not have a pad token or an eos token. Please set a pad token."
                 )
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
-    def device(self):
-        return self._model.device
-
-    @property
-    def embedding_layer(self) -> torch.nn.Module:
-        return self._embedding_layer
 
     def _update_targets_by_model(self, targets: Optional[Targets]) -> Targets:
         if targets is None:

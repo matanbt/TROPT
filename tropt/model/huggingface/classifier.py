@@ -20,7 +20,7 @@ from tropt.model import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
+from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 class ClassifierHFModel(
     ClassifierBaseModel,
-    _HuggingFaceModelMixins,
+    # adds implementation of common HF model methods:
+    HuggingFaceBackendModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -71,12 +72,14 @@ class ClassifierHFModel(
                     f"You might need to pass `trust_remote_code=True`: {e}"
                 )
                 raise
-
+        
+        # Set tokenizer and embedding layer:
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_name, **{k: v for k, v in kwargs.items() if k == "trust_remote_code"}
         )
         self._embedding_layer = self._model.get_input_embeddings()
 
+        # Set model to eval and freeze parameters by default
         if set_model_to_eval:
             self._model.eval()
             for param in self._model.parameters():
@@ -92,14 +95,6 @@ class ClassifierHFModel(
                 f"Model is in {self._model.dtype}. Use a lower precision data type, "
                 f"if possible, for much faster optimization."
             )
-
-    @property
-    def tokenizer(self):
-        return self._tokenizer
-
-    @property
-    def device(self):
-        return self._model.device
 
     @property
     def n_classes(self) -> int:
@@ -121,7 +116,7 @@ class ClassifierHFModel(
             targets = Targets()
 
         tok_ids = self._tokenizer(templates, add_special_tokens=True)["input_ids"]
-        self._token_input_manager = _HFTokenInputManager(
+        self._token_input_manager = HuggingFaceTokenInputManager(
             tok_ids=tok_ids,
             model=self._model,
             tokenizer=self._tokenizer,

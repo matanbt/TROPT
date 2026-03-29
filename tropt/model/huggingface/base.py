@@ -1,3 +1,4 @@
+from tropt.model.model_base import HFTokenizerWrapper
 import itertools
 import logging
 from abc import abstractmethod
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 # ======================= Input/Output Handlers logic =======================
 
 
-class _HFTokenInputManager(TokenInputManager):
+class HuggingFaceTokenInputManager(TokenInputManager):
     before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
     after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
     embed_func: torch.nn.Module
@@ -354,7 +355,7 @@ class _HFTokenInputManager(TokenInputManager):
 # ======================= Model logic =======================
 
 
-class _HuggingFaceModelMixins:
+class HuggingFaceBackendModel:
     """Implementation of common methods for HuggingFace models."""
 
     _model: transformers.PreTrainedModel
@@ -364,6 +365,23 @@ class _HuggingFaceModelMixins:
     def n_layers(self) -> int:
         """Number of hidden layers in the model."""
         return self._model.config.num_hidden_layers
+
+    @property
+    def dtype(self):
+        return self._model.dtype
+
+    @property
+    def tokenizer(self) -> HFTokenizerWrapper:
+        return HFTokenizerWrapper(self._tokenizer)
+
+    @property
+    def device(self):
+        return self._model.device
+
+    @property
+    def embedding_layer(self) -> torch.nn.Module:
+        """The input embedding layer of the model (torch module), used for embedding token ids into vectors."""
+        return self._embedding_layer
 
     @cached_property
     def effective_embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:

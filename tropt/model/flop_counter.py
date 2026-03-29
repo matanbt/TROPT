@@ -234,7 +234,7 @@ class ManualFlopCounter(FlopCounterBase):
 #     ``"manual"`` — measures the delta of ``_token_used`` before/after the
 #     method, then applies the Kaplan approximation. Requires a
 #     ``_kaplan_flop_counter`` (:class:`KaplanFlopCounter`) on the model —
-#     provided automatically by :class:`_HuggingFaceModelMixins`.
+#     provided automatically by :class:`HuggingFaceBackendModel`.
 
 #     Args:
 #         includes_backward: The wrapped method includes a backward pass
