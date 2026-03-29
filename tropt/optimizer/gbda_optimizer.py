@@ -136,13 +136,10 @@ class GBDAOptimizer(BaseOptimizer):
         # --- Initialization ---
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         device = self.model.device
-        trigger_seq_len = trigger_ids.shape[1]
+        trigger_seq_len = trigger_ids.shape[0]
 
         # Initialize logit matrix theta (here called `trigger_probs`)
         if self.init_mode == "random":
@@ -155,7 +152,7 @@ class GBDAOptimizer(BaseOptimizer):
                 trigger_seq_len, vocab_size, device=device, dtype=self.model.dtype,
             )
             for i in range(trigger_seq_len):
-                trigger_probs[i, trigger_ids[0, i]] = self.initial_coeff
+                trigger_probs[i, trigger_ids[i]] = self.initial_coeff
 
         # Initialize optimizer and learning rate scheduler
         optimizer = self.GDOptimizer([trigger_probs], lr=self.learning_rate)
@@ -203,9 +200,7 @@ class GBDAOptimizer(BaseOptimizer):
                     current_trigger_ids.unsqueeze(0),
                     loss_func=self.loss_func,
                 ).item()
-                current_trigger_str = tokenizer.decode(
-                    current_trigger_ids, skip_special_tokens=True
-                )
+                current_trigger_str = tokenizer.decode_trigger(current_trigger_ids)
 
             best.update(loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str)
 
@@ -234,7 +229,7 @@ class GBDAOptimizer(BaseOptimizer):
         )
         final_best_idx = candidate_losses.argmin().item()
         final_best_ids = candidates[final_best_idx]
-        final_best_str = tokenizer.decode(final_best_ids, skip_special_tokens=True)
+        final_best_str = tokenizer.decode_trigger(final_best_ids)
         final_best_loss = candidate_losses[final_best_idx].item()
 
         result = OptimizerResult(

@@ -69,7 +69,6 @@ def run_ral(
 
         num_steps=500,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=True,
     )
 
     return optimizer.optimize_trigger(
@@ -121,7 +120,7 @@ def run_pal(
         loss=PrefillCELoss(),
         proxy_model=proxy_model_obj,
         tracker=tracker,
-        
+
         # Candidate selection:
         candidate_selection="gradient",
         sample_topk=256,
@@ -132,7 +131,6 @@ def run_pal(
 
         num_steps=500,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=True,
     )
 
     return optimizer.optimize_trigger(
@@ -183,7 +181,7 @@ def run_gcgp_pal(
         sample_topk=256,
         sample_n_replace=1,
         candidate_oversample_factor=1.1,
-        
+
         token_constraints=_TOKEN_CONSTRAINTS,
         use_retokenize=True,
     )

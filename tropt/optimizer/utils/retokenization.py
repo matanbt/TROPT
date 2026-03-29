@@ -80,9 +80,8 @@ def retokenize_transform(
     Returns:
         Retokenized ids with the same length as input.
     """
-    text = tokenizer.decode(ids, skip_special_tokens=True)
-    retok_ids = tokenizer.encode(text, add_special_tokens=False, return_tensors="pt")
-    retok_ids = retok_ids.to(ids.device, dtype=ids.dtype).squeeze(0)
+    text = tokenizer.decode_trigger(ids)
+    retok_ids = tokenizer.encode_trigger(text).to(ids.device, dtype=ids.dtype)
 
     trigger_len = ids.shape[0]
     if retok_ids.shape[0] >= trigger_len:

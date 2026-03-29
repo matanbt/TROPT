@@ -216,7 +216,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             # 5. Compute losses for all beam x branching_factor candidate triggers
             if not self.use_model_with_token_inputs:
                 # Model computes loss in text-level
-                candidate_triggers_text = [self.util_lm.tokenizer.decode(trigger, skip_special_tokens=True) for trigger in candidate_triggers]
+                candidate_triggers_text = self.util_lm.tokenizer.decode_triggers(candidate_triggers)
                 losses = self.model.compute_loss_from_texts(
                     candidate_triggers_text,
                     loss_func=self.loss_func
@@ -237,7 +237,7 @@ class BeamSearchOptimizer(BaseOptimizer):
 
             # Track best trigger
             best_trigger_ids = beam_trigger_ids[0]
-            trigger_str = util_tokenizer.decode(best_trigger_ids, skip_special_tokens=True)
+            trigger_str = util_tokenizer.decode_trigger(best_trigger_ids)
             trigger_strings.append(trigger_str)
             trigger_tensors.append(best_trigger_ids)
             loss_per_step.append(current_loss)

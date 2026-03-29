@@ -32,8 +32,6 @@ def get_printable_random_trigger(
 
     if return_ids:
         assert tokenizer is not None, "Tokenizer must be provided to return token IDs."
-        return tokenizer(
-            initial_trigger, add_special_tokens=False, return_tensors="pt"
-        ).input_ids.squeeze(0)  # shape: (trigger_seq_len,)
+        return tokenizer.encode_trigger(initial_trigger)  # shape: (trigger_seq_len,)
 
     return initial_trigger

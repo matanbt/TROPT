@@ -243,15 +243,10 @@ class PGDOptimizer(BaseOptimizer):
         # --- Initialization ---
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
+        trigger_ids_init: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         device = self.model.device
         dtype = self.model.dtype
-
-        trigger_ids_init = trigger_ids.squeeze(0)  # (trigger_seq_len,)
 
         # Initialize one-hot probability distribution (Algorithm 1, line 3)
         trigger_probs = F.one_hot(trigger_ids_init, num_classes=vocab_size).to(
@@ -330,9 +325,7 @@ class PGDOptimizer(BaseOptimizer):
                     loss_func=self.loss_func,
                 ).item()
 
-                current_trigger_str = tokenizer.decode(
-                    current_trigger_ids, skip_special_tokens=True
-                )
+                current_trigger_str = tokenizer.decode_trigger(current_trigger_ids)
 
             # --- Relaxation gap for dynamic entropy scaling (Appendix A) ---
             # gap = (discrete_loss - relaxed_loss) / discrete_loss
@@ -384,7 +377,7 @@ class PGDOptimizer(BaseOptimizer):
         # --- Use the best trigger found during optimization ---
         if best.trigger_ids is None:
             best_ids = self._discretize(trigger_probs.data, tokenizer)
-            best_str = tokenizer.decode(best_ids, skip_special_tokens=True)
+            best_str = tokenizer.decode_trigger(best_ids)
             best_loss = best.losses[-1] if best.losses else float("inf")
             best.update(loss=best_loss, trigger_ids=best_ids, trigger_str=best_str)
 

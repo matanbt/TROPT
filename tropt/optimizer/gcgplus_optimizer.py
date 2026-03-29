@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Literal, Optional, Set, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -66,8 +66,6 @@ class GCGPlusOptimizer(BaseOptimizer):
         # Later tricks:
         candidate_oversample_factor: float = 1.5,
         momentum: float = 0.0,
-        # Evaluation mode:
-        use_token_eval: bool = False,
         # Trigger buffer size:
         buffer_size: Optional[int] = None,
         n_grad_avg: int = 1,
@@ -85,11 +83,8 @@ class GCGPlusOptimizer(BaseOptimizer):
                 truncate after retokenization filtering. Only effective when > 1.0.
             momentum: Gradient momentum coefficient (mu). When > 0, uses
                 m = mu*m + grad for candidate ranking instead of raw gradient.
-            use_token_eval: If True, evaluate candidates via compute_loss_from_tokens
-                on the target (requires LossTokenAccessMixin). Otherwise use text access.
-                Reccomended -- and *only possible* -- when proxy and target share a tokenizer.
-            buffer_size: If set, maintain a buffer of the best triggers seen. Each step mutates the best buffer entry and
-                updates the buffer with improved candidates.
+            buffer_size: If set, maintain a buffer of the best triggers seen. Each step
+                starts from the best buffer entry and updates it with improved candidates.
             n_grad_avg: Number of trigger perturbations to average gradients
                 over. When > 1, flips a random position per copy (GASLITE-style).
         """
@@ -104,8 +99,8 @@ class GCGPlusOptimizer(BaseOptimizer):
             assert isinstance(self.proxy_model, GradientTokenAccessMixin), (
                 "candidate_selection='gradient' requires proxy_model with GradientTokenAccessMixin"
             )
-        # Token eval validation
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)  # TODO find a more accurate way of comparing tokenizers
+        # Prefer token-level target evaluation when proxy and target share the same tokenizer
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         # Normalize sample_n_replace to tuple
         if isinstance(sample_n_replace, int):
@@ -144,21 +139,12 @@ class GCGPlusOptimizer(BaseOptimizer):
         else:
             target_model.set_inputs_from_tokens(templates=templates, targets=targets)
 
-        trigger_ids: Int[Tensor, "trigger_seq_len"] = (
-            proxy_tokenizer.encode(
-                initial_trigger, add_special_tokens=False, return_tensors="pt"
-            )
-            .to(proxy_model.device, torch.int64)
-            .squeeze(0)
-        )
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = proxy_tokenizer.encode_trigger(initial_trigger).to(proxy_model.device)
 
         vocab_size = proxy_model.vocab_size
 
-        # Pre-compute valid token IDs (complement of blacklist, used by all helpers)
         blacklist_ids = self.token_constraints.get_blacklist_ids(proxy_tokenizer, vocab_size)
-        token_mask = torch.ones(vocab_size, device=proxy_model.device, dtype=torch.bool)
-        token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        valid_token_ids = self.token_constraints.get_valid_token_ids(proxy_tokenizer, vocab_size, proxy_model.device)
 
         best = RunningBest()
         momentum_buffer: Optional[Tensor] = None
@@ -177,7 +163,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         current_loss = self._evaluate_candidates(
             trigger_ids.unsqueeze(0)
         ).item()
-        trigger_str = proxy_tokenizer.decode(trigger_ids, skip_special_tokens=True)
+        trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
         pbar = tqdm(range(self.num_steps))
@@ -261,15 +247,11 @@ class GCGPlusOptimizer(BaseOptimizer):
                 # Track overall best from buffer for logging
                 current_loss = buffer.get_lowest_loss()
                 trigger_ids = buffer.get_best_trigger()
-                trigger_str = proxy_tokenizer.decode(
-                    trigger_ids, skip_special_tokens=True
-                )
+                trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
             else:
                 current_loss = losses.min().item()
                 trigger_ids = candidate_trigger_ids[losses.argmin()]
-                trigger_str = proxy_tokenizer.decode(
-                    trigger_ids, skip_special_tokens=True
-                )
+                trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
 
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
             self.log(loss=current_loss, trigger_str=trigger_str)
@@ -292,34 +274,32 @@ class GCGPlusOptimizer(BaseOptimizer):
         return result
 
     # ------------------------------------------------------------------
-    # Private helpers
+    # Initialization
     # ------------------------------------------------------------------
 
-    def _evaluate_candidates(
+    def _init_buffer(
         self,
-        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-    ) -> Float[Tensor, "n_candidates"]:
-        """Evaluate candidates on the target model. Returns per-candidate loss.
+        initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
+        valid_token_ids: Int[Tensor, "n_valid"],
+    ) -> TriggerBuffer:
+        """Initialize the buffer with the initial trigger and random variants. Batched."""
+        trigger_seq_len = initial_trigger_ids.shape[0]
+        device = initial_trigger_ids.device
 
-        When use_token_eval is False, decodes candidates via proxy_model.tokenizer.
-        """
-        if self.use_token_eval:
-            losses = self.model.compute_loss_from_tokens(
-                candidate_trigger_ids, loss_func=self.loss_func
-            )  # (n_templates, n_candidates)
-        else:
-            candidate_strs = [
-                self.proxy_model.tokenizer.decode(cid, skip_special_tokens=True)
-                for cid in candidate_trigger_ids
-            ]
-            losses = self.model.compute_loss_from_texts(
-                candidate_strs, loss_func=self.loss_func
-            )  # (n_candidates,) or (n_templates, n_candidates)
+        rand_triggers = valid_token_ids[
+            torch.randint(0, len(valid_token_ids), (self.buffer_size - 1, trigger_seq_len), device=device)
+        ]
+        all_triggers = torch.cat([initial_trigger_ids.unsqueeze(0), rand_triggers], dim=0)
+        all_losses = self._evaluate_candidates(all_triggers)
 
-        # Reduce to (n_candidates,) if needed
-        if losses.dim() > 1:
-            losses = losses.mean(dim=0)
-        return losses
+        return TriggerBuffer(
+            triggers=list(all_triggers),
+            losses=[all_losses[i].item() for i in range(self.buffer_size)],
+        )
+
+    # ------------------------------------------------------------------
+    # Stage 1: Candidate Selection
+    # ------------------------------------------------------------------
 
     def _sample_ids_from_grad(
         self,
@@ -428,14 +408,13 @@ class GCGPlusOptimizer(BaseOptimizer):
         )
         return candidate_trigger_ids
 
-    # TODO any way to generalize this tricks?
     def _sample_focused_candidates(
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
         valid_token_ids: Int[Tensor, "n_valid"],
         n_generate: int,
     ) -> Int[Tensor, "n_generate trigger_seq_len"]:
-        """Focused position sampling (QCG paper, Sec 3.3).
+        """Focused position sampling (from QCG paper).
 
         Phase 1: Probe each position with one random token replacement,
         evaluate all probes on the target (via _evaluate_candidates) to find
@@ -467,38 +446,31 @@ class GCGPlusOptimizer(BaseOptimizer):
         candidates[:, best_pos] = random_tokens
         return candidates
 
-    def _init_buffer(
+    # ------------------------------------------------------------------
+    # Stage 2: Candidate Evaluation
+    # ------------------------------------------------------------------
+
+    def _evaluate_candidates(
         self,
-        initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
-        valid_token_ids: Int[Tensor, "n_valid"],
-    ) -> TriggerBuffer:
-        """Initialize the QCG buffer with random trigger variants.
+        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
+    ) -> Float[Tensor, "n_candidates"]:
+        """Evaluate candidates on the target model. Returns per-candidate loss.
 
-        Evaluates each entry via _evaluate_candidates (uses proxy_model.tokenizer
-        for decoding when use_token_eval is False).
+        When use_token_eval is False, decodes candidates via proxy_model.tokenizer.
         """
-        trigger_seq_len = initial_trigger_ids.shape[0]
-        device = initial_trigger_ids.device
+        if self.use_token_eval:
+            losses = self.model.compute_loss_from_tokens(
+                candidate_trigger_ids, loss_func=self.loss_func
+            )
+        else:
+            candidate_strs = self.proxy_model.tokenizer.decode_triggers(candidate_trigger_ids)
+            losses = self.model.compute_loss_from_texts(
+                candidate_strs, loss_func=self.loss_func
+            )
 
-        buffer = TriggerBuffer()
-        # Add initial trigger as first buffer entry
-        init_loss = self._evaluate_candidates(
-            initial_trigger_ids.unsqueeze(0)
-        ).item()
-        buffer.add(initial_trigger_ids.clone(), init_loss)
-
-        # Fill remaining slots with random valid triggers
-        for _ in range(self.buffer_size - 1):
-            rand_ids = valid_token_ids[
-                torch.randint(
-                    0, len(valid_token_ids), (trigger_seq_len,), device=device
-                )
-            ]
-            loss = self._evaluate_candidates(
-                rand_ids.unsqueeze(0)
-            ).item()
-            buffer.add(rand_ids, loss)
-
-        return buffer
+        # Reduce to (n_candidates,) if needed
+        if losses.dim() > 1:
+            losses = losses.mean(dim=0)
+        return losses
 
 

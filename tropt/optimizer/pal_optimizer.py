@@ -21,6 +21,7 @@ from tropt.model import (
     TokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
@@ -46,7 +47,7 @@ class PALOptimizer(BaseOptimizer):
     """
 
     model_requirements = (LossTextAccessMixin,)
-    # TODO make sure the defaults parameters of this optimizer are the parameters used by PAL as in the attack-zoo
+
     def __init__(
         self,
         model: BaseModel,
@@ -81,9 +82,8 @@ class PALOptimizer(BaseOptimizer):
             candidate_oversample_factor: Generate n_candidates * factor candidates, then
                 truncate after retokenization filtering. Only effective when > 1.0.
             n_candidates_after_proxy_filter: If set, filter candidates down to top-K by proxy loss
-                before evaluating on the target (PAL's proxy filtering step). 
-                Expected to be less than n_candidates, to further narrow the candidate list. 
-                Set to None to disable this step.
+                before evaluating on the target (PAL's proxy filtering step).
+                Expected to be less than n_candidates. Set to None to disable.
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -97,9 +97,9 @@ class PALOptimizer(BaseOptimizer):
                 f"{candidate_selection=} requires proxy_model with GradientTokenAccessMixin"
             )
 
-        # Define whether target model loss computation will be on token or text level
+        # Prefer token-level target evaluation when proxy and target share the same tokenizer
         # [TODO more informative name to use_token_eval; it should also reflect the its compute-loss and on the target model]
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)  # TODO find a more accurate way of comparing tokenizers
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)   # TODO find a more accurate way of comparing tokenizers
 
         if model == proxy_model:
             n_candidates_after_proxy_filter = None  # disable proxy filtering if proxy and target are the same
@@ -137,34 +137,24 @@ class PALOptimizer(BaseOptimizer):
         else:
             target_model.set_inputs_from_tokens(templates=templates, targets=targets)
 
-        trigger_ids: Int[Tensor, "trigger_seq_len"] = (
-            proxy_tokenizer.encode(
-                initial_trigger, add_special_tokens=False, return_tensors="pt"
-            )
-            .to(proxy_model.device, torch.int64)
-            .squeeze(0)
-        )
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = proxy_tokenizer.encode_trigger(initial_trigger).to(proxy_model.device)
 
         vocab_size = proxy_model.vocab_size
 
-        # Pre-compute valid token IDs (complement of blacklist)
         blacklist_ids = self.token_constraints.get_blacklist_ids(proxy_tokenizer, vocab_size)
-        token_mask = torch.ones(vocab_size, device=proxy_model.device, dtype=torch.bool)
-        token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        valid_token_ids = self.token_constraints.get_valid_token_ids(proxy_tokenizer, vocab_size, proxy_model.device)
 
         best = RunningBest()
         visited: Set[str] = set()  # track visited trigger strings to avoid re-eval
 
         # Number of candidates to sample (oversample if retokenize is on)
-        n_candidates_oversampled = self.n_candidates
         n_candidates_oversampled = math.ceil(self.n_candidates * self.candidate_oversample_factor)
 
         # Initial loss
         current_loss = self._evaluate_candidates_on_target_model(
             trigger_ids.unsqueeze(0)
         ).item()
-        trigger_str = proxy_tokenizer.decode(trigger_ids, skip_special_tokens=True)
+        trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         visited.add(trigger_str)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
@@ -189,18 +179,16 @@ class PALOptimizer(BaseOptimizer):
             else:  # "random"
                 candidate_trigger_ids = self._sample_ids_at_random(
                     trigger_ids=trigger_ids,
-                    valid_token_ids=valid_token_ids,  # TODO this method should use `blacklist_ids`, and we should discard the `valid_token_ids` precomputation above since it's just the complement of the blacklist and it's ugly
+                    valid_token_ids=valid_token_ids,
                     _n_candidates=n_candidates_oversampled,
                 )
 
-            # === filtering ===
-            # Retokenization:
+            # === Filtering ===
             candidate_trigger_ids = retokenize_filtering(
                 candidate_trigger_ids, proxy_tokenizer
             )
             # Skip visited (always on)
-            # TODO: let's make the _filter_visited call optional. We could still collect the triggers, but i want the call for the _filter_visited to be optional.
-            candidate_trigger_ids, _ = self._filter_visited(
+            candidate_trigger_ids = self._filter_visited(
                 candidate_trigger_ids, visited
             )
             # Truncate to n_candidates (if longer after oversample + filter)
@@ -222,13 +210,11 @@ class PALOptimizer(BaseOptimizer):
                 candidate_trigger_ids = candidate_trigger_ids[topk_indices]
 
             # === Stage 2: Candidate Evaluation (on target) ===
-            losses = self._evaluate_candidates_on_target_model(candidate_trigger_ids)  # TODO really essential to move to the side?
+            losses = self._evaluate_candidates_on_target_model(candidate_trigger_ids)
 
             current_loss = losses.min().item()
             trigger_ids = candidate_trigger_ids[losses.argmin()]
-            trigger_str = proxy_tokenizer.decode(
-                trigger_ids, skip_special_tokens=True
-            )
+            trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
 
             visited.add(trigger_str)
 
@@ -266,10 +252,7 @@ class PALOptimizer(BaseOptimizer):
                 candidate_trigger_ids, loss_func=self.loss_func
             )
         else:
-            candidate_strs = [
-                self.proxy_model.tokenizer.decode(cid, skip_special_tokens=True)
-                for cid in candidate_trigger_ids
-            ]
+            candidate_strs = self.proxy_model.tokenizer.decode_triggers(candidate_trigger_ids)
             losses = self.model.compute_loss_from_texts(
                 candidate_strs, loss_func=self.loss_func
             )
@@ -353,13 +336,11 @@ class PALOptimizer(BaseOptimizer):
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates_oversampled trigger_seq_len"],
         visited: Set[str],
-    ) -> tuple:
+    ) -> Int[Tensor, "n_filtered trigger_seq_len"]:
         """Filter out candidates whose decoded string is in the visited set."""
         tokenizer = self.proxy_model.tokenizer
-        keep_mask = []
-        for cid in candidate_trigger_ids:
-            s = tokenizer.decode(cid, skip_special_tokens=True)
-            keep_mask.append(s not in visited)
-        keep_mask = torch.tensor(keep_mask, device=candidate_trigger_ids.device)
-        filtered = candidate_trigger_ids[keep_mask]
-        return filtered, keep_mask
+        keep_mask = torch.tensor(
+            [tokenizer.decode_trigger(cid) not in visited for cid in candidate_trigger_ids],
+            device=candidate_trigger_ids.device,
+        )
+        return candidate_trigger_ids[keep_mask]

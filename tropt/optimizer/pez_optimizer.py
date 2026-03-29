@@ -79,15 +79,12 @@ class PEZOptimizer(BaseOptimizer):
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
+        trigger_ids = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
 
         embedding_matrix = self.model.embedding_matrix  # (vocab_size, embed_dim)
 
         # Initialize continuous embeddings from the initial trigger tokens
-        trigger_embeds = self.model._embedding_layer(trigger_ids)  # (1, trigger_seq_len, embed_dim)
+        trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embed_dim)
 
         # Initialize optimizer on continuous embeddings
         optimizer = self.GDOptimizer(
@@ -120,9 +117,7 @@ class PEZOptimizer(BaseOptimizer):
             optimizer.step()
 
             # Decode current discrete trigger for tracking
-            current_trigger_str = tokenizer.decode(
-                projected_ids, skip_special_tokens=True
-            )
+            current_trigger_str = tokenizer.decode_trigger(projected_ids)
 
             self.log(loss=curr_loss, trigger_str=current_trigger_str)
 
@@ -135,7 +130,7 @@ class PEZOptimizer(BaseOptimizer):
         final_ids, _ = self._project_to_vocab(
             trigger_embeds.squeeze(0), embedding_matrix
         )
-        final_trigger_str = tokenizer.decode(final_ids, skip_special_tokens=True)
+        final_trigger_str = tokenizer.decode_trigger(final_ids)
         final_loss = self.model.compute_loss_from_tokens(
             final_ids.unsqueeze(0),
             loss_func=self.loss_func,

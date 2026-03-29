@@ -5,7 +5,6 @@ variants via GCGPlusOptimizer.
 Reference: https://arxiv.org/abs/2402.12329
 """
 import math
-
 from typing import Optional
 
 from tropt.common import Targets
@@ -61,12 +60,10 @@ def run_qcg(
         num_steps=500,
 
         # Candidate selection
-        n_candidates=512,
+        n_proxy_candidates=512,
         n_target_candidates=32,
         buffer_size=128,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=True,
-        use_token_eval=False,
     )
 
     return optimizer.optimize_trigger(
@@ -117,7 +114,6 @@ def run_qcg_whitebox(
         sample_n_replace=1,
         token_constraints=_TOKEN_CONSTRAINTS,
         use_retokenize=True,
-        use_token_eval=False,
     )
 
     return optimizer.optimize_trigger(
@@ -156,7 +152,6 @@ def run_qcg_blackbox(
         sample_n_replace=1,
         token_constraints=_TOKEN_CONSTRAINTS,
         use_retokenize=True,
-        use_token_eval=True,
     )
 
     return optimizer.optimize_trigger(

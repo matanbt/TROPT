@@ -18,7 +18,7 @@ from tropt.model import (
     BaseModel,
     GradientEmbedAccessMixin,
 )
-from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -73,12 +73,9 @@ class SoftPromptOptimizer(BaseOptimizer):
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
+        trigger_ids = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
 
-        trigger_embeds = self.model._embedding_layer(trigger_ids)  # (1, trigger_seq_len, embd_dim)
+        trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
 
         # Initialize Adam optimizer on the logits
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)

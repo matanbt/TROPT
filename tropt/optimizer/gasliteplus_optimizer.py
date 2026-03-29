@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
@@ -184,11 +184,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
-        trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
 
@@ -238,7 +234,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # Get the best trigger from the buffer
             trigger_ids = buffer.get_best_trigger()
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # --- Gradient and candidate selection step ---
             if self.use_random_gradient:
@@ -348,7 +344,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             trigger_ids = current_trigger_ids
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # Logging:
             self.log(loss=current_loss, trigger_str=trigger_str)

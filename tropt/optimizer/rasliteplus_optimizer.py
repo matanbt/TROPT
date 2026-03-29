@@ -148,18 +148,13 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
         self.util_model.set_inputs_from_tokens(templates=templates, targets=targets)
         util_tokenizer = self.util_model.tokenizer
-        util_trigger_ids = (
-            util_tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.util_model.device, torch.int64)
-        )
+        util_trigger_ids: Int[Tensor, "trigger_seq_len"] = util_tokenizer.encode_trigger(initial_trigger).to(self.util_model.device)
 
         util_vocab_size = self.util_model.vocab_size
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
             util_tokenizer, util_vocab_size
         )
 
-        # Take the only trigger (assuming single shared trigger for now)
-        util_trigger_ids = util_trigger_ids.squeeze(0).to(self.util_model.device)
         trigger_seq_len = len(util_trigger_ids)
         trigger_str = initial_trigger
 
@@ -183,9 +178,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             triggers_for_buffer.append(random_trigger_ids)
 
         # Compute losses for initial triggers (requires text conversion)
-        trigger_strs_buffer = [
-            util_tokenizer.decode(t_ids, skip_special_tokens=True) for t_ids in triggers_for_buffer
-        ]
+        trigger_strs_buffer = [util_tokenizer.decode_trigger(t_ids) for t_ids in triggers_for_buffer]
         losses = self.model.compute_loss_from_texts(
             trigger_strs_buffer,
             self.loss_func,
@@ -197,7 +190,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             losses=[losses[i].item() for i in range(self.buffer_size)],
         )
 
-        trigger_str = util_tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
+        trigger_str = util_tokenizer.decode_trigger(buffer.get_best_trigger())
         self.tracker.log({"loss": buffer.get_lowest_loss(), "trigger_str": trigger_str})
 
         for step in pbar:
@@ -207,7 +200,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # Get the best trigger from the buffer
             util_trigger_ids = buffer.get_best_trigger()
-            trigger_str = util_tokenizer.decode(util_trigger_ids, skip_special_tokens=True)
+            trigger_str = util_tokenizer.decode_trigger(util_trigger_ids)
 
             # --- Candidate selection step (logit-based) ---
             if self.use_random_logits:
@@ -294,7 +287,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         continue
 
                 # Compute losses on candidate flips (on TARGET model via text)
-                candidate_strs = [util_tokenizer.decode(t, skip_special_tokens=True) for t in candidate_triggers]
+                candidate_strs = util_tokenizer.decode_triggers(candidate_triggers)
 
                 losses = self.model.compute_loss_from_texts(
                     candidate_strs, self.loss_func,
@@ -318,7 +311,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             util_trigger_ids = current_trigger_ids
-            trigger_str = util_tokenizer.decode(util_trigger_ids, skip_special_tokens=True)
+            trigger_str = util_tokenizer.decode_trigger(util_trigger_ids)
 
             # (Optional) update n_flip if needed (linear scheduling)
             if self.decline_n_flip_from_step is not None:

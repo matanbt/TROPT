@@ -1,4 +1,3 @@
-from tropt.model.model_base import BaseTokenizer
 import logging
 import math
 from typing import Optional
@@ -20,6 +19,7 @@ from tropt.model import (
     LossTokenAccessMixin,
     TokenAccessMixin,
 )
+from tropt.model.model_base import BaseTokenizer
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
@@ -64,7 +64,7 @@ class QCGOptimizer(BaseOptimizer):
                 If None, defaults to `model` (self-proxy / white-box).
             n_proxy_candidates: Number of random candidates to sample per step (evaluated on proxy; b_p in paper).
             n_target_candidates: Number of candidates to evaluate on target after
-                proxy candidate filtering (b_q in paper). 
+                proxy candidate filtering (b_q in paper).
                 Must be <= n_proxy_candidates.
             buffer_size: Number of triggers to maintain in the buffer (B in the paper).
         """
@@ -78,8 +78,8 @@ class QCGOptimizer(BaseOptimizer):
             "proxy_model must support LossTokenAccessMixin (proxy loss filtering)"
         )
 
-        # Define whether target model loss computation will be on token or text level
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)  # TODO find a more accurate way of comparing tokenizers
+        # Prefer token-level target evaluation when proxy and target share the same tokenizer
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)    # TODO find a more accurate way of comparing tokenizers
 
         self.num_steps = num_steps
         self.n_proxy_candidates = n_proxy_candidates
@@ -108,20 +108,11 @@ class QCGOptimizer(BaseOptimizer):
         else:
             target_model.set_inputs_from_tokens(templates=templates, targets=targets)
 
-        trigger_ids: Int[Tensor, "trigger_seq_len"] = (
-            proxy_tokenizer.encode(
-                initial_trigger, add_special_tokens=False, return_tensors="pt"
-            )
-            .to(proxy_model.device, torch.int64)
-            .squeeze(0)
-        )
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = proxy_tokenizer.encode_trigger(initial_trigger).to(proxy_model.device)
 
         vocab_size = proxy_model.vocab_size
 
-        blacklist_ids = self.token_constraints.get_blacklist_ids(proxy_tokenizer, vocab_size)
-        token_mask = torch.ones(vocab_size, device=proxy_model.device, dtype=torch.bool)
-        token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        valid_token_ids = self.token_constraints.get_valid_token_ids(proxy_tokenizer, vocab_size, proxy_model.device)
 
         best = RunningBest()
 
@@ -129,13 +120,12 @@ class QCGOptimizer(BaseOptimizer):
         buffer: TriggerBuffer = self._init_buffer(trigger_ids, valid_token_ids)
 
         # Oversample to compensate for retokenization filtering
-        n_proxy_candidates_oversampled = self.n_proxy_candidates
         n_proxy_candidates_oversampled = math.ceil(self.n_proxy_candidates * self.candidate_oversample_factor)
 
         # Log initial state
         current_loss = buffer.get_lowest_loss()
         trigger_ids = buffer.get_best_trigger()
-        trigger_str = proxy_tokenizer.decode(trigger_ids, skip_special_tokens=True)
+        trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
         pbar = tqdm(range(self.num_steps))
@@ -168,19 +158,17 @@ class QCGOptimizer(BaseOptimizer):
                 candidate_trigger_ids = candidate_trigger_ids[topk_indices]
 
             # === Stage 3: Evaluate on target and update buffer ===
-            losses = self._evaluate_candidates(candidate_trigger_ids)
+            losses = self._evaluate_candidates_on_target_model(candidate_trigger_ids)
 
             for idx in range(len(candidate_trigger_ids)):
                 buffer.add_if_better(
-                    trigger_ids=candidate_trigger_ids[idx], 
+                    trigger_ids=candidate_trigger_ids[idx],
                     loss=losses[idx].item()
                 )
 
             current_loss = buffer.get_lowest_loss()
             trigger_ids = buffer.get_best_trigger()
-            trigger_str = proxy_tokenizer.decode(
-                trigger_ids, skip_special_tokens=True
-            )
+            trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
 
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
             self.log(loss=current_loss, trigger_str=trigger_str)
@@ -206,25 +194,25 @@ class QCGOptimizer(BaseOptimizer):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _evaluate_candidates_on_target_model(
+    def _init_buffer(
         self,
-        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-    ) -> Float[Tensor, "n_candidates"]:
-        """Evaluate candidates on the target model."""
-        if self.use_token_eval:
-            losses = self.model.compute_loss_from_tokens(
-                candidate_trigger_ids, loss_func=self.loss_func
-            )
-        else:
-            candidate_strs = [
-                self.proxy_model.tokenizer.decode(cid, skip_special_tokens=True)
-                for cid in candidate_trigger_ids
-            ]
-            losses = self.model.compute_loss_from_texts(
-                candidate_strs, loss_func=self.loss_func
-            )
+        initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
+        valid_token_ids: Int[Tensor, "n_valid"],
+    ) -> TriggerBuffer:
+        """Initialize buffer: first entry from initial trigger, rest random. Batched."""
+        trigger_seq_len = initial_trigger_ids.shape[0]
+        device = initial_trigger_ids.device
 
-        return losses
+        rand_triggers = valid_token_ids[
+            torch.randint(0, len(valid_token_ids), (self.buffer_size - 1, trigger_seq_len), device=device)
+        ]
+        all_triggers = torch.cat([initial_trigger_ids.unsqueeze(0), rand_triggers], dim=0)
+        all_losses = self._evaluate_candidates_on_target_model(all_triggers)
+
+        return TriggerBuffer(
+            triggers=list(all_triggers),
+            losses=[all_losses[i].item() for i in range(self.buffer_size)],
+        )
 
     def _sample_ids_at_random(
         self,
@@ -232,9 +220,7 @@ class QCGOptimizer(BaseOptimizer):
         valid_token_ids: Int[Tensor, "n_valid"],
         n_candidates: int,
     ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
-        """
-        Sample candidates by replacing one random position with a random token.
-        """
+        """Sample candidates by replacing one random position with a random token."""
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device
 
@@ -258,57 +244,19 @@ class QCGOptimizer(BaseOptimizer):
         )
         return candidate_trigger_ids
 
-    def _init_buffer(
+    def _evaluate_candidates_on_target_model(
         self,
-        initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
-        valid_token_ids: Int[Tensor, "n_valid"],
-    ) -> TriggerBuffer:
-        """Initialize buffer: first entry from initial trigger, rest random."""
-        trigger_seq_len = initial_trigger_ids.shape[0]
-        device = initial_trigger_ids.device
+        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
+    ) -> Float[Tensor, "n_candidates"]:
+        """Evaluate candidates on the target model. Returns per-candidate loss."""
+        if self.use_token_eval:
+            losses = self.model.compute_loss_from_tokens(
+                candidate_trigger_ids, loss_func=self.loss_func
+            )
+        else:
+            candidate_strs = self.proxy_model.tokenizer.decode_triggers(candidate_trigger_ids)
+            losses = self.model.compute_loss_from_texts(
+                candidate_strs, loss_func=self.loss_func
+            )
 
-        buffer = TriggerBuffer()
-        init_loss = self._evaluate_candidates_on_target_model(
-            initial_trigger_ids.unsqueeze(0)
-        ).item()
-        buffer.add(initial_trigger_ids.clone(), init_loss)
-
-        for _ in range(self.buffer_size - 1):
-            rand_ids = valid_token_ids[
-                torch.randint(
-                    0, len(valid_token_ids), (trigger_seq_len,), device=device
-                )
-            ]
-            loss = self._evaluate_candidates_on_target_model(
-                rand_ids.unsqueeze(0)
-            ).item()
-            buffer.add(rand_ids, loss)
-
-        return buffer
-
-
-    """
-    [TODO: use the follwing snippet to replace the above _init_buffer implementation! ofc it should use the evaluate_candidates helper]
-        triggers_for_buffer = [util_trigger_ids]
-        for _ in range(self.buffer_size - 1):
-            random_trigger_ids = get_printable_random_trigger(
-                trigger_seq_len, tokenizer=util_tokenizer, return_ids=True
-            ).to(self.util_model.device)
-            triggers_for_buffer.append(random_trigger_ids)
-
-        # Compute losses for initial triggers (requires text conversion)
-        trigger_strs_buffer = [
-            util_tokenizer.decode(t_ids, skip_special_tokens=True) for t_ids in triggers_for_buffer
-        ]
-        losses = self.model.compute_loss_from_texts(
-            trigger_strs_buffer,
-            self.loss_func,
-        ) # (n_cands,)
-
-        # Create the buffer:
-        buffer = TriggerBuffer(
-            triggers=[triggers_for_buffer[i] for i in range(self.buffer_size)],
-            losses=[losses[i].item() for i in range(self.buffer_size)],
-        )
-    """
-
+        return losses

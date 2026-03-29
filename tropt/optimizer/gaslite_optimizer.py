@@ -2,7 +2,7 @@ import logging
 from typing import Optional
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 from tqdm import tqdm
 
@@ -92,10 +92,7 @@ class GASLITEOptimizer(BaseOptimizer):
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        ).squeeze(0)  # shape: (trigger_seq_len,)
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
 
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
@@ -200,7 +197,7 @@ class GASLITEOptimizer(BaseOptimizer):
             # --- (III) Update the main trigger ----
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             trigger_ids = current_trigger_ids
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # Logging:
             self.log(loss=current_loss, trigger_str=trigger_str)

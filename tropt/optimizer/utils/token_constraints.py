@@ -1,7 +1,10 @@
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import List, Optional
+
+import torch
+from torch import Tensor
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +32,7 @@ class TokenConstraints:
     """
     Disallow any additional custom token ids.
     """
-    
+
     _cache: dict = field(
         default_factory=dict, init=False, repr=False, hash=False, compare=False
     )
@@ -99,3 +102,13 @@ class TokenConstraints:
             )
         )
         return blacklist_ids
+
+    def get_valid_token_ids(self, tokenizer, vocab_size: int, device) -> Tensor:
+        """
+        Returns a tensor of valid token ids (reverse of blacklist) based on the constraints.
+        Reuses the potentially cached blacklist for efficiency.
+        """
+        blacklist_ids = self.get_blacklist_ids(tokenizer, vocab_size)
+        token_mask = torch.ones(vocab_size, device=device, dtype=torch.bool)
+        token_mask[blacklist_ids] = False
+        return token_mask.nonzero(as_tuple=False).squeeze(-1)
