@@ -108,13 +108,7 @@ class SoftPromptOptimizer(BaseOptimizer):
             # Track
             loss_per_step.append(curr_loss)
 
-            self.tracker.log({
-                "loss": curr_loss,
-                "lr": optimizer.param_groups[0]["lr"],
-                "grad_norm": trigger_grad.norm().item(),
-                **self.loss_func.get_loss_log_dict(),
-                **self.model.get_usage_stats()
-            })
+            self.log(loss=curr_loss, lr=optimizer.param_groups[0]["lr"], grad_norm=trigger_grad.norm().item())
 
             pbar.set_description(
                 f"loss={curr_loss:.4f}, trigger={trigger_embeds[0, :2, :2].detach().cpu().tolist()}..."

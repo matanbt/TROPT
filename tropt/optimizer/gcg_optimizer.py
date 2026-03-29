@@ -84,21 +84,16 @@ class GCGOptimizer(BaseOptimizer):
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
         tokenizer = self.model.tokenizer
-        trigger_ids = (
-            tokenizer.encode(initial_trigger, add_special_tokens=False, return_tensors="pt")
-            .to(self.model.device, torch.int64)
-        )
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
-
-        trigger_ids: Int[Tensor, "trigger_seq_len"] = trigger_ids.squeeze(0)  # take the only trigger
         best = RunningBest()
 
         # Compute loss before optimization
         current_loss = self.model.compute_loss_from_tokens(
             trigger_ids.unsqueeze(0), loss_func=self.loss_func
         ).item()
-        self.tracker.log({"loss": current_loss, "trigger_str": initial_trigger, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+        self.log(loss=current_loss, trigger_str=initial_trigger)
 
         pbar = tqdm(range(self.num_steps))
 
@@ -131,8 +126,8 @@ class GCGOptimizer(BaseOptimizer):
             )  # shape: (n_templates, n_candidates)
             current_loss = losses.min().item()
             trigger_ids = candidate_trigger_ids[losses.argmin()]
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
-            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
+            self.log(loss=current_loss, trigger_str=trigger_str)
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")

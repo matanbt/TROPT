@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Literal, Optional, Set
+from typing import Literal, Optional, Set, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -9,7 +9,6 @@ from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )
@@ -22,6 +21,7 @@ from tropt.model import (
     TokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -31,20 +31,17 @@ logger = logging.getLogger(__name__)
 
 
 class GCGPlusOptimizer(BaseOptimizer):
-    """Unified optimizer supporting GCG++, RAL, and PAL attacks.
+    """Flexible GCG implementation, supporting tricks from GCG, QCG, and GASLITE.
 
     Two-stage design:
-      1. Candidate selection (on proxy model) — gradient-based or random.
+      1. Candidate selection (on proxy model) — gradient-based, random, or focused.
       2. Candidate evaluation (on target model) — via text or token access.
 
     References:
-      - PAL: https://arxiv.org/abs/2402.09674
       - GCG: https://arxiv.org/abs/2307.15043
-
-    Note: the official PAL implementation accumulates proxy-filtered candidates
-    over multiple proxy-only steps (proxy_tune_period) before querying the
-    target, reducing API costs. This is not yet implemented here — every step
-    queries the target. See https://github.com/chawins/pal for details.
+      - QCG: https://arxiv.org/abs/2402.12329
+      - PAL: https://arxiv.org/abs/2402.09674
+      - GASLITE
     """
 
     model_requirements = (LossTextAccessMixin,)
@@ -58,38 +55,43 @@ class GCGPlusOptimizer(BaseOptimizer):
         # Proxy model for candidate selection (defaults to model):
         proxy_model: Optional[BaseModel] = None,
         # Candidate selection strategy:
-        candidate_selection: Literal["gradient", "random"] = "gradient",
+        candidate_selection: Literal["gradient", "random", "focused"] = "gradient",
         # Core GCG params:
         num_steps: int = 500,
         n_candidates: int = 512,
         sample_topk: int = 256,
-        sample_n_replace: int = 1,
+        sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = True,
         # Later tricks:
-        oversample_factor: float = 1.5,
+        candidate_oversample_factor: float = 1.5,
         momentum: float = 0.0,
-        skip_visited: bool = False,
         # Evaluation mode:
         use_token_eval: bool = False,
-        # PAL proxy filtering:
-        proxy_filter_k: Optional[int] = None,
+        # Trigger buffer size:
+        buffer_size: Optional[int] = None,
+        n_grad_avg: int = 1,
     ):
         """
         Args:
             proxy_model: Model used for candidate selection (gradients/tokenizer).
                 If None, defaults to `model` (self-proxy / white-box).
             candidate_selection: "gradient" uses gradient-ranked top-k sampling,
-                "random" uses uniform random token sampling.
-            oversample_factor: Generate n_candidates * factor candidates, then
+                "random" uses uniform random token sampling, "focused" probes
+                all positions then focuses on the best one (QCG Sec 3.3).
+            sample_n_replace: (start, end) number of token positions to replace per
+                candidate. Linearly interpolated over optimization steps.
+            candidate_oversample_factor: Craft n_candidates * factor candidates, then
                 truncate after retokenization filtering. Only effective when > 1.0.
             momentum: Gradient momentum coefficient (mu). When > 0, uses
                 m = mu*m + grad for candidate ranking instead of raw gradient.
-            skip_visited: Skip candidate suffixes that have been evaluated before.
             use_token_eval: If True, evaluate candidates via compute_loss_from_tokens
                 on the target (requires LossTokenAccessMixin). Otherwise use text access.
-            proxy_filter_k: If set, filter candidates down to top-K by proxy loss
-                before evaluating on the target (PAL's proxy filtering step).
+                Reccomended -- and *only possible* -- when proxy and target share a tokenizer.
+            buffer_size: If set, maintain a buffer of the best triggers seen. Each step mutates the best buffer entry and
+                updates the buffer with improved candidates.
+            n_grad_avg: Number of trigger perturbations to average gradients
+                over. When > 1, flips a random position per copy (GASLITE-style).
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -102,16 +104,12 @@ class GCGPlusOptimizer(BaseOptimizer):
             assert isinstance(self.proxy_model, GradientTokenAccessMixin), (
                 "candidate_selection='gradient' requires proxy_model with GradientTokenAccessMixin"
             )
-        if proxy_filter_k is not None:
-            assert isinstance(self.proxy_model, LossTokenAccessMixin), (
-                "proxy_filter_k requires proxy_model with LossTokenAccessMixin"
-            )
-
         # Token eval validation
-        if use_token_eval:
-            assert isinstance(model, LossTokenAccessMixin), (
-                "use_token_eval=True requires target model with LossTokenAccessMixin"
-            )
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)  # TODO find a more accurate way of comparing tokenizers
+
+        # Normalize sample_n_replace to tuple
+        if isinstance(sample_n_replace, int):
+            sample_n_replace = (sample_n_replace, sample_n_replace)
 
         # Save params
         self.candidate_selection = candidate_selection
@@ -121,11 +119,11 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
-        self.oversample_factor = oversample_factor
+        self.candidate_oversample_factor = candidate_oversample_factor
         self.momentum = momentum
-        self.skip_visited = skip_visited
         self.use_token_eval = use_token_eval
-        self.proxy_filter_k = proxy_filter_k
+        self.buffer_size = buffer_size
+        self.n_grad_avg = n_grad_avg
 
     def optimize_trigger(
         self,
@@ -136,56 +134,77 @@ class GCGPlusOptimizer(BaseOptimizer):
         self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Initialization ---
-        proxy = self.proxy_model
-        proxy_tokenizer = proxy.tokenizer
+        proxy_model = self.proxy_model
+        proxy_tokenizer = proxy_model.tokenizer
+        target_model = self.model
 
-        proxy.set_inputs_from_tokens(templates=templates, targets=targets)
+        proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
         if not self.use_token_eval:
-            self.model.set_inputs_from_texts(templates=templates, targets=targets)
+            target_model.set_inputs_from_texts(templates=templates, targets=targets)
         else:
-            self.model.set_inputs_from_tokens(templates=templates, targets=targets)
+            target_model.set_inputs_from_tokens(templates=templates, targets=targets)
 
         trigger_ids: Int[Tensor, "trigger_seq_len"] = (
             proxy_tokenizer.encode(
                 initial_trigger, add_special_tokens=False, return_tensors="pt"
             )
-            .to(proxy.device, torch.int64)
+            .to(proxy_model.device, torch.int64)
             .squeeze(0)
         )
 
-        vocab_size = proxy.vocab_size
+        vocab_size = proxy_model.vocab_size
+
+        # Pre-compute valid token IDs (complement of blacklist, used by all helpers)
         blacklist_ids = self.token_constraints.get_blacklist_ids(proxy_tokenizer, vocab_size)
+        token_mask = torch.ones(vocab_size, device=proxy_model.device, dtype=torch.bool)
+        token_mask[blacklist_ids] = False
+        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
 
         best = RunningBest()
-        visited: Set[str] = set()
         momentum_buffer: Optional[Tensor] = None
+
+        # Buffer initialization
+        buffer: Optional[TriggerBuffer] = None
+        if self.buffer_size is not None:
+            buffer = self._init_buffer(trigger_ids, valid_token_ids)
 
         # Number of candidates to generate (oversample if retokenize is on)
         n_generate = self.n_candidates
-        if self.use_retokenize and self.oversample_factor > 1.0:
-            n_generate = math.ceil(self.n_candidates * self.oversample_factor)
+        if self.use_retokenize and self.candidate_oversample_factor > 1.0:
+            n_generate = math.ceil(self.n_candidates * self.candidate_oversample_factor)
 
         # Initial loss
         current_loss = self._evaluate_candidates(
-            trigger_ids.unsqueeze(0), proxy_tokenizer
+            trigger_ids.unsqueeze(0)
         ).item()
         trigger_str = proxy_tokenizer.decode(trigger_ids, skip_special_tokens=True)
-        if self.skip_visited:
-            visited.add(trigger_str)
-        self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+        self.log(loss=current_loss, trigger_str=trigger_str)
 
         pbar = tqdm(range(self.num_steps))
+        n_replace_start, n_replace_end = self.sample_n_replace
 
-        for _ in pbar:
+        for step_i in pbar:
+            # Linearly interpolate sample_n_replace over steps
+            cur_n_replace = round(
+                n_replace_start + (n_replace_end - n_replace_start) * step_i / max(self.num_steps - 1, 1)
+            )
+
+            # Buffer mode: start each step from the best buffer entry
+            if buffer is not None:
+                trigger_ids = buffer.get_best_trigger()
+
             # === Stage 1: Candidate Selection (on proxy) ===
+
             if self.candidate_selection == "gradient":
-                trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
-                    proxy.compute_grad_from_tokens(
-                        candidate_trigger_ids=trigger_ids.unsqueeze(0),
-                        loss_func=self.loss_func,
-                        normalize_grads=True,
-                    ).squeeze(0)
+                grad_triggers = self._get_grad_trigger_variations(
+                    trigger_ids, valid_token_ids
                 )
+                trigger_grad = proxy_model.compute_grad_from_tokens(
+                    candidate_trigger_ids=grad_triggers,
+                    loss_func=self.loss_func,
+                    normalize_grads=True,
+                ).mean(dim=0)  # average over n_grad_avg variations
+
                 # Apply momentum
                 if self.momentum > 0:
                     if momentum_buffer is None:
@@ -201,12 +220,20 @@ class GCGPlusOptimizer(BaseOptimizer):
                     trigger_grad=ranking_signal,
                     blacklist_ids=blacklist_ids,
                     n_generate=n_generate,
+                    n_replace=cur_n_replace,
+                )
+            elif self.candidate_selection == "focused":
+                candidate_trigger_ids = self._sample_focused_candidates(
+                    trigger_ids=trigger_ids,
+                    valid_token_ids=valid_token_ids,
+                    n_generate=n_generate,
                 )
             else:  # "random"
                 candidate_trigger_ids = self._sample_random_candidates(
                     trigger_ids=trigger_ids,
-                    blacklist_ids=blacklist_ids,
+                    valid_token_ids=valid_token_ids,
                     n_generate=n_generate,
+                    n_replace=cur_n_replace,
                 )
 
             # === Retokenization filtering ===
@@ -215,48 +242,37 @@ class GCGPlusOptimizer(BaseOptimizer):
                     candidate_trigger_ids, proxy_tokenizer
                 )
             # Truncate to n_candidates (after oversample + filter)
-            if len(candidate_trigger_ids) > self.n_candidates:
-                candidate_trigger_ids = candidate_trigger_ids[: self.n_candidates]
+            candidate_trigger_ids = candidate_trigger_ids[: self.n_candidates]
 
             if len(candidate_trigger_ids) == 0:
                 logger.warning("All candidates filtered out, skipping step.")
                 continue
 
-            # === Skip visited ===
-            if self.skip_visited:
-                candidate_trigger_ids, _ = self._filter_visited(
-                    candidate_trigger_ids, proxy_tokenizer, visited
-                )
-                if len(candidate_trigger_ids) == 0:
-                    logger.warning("All candidates already visited, skipping step.")
-                    continue
-
-            # === PAL proxy filtering ===
-            if self.proxy_filter_k is not None and self.proxy_filter_k < len(candidate_trigger_ids):
-                proxy_losses = proxy.compute_loss_from_tokens(
-                    candidate_trigger_ids, loss_func=self.loss_func
-                )  # (n_templates, n_candidates)
-                # Average over templates, take top-K
-                avg_proxy_losses = proxy_losses.mean(dim=0) if proxy_losses.dim() > 1 else proxy_losses
-                topk_indices = avg_proxy_losses.topk(
-                    self.proxy_filter_k, largest=False
-                ).indices
-                candidate_trigger_ids = candidate_trigger_ids[topk_indices]
-
             # === Stage 2: Candidate Evaluation (on target) ===
-            losses = self._evaluate_candidates(candidate_trigger_ids, proxy_tokenizer)
+            losses = self._evaluate_candidates(candidate_trigger_ids)
 
-            current_loss = losses.min().item()
-            trigger_ids = candidate_trigger_ids[losses.argmin()]
-            trigger_str = proxy_tokenizer.decode(trigger_ids, skip_special_tokens=True)
-
-            if self.skip_visited:
-                # Only the selected (best) suffix is marked as visited,
-                # matching the official PAL "visited" skip mode.
-                visited.add(trigger_str)
+            # === Update best / buffer ===
+            if buffer is not None:
+                # Buffer mode: update buffer with all evaluated candidates
+                for idx in range(len(candidate_trigger_ids)):
+                    buffer.add_if_better(
+                        candidate_trigger_ids[idx], losses[idx].item()
+                    )
+                # Track overall best from buffer for logging
+                current_loss = buffer.get_lowest_loss()
+                trigger_ids = buffer.get_best_trigger()
+                trigger_str = proxy_tokenizer.decode(
+                    trigger_ids, skip_special_tokens=True
+                )
+            else:
+                current_loss = losses.min().item()
+                trigger_ids = candidate_trigger_ids[losses.argmin()]
+                trigger_str = proxy_tokenizer.decode(
+                    trigger_ids, skip_special_tokens=True
+                )
 
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
-            self.tracker.log({"loss": current_loss, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.log(loss=current_loss, trigger_str=trigger_str)
             pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
         # --- Finalize ---
@@ -269,11 +285,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
 
-        proxy.reset_inputs_from_tokens()
-        if not self.use_token_eval:
-            self.model.reset_inputs_from_texts()
-        else:
-            self.model.reset_inputs_from_tokens()
+        proxy_model.reset_inputs_from_tokens()
+        target_model.reset_inputs_from_texts()
+        target_model.reset_inputs_from_tokens()
 
         return result
 
@@ -284,16 +298,18 @@ class GCGPlusOptimizer(BaseOptimizer):
     def _evaluate_candidates(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        proxy_tokenizer,
     ) -> Float[Tensor, "n_candidates"]:
-        """Evaluate candidates on the target model. Returns per-candidate loss."""
+        """Evaluate candidates on the target model. Returns per-candidate loss.
+
+        When use_token_eval is False, decodes candidates via proxy_model.tokenizer.
+        """
         if self.use_token_eval:
             losses = self.model.compute_loss_from_tokens(
                 candidate_trigger_ids, loss_func=self.loss_func
             )  # (n_templates, n_candidates)
         else:
             candidate_strs = [
-                proxy_tokenizer.decode(cid, skip_special_tokens=True)
+                self.proxy_model.tokenizer.decode(cid, skip_special_tokens=True)
                 for cid in candidate_trigger_ids
             ]
             losses = self.model.compute_loss_from_texts(
@@ -309,30 +325,34 @@ class GCGPlusOptimizer(BaseOptimizer):
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
         trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"],
-        blacklist_ids: List[int],
+        blacklist_ids: list,
         n_generate: int,
+        n_replace: int = 1,
     ) -> Int[Tensor, "n_generate trigger_seq_len"]:
-        """Sample candidate token sequences based on gradient ranking (GCG-style)."""
-        trigger_seq_len, vocab_size = trigger_grad.shape
+        """Sample candidate token sequences via GCG-style random multi-position replacement."""
+        trigger_seq_len = trigger_grad.shape[0]
         device = trigger_grad.device
+        n_replace = min(n_replace, trigger_seq_len)
+
+        # Top-k candidates per position
+        trigger_grad = trigger_grad.clone()  # avoid mutating momentum buffer
+        trigger_grad *= -1
+        trigger_grad[:, blacklist_ids] = float("-inf")
+        topk_ids = trigger_grad.topk(self.sample_topk, dim=-1).indices
+
         candidate_trigger_ids = trigger_ids.repeat(n_generate, 1).clone()
-
-        trigger_grad = trigger_grad.clone()
-        trigger_grad[:, blacklist_ids] = float("inf")
-
-        topk_ids = (-trigger_grad).topk(self.sample_topk, dim=-1).indices
 
         # Random positions to flip
         sampled_ids_pos = torch.rand(
             n_generate, trigger_seq_len, device=device
-        ).argsort(dim=-1)[..., : self.sample_n_replace]
+        ).argsort(dim=-1)[..., :n_replace]
 
         # Select relevant top-k lists and sample one token from each
         relevant_topk_lists = topk_ids[sampled_ids_pos]
         rand_k_indices = torch.randint(
             0,
             self.sample_topk,
-            (n_generate, self.sample_n_replace, 1),
+            (n_generate, n_replace, 1),
             device=device,
         )
         sampled_ids_val = torch.gather(
@@ -348,37 +368,56 @@ class GCGPlusOptimizer(BaseOptimizer):
         )
         return candidate_trigger_ids
 
+    def _get_grad_trigger_variations(
+        self,
+        trigger_ids: Int[Tensor, "trigger_seq_len"],
+        valid_token_ids: Int[Tensor, "n_valid"],
+    ) -> Int[Tensor, "n_grad_avg trigger_seq_len"]:
+        """Create trigger variations for gradient averaging (GASLITE-style).
+
+        With n_grad_avg == 1, returns the trigger as-is.
+        With n_grad_avg > 1, flips a random position with a random valid token
+        per copy (keeping the first copy intact).
+        """
+        if self.n_grad_avg <= 1:
+            return trigger_ids.unsqueeze(0)
+
+        device = trigger_ids.device
+        trigger_seq_len = trigger_ids.shape[0]
+        grad_triggers = trigger_ids.repeat(self.n_grad_avg, 1).clone()
+
+        # Keep first copy intact, perturb the rest
+        for idx in range(1, self.n_grad_avg):
+            pos = torch.randint(0, trigger_seq_len, (1,), device=device).item()
+            tok = valid_token_ids[
+                torch.randint(0, len(valid_token_ids), (1,), device=device)
+            ].item()
+            grad_triggers[idx, pos] = tok
+
+        return grad_triggers
+
     def _sample_random_candidates(
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
-        blacklist_ids: List[int],
+        valid_token_ids: Int[Tensor, "n_valid"],
         n_generate: int,
+        n_replace: int = 1,
     ) -> Int[Tensor, "n_generate trigger_seq_len"]:
-        """Sample candidates by randomly replacing tokens (RAL-style).
-
-        Follows the official RAL implementation: pre-computes valid token IDs
-        and samples uniformly from them (rather than rejection sampling).
-        """
+        """Sample candidates by randomly replacing tokens (RAL-style)."""
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device
-        vocab_size = self.proxy_model.vocab_size
+        n_replace = min(n_replace, trigger_seq_len)
 
         candidate_trigger_ids = trigger_ids.repeat(n_generate, 1).clone()
 
         # Random positions to flip
         sampled_ids_pos = torch.rand(
             n_generate, trigger_seq_len, device=device
-        ).argsort(dim=-1)[..., : self.sample_n_replace]
-
-        # Pre-compute valid token IDs (exclude blacklist) — matches RAL's approach
-        token_mask = torch.ones(vocab_size, device=device, dtype=torch.bool)
-        if blacklist_ids:
-            token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        ).argsort(dim=-1)[..., :n_replace]
 
         # Sample uniformly from valid tokens
         rand_indices = torch.randint(
-            0, len(valid_token_ids), (n_generate, self.sample_n_replace), device=device
+            0, len(valid_token_ids), (n_generate, n_replace), device=device
         )
         random_tokens = valid_token_ids[rand_indices]
 
@@ -389,17 +428,77 @@ class GCGPlusOptimizer(BaseOptimizer):
         )
         return candidate_trigger_ids
 
-    def _filter_visited(
+    # TODO any way to generalize this tricks?
+    def _sample_focused_candidates(
         self,
-        candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
-        tokenizer,
-        visited: Set[str],
-    ) -> tuple:
-        """Filter out candidates whose decoded string is in the visited set."""
-        keep_mask = []
-        for cid in candidate_trigger_ids:
-            s = tokenizer.decode(cid, skip_special_tokens=True)
-            keep_mask.append(s not in visited)
-        keep_mask = torch.tensor(keep_mask, device=candidate_trigger_ids.device)
-        filtered = candidate_trigger_ids[keep_mask]
-        return filtered, keep_mask
+        trigger_ids: Int[Tensor, "trigger_seq_len"],
+        valid_token_ids: Int[Tensor, "n_valid"],
+        n_generate: int,
+    ) -> Int[Tensor, "n_generate trigger_seq_len"]:
+        """Focused position sampling (QCG paper, Sec 3.3).
+
+        Phase 1: Probe each position with one random token replacement,
+        evaluate all probes on the target (via _evaluate_candidates) to find
+        the most promising position.
+        Phase 2: Generate n_generate candidates at the best position.
+        """
+        trigger_seq_len = trigger_ids.shape[0]
+        device = trigger_ids.device
+
+        # Phase 1: Probe each position with one random token
+        probe_candidates = trigger_ids.repeat(trigger_seq_len, 1).clone()
+        probe_tokens = valid_token_ids[
+            torch.randint(0, len(valid_token_ids), (trigger_seq_len,), device=device)
+        ]
+        # Replace position j in candidate j
+        probe_candidates[
+            torch.arange(trigger_seq_len, device=device),
+            torch.arange(trigger_seq_len, device=device),
+        ] = probe_tokens
+
+        probe_losses = self._evaluate_candidates(probe_candidates)
+        best_pos = probe_losses.argmin().item()
+
+        # Phase 2: Generate candidates at best position only
+        candidates = trigger_ids.repeat(n_generate, 1).clone()
+        random_tokens = valid_token_ids[
+            torch.randint(0, len(valid_token_ids), (n_generate,), device=device)
+        ]
+        candidates[:, best_pos] = random_tokens
+        return candidates
+
+    def _init_buffer(
+        self,
+        initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
+        valid_token_ids: Int[Tensor, "n_valid"],
+    ) -> TriggerBuffer:
+        """Initialize the QCG buffer with random trigger variants.
+
+        Evaluates each entry via _evaluate_candidates (uses proxy_model.tokenizer
+        for decoding when use_token_eval is False).
+        """
+        trigger_seq_len = initial_trigger_ids.shape[0]
+        device = initial_trigger_ids.device
+
+        buffer = TriggerBuffer()
+        # Add initial trigger as first buffer entry
+        init_loss = self._evaluate_candidates(
+            initial_trigger_ids.unsqueeze(0)
+        ).item()
+        buffer.add(initial_trigger_ids.clone(), init_loss)
+
+        # Fill remaining slots with random valid triggers
+        for _ in range(self.buffer_size - 1):
+            rand_ids = valid_token_ids[
+                torch.randint(
+                    0, len(valid_token_ids), (trigger_seq_len,), device=device
+                )
+            ]
+            loss = self._evaluate_candidates(
+                rand_ids.unsqueeze(0)
+            ).item()
+            buffer.add(rand_ids, loss)
+
+        return buffer
+
+

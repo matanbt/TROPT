@@ -339,7 +339,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
                         n_flip = max(1, math.ceil(self.n_flip * ratio))
 
             # Logging:
-            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.log(loss=current_loss, trigger_str=trigger_str)
             loss_per_step.append(current_loss)
             trigger_strings.append(trigger_str)
             trigger_ids_per_step.append(util_trigger_ids)

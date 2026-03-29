@@ -46,11 +46,11 @@ def run_arca(
         loss=PrefillCELoss(),
         tracker=tracker,
         n_grad_avg=32,  # per the paper
-        num_steps=500,
+        num_steps=1000,  # in ARCA's paper they use trigger token length * 50
         n_candidates=512,  # following GCG's convention
         sample_topk=256,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=True,
+        use_retokenize=False,  # ARCA doesn't use retokenization;
     )
 
     return optimizer.optimize_trigger(

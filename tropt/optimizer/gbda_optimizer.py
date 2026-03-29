@@ -209,7 +209,7 @@ class GBDAOptimizer(BaseOptimizer):
 
             best.update(loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str)
 
-            self.tracker.log({"loss": current_loss, "trigger_str": current_trigger_str, "best_loss": best.loss, "temperature": temperature, "lr": scheduler.get_last_lr()[0], **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.log(loss=current_loss, trigger_str=current_trigger_str, best_loss=best.loss, temperature=temperature, lr=scheduler.get_last_lr()[0])
 
             pbar.set_description(
                 f"loss={current_loss:.4f} best={best.loss:.4f} "

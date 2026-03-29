@@ -127,6 +127,54 @@ class BaseOptimizer(ABC):
         lines.append("===========================")
         logger.info("\n".join(lines))
 
+    def log(self, loss: float, trigger_str: Optional[str] = None, **extra):
+        """Log per-step metrics to the tracker.
+
+        Automatically adds:
+          - ``loss/*``: loss function component stats via ``loss_func.get_loss_log_dict()``.
+          - ``target_model_stats/*``: usage stats for ``self.model``.
+          - ``{attr}_stats/*``: usage stats for any other ``BaseModel`` instances found on ``self``
+            (that are _not_ ``self.model``).
+          - ``total_models_stats/*``: element-wise sum across all model stats (if only target model is present, this will be identical to that target model's stats).
+
+        Args:
+            loss: Current step loss value.
+            trigger_str: Current trigger string (omitted from log dict if None).
+            **extra: Any additional key-value pairs to include in the log dict.
+        """
+        log_dict: dict = {"loss": loss}
+        if trigger_str is not None:
+            log_dict["trigger_str"] = trigger_str
+        log_dict.update(extra)
+
+        # Loss function stats
+        for k, v in self.loss_func.get_loss_log_dict().items():
+            log_dict[f"loss/{k}"] = v
+
+        # Collect distinct model instances (self.model → "target_model_stats")
+        seen_ids: set = set()
+        model_stats: dict[str, dict] = {}
+        for attr, val in self.__dict__.items():
+            if not isinstance(val, BaseModel) or id(val) in seen_ids:
+                continue
+            prefix = "target_model_stats" if attr == "model" else f"{attr}_stats"
+            model_stats[prefix] = val.get_usage_stats()
+            seen_ids.add(id(val))
+
+        for prefix, stats in model_stats.items():
+            for k, v in stats.items():
+                log_dict[f"{prefix}/{k}"] = v
+
+        # Total across all distinct models (only when more than one)
+        total: dict = {}
+        for stats in model_stats.values():
+            for k, v in stats.items():
+                total[k] = total.get(k, 0) + v
+        for k, v in total.items():
+            log_dict[f"total_models_stats/{k}"] = v
+
+        self.tracker.log(log_dict)
+
     def set_tracker(self, tracker: BaseTracker):
         """
         Set the tracker for logging optimization progress.

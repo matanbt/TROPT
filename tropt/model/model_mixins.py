@@ -63,10 +63,10 @@ class TokenAccessMixin(ABC):
 
     @property
     @abstractmethod
-    def tokenizer(self) -> PreTrainedTokenizer | BaseTokenizer:
+    def tokenizer(self) -> BaseTokenizer:
         """
         Force the class using this mixin to implement a tokenizer.
-        This tokenizer must be either HuggingFace tokenizer or one with the same interface.
+        This tokenizer implement API defined by BaseTokenizer, which matches the main functionality of  HuggingFace tokenizer.
         """
         raise NotImplementedError
 

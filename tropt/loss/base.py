@@ -132,9 +132,9 @@ class CombinedLoss(BaseLoss):
         if self._last_loss_vals is None or self._last_component_loss_vals is None:
             return {}
         return {
-            f"loss/{type(self).__name__}": self._last_loss_vals.min().item(),
+            f"{type(self).__name__}": self._last_loss_vals.min().item(),
             **{
-                f"loss/{type(lf).__name__}": val.min().item()
+                f"{type(lf).__name__}": val.min().item()
                 for lf, val in zip(self.loss_funcs, self._last_component_loss_vals)
             },
         }

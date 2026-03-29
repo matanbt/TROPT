@@ -5,6 +5,7 @@ from .model_base import (  # noqa: I001
     EncoderBaseModel,
     LMBaseModel,
     BaseTokenizer,
+    HFTokenizerWrapper,
 )
 
 # FLOP counting:

@@ -351,7 +351,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
 
             # Logging:
-            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.log(loss=current_loss, trigger_str=trigger_str)
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             if self.time_limit is not None:

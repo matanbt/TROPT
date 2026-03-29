@@ -48,7 +48,7 @@ def run_autoprompt(
         n_candidates=512,    # following GCG's convention
         sample_topk=256,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=True,  # though the original AutoPrompt did not use retokenization filtering
+        use_retokenize=False,  # the original AutoPrompt implementation did not use retokenization filtering
     )
 
     return optimizer.optimize_trigger(

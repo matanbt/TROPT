@@ -124,7 +124,7 @@ class PEZOptimizer(BaseOptimizer):
                 projected_ids, skip_special_tokens=True
             )
 
-            self.tracker.log({"loss": curr_loss, "trigger_str": current_trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            self.log(loss=curr_loss, trigger_str=current_trigger_str)
 
             pbar.set_description(
                 f"loss={curr_loss:.4f}, trigger={current_trigger_str[:30]}"

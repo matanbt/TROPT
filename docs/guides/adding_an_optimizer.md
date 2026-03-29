@@ -186,6 +186,7 @@ Optimizers *should* use the utilities in `tropt/optimizer/utils/`:
 - `NFlipScheduler` — controls how many positions to flip over optimization steps
 - `get_printable_random_trigger` — random printable ASCII trigger initialization
 
+
 ### The `set_inputs_from_tokens` / `reset_inputs_from_tokens` contract
 
 Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start and the corresponding `reset_*` at the end. The model stores state between these calls — forgetting to reset leaks state into subsequent runs.
@@ -193,6 +194,10 @@ Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start a
 ### Multi-template aggregation
 
 `compute_loss_from_tokens` averages loss across templates by default. Pass `keep_message_dim=True` for per-template losses of shape `(n_templates, n_candidates)`.
+
+### Other pointers
+
+- If the `optimize_trigger` implementation is too long, it often makes sense to delegate some logical chuncks to private method of the optimizer class (eg., `self._init_buffer()`). It is preferable, however, to not _overuse_ these, to keep the `optimize_trigger` flow readable and informative.
 
 ---
 

@@ -71,16 +71,16 @@ class BaseModel(ABC):
             self._flop_counter = None
 
     def get_usage_stats(self) -> Dict[str, int]:
-        """Returns summary of model usage statistics, namespaced under 'usage/' for W&B logging."""
+        """Returns summary of model usage statistics for logging."""
         stats: dict[str, Any | int] = {
-            "usage/total_tokens": getattr(self, "_token_used", 0),
-            "usage/forward_calls": getattr(self, "_forward_call_count", 0),
-            "usage/forward_samples": getattr(self, "_forward_sample_count", 0),
-            "usage/grad_calls": getattr(self, "_grad_call_count", 0),
-            "usage/grad_samples": getattr(self, "_grad_sample_count", 0),
+            "total_tokens": getattr(self, "_token_used", 0),
+            "forward_calls": getattr(self, "_forward_call_count", 0),
+            "forward_samples": getattr(self, "_forward_sample_count", 0),
+            "grad_calls": getattr(self, "_grad_call_count", 0),
+            "grad_samples": getattr(self, "_grad_sample_count", 0),
         }
         if self._flop_counter is not None:
-            stats["usage/total_flops"] = getattr(self, "_total_flops", 0)
+            stats["total_flops"] = getattr(self, "_total_flops", 0)
         return stats
 
     def _update_invoke_stats(
@@ -159,6 +159,13 @@ class BaseModel(ABC):
         Should be overriden by the device in which the model is loaded.
         """
         return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    
+    @property
+    def tokenizer(self) -> Optional['BaseTokenizer']:
+        """
+        If available, returns a BaseTokenizer-compatible tokenizer for this model.
+        """
+        raise NotImplementedError
 
 ## -------- Base models by model type ------- ##
 class LMBaseModel(BaseModel):
@@ -339,3 +346,59 @@ class BaseTokenizer(ABC):
     @property
     def name_or_path(self) -> str:
         return "unknown"
+
+    # --- Specific helpers (concrete, build on abstract primitives above) ---
+
+    def encode_trigger(self, trigger_str: str) -> Int[Tensor, "trigger_seq_len"]:
+        """Encode a trigger string -> 1-D tensor (no special tokens)."""
+        ids = self.encode(trigger_str, add_special_tokens=False)
+        return torch.tensor(ids, dtype=torch.int64)
+
+    def decode_trigger(self, trigger_ids: Int[Tensor, "trigger_seq_len"]) -> str:
+        """Decode a 1-D trigger ids tensor -> string (special tokens skipped)."""
+        return self.decode(trigger_ids, skip_special_tokens=True)
+
+    def decode_triggers(self, trigger_ids: Int[Tensor, "bsz trigger_seq_len"]) -> List[str]:
+        """Batch-decode a 2-D trigger ids tensor -> list of strings (special tokens skipped)."""
+        return self.batch_decode(trigger_ids, skip_special_tokens=True)
+
+
+class HFTokenizerWrapper(BaseTokenizer):
+    """Wraps a HuggingFace PreTrainedTokenizerBase, exposing it as a BaseTokenizer.
+
+    All attributes not defined here are transparently forwarded to the underlying
+    HF tokenizer, so existing code that accesses tokenizer internals (padding_side,
+    apply_chat_template, etc.) continues to work unchanged.
+    """
+
+    def __init__(self, tokenizer):
+        # Store without triggering __getattr__
+        object.__setattr__(self, "_hf_tokenizer", tokenizer)
+
+    def __getattr__(self, name: str):
+        return getattr(object.__getattribute__(self, "_hf_tokenizer"), name)
+
+    # --- BaseTokenizer abstract method implementations ---
+
+    @property
+    def vocab_size(self) -> int:
+        return self._hf_tokenizer.vocab_size
+
+    def __call__(self, text, return_tensors=None, **kwargs):
+        # "list" in our abstraction maps to None (Python objects) in HF
+        if return_tensors == "list":
+            return_tensors = None
+        return self._hf_tokenizer(text, return_tensors=return_tensors, **kwargs)
+
+    def decode(self, ids, **kwargs) -> str:
+        return self._hf_tokenizer.decode(ids, **kwargs)
+
+    def encode(self, text, **kwargs) -> List[int]:
+        return self._hf_tokenizer.encode(text, **kwargs)
+
+    def batch_decode(self, ids, **kwargs) -> List[str]:
+        return self._hf_tokenizer.batch_decode(ids, **kwargs)
+
+    @property
+    def name_or_path(self) -> str:
+        return self._hf_tokenizer.name_or_path
