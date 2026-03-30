@@ -41,7 +41,7 @@ class GCGPlusOptimizer(BaseOptimizer):
       - GCG: https://arxiv.org/abs/2307.15043
       - QCG: https://arxiv.org/abs/2402.12329
       - PAL: https://arxiv.org/abs/2402.09674
-      - GASLITE
+      - GASLITE: https://arxiv.org/abs/2412.20953
     """
 
     model_requirements = (LossTextAccessMixin,)
@@ -60,11 +60,11 @@ class GCGPlusOptimizer(BaseOptimizer):
         num_steps: int = 500,
         n_candidates: int = 512,
         sample_topk: int = 256,
-        sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = True,
         # Later tricks:
-        candidate_oversample_factor: float = 1.5,
+        sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
+        candidate_oversample_factor: float = 1.1,
         momentum: float = 0.0,
         # Trigger buffer size:
         buffer_size: Optional[int] = None,
@@ -74,19 +74,25 @@ class GCGPlusOptimizer(BaseOptimizer):
         Args:
             proxy_model: Model used for candidate selection (gradients/tokenizer).
                 If None, defaults to `model` (self-proxy / white-box).
-            candidate_selection: "gradient" uses gradient-ranked top-k sampling,
-                "random" uses uniform random token sampling, "focused" probes
-                all positions then focuses on the best one (QCG Sec 3.3).
+            candidate_selection: "gradient" uses gradient-ranked top-k sampling;
+                "random" uses uniform random token sampling; "focused" probes
+                all positions with target model loss then focuses on the best one (from QCG paper).
             sample_n_replace: (start, end) number of token positions to replace per
-                candidate. Linearly interpolated over optimization steps.
-            candidate_oversample_factor: Craft n_candidates * factor candidates, then
-                truncate after retokenization filtering. Only effective when > 1.0.
-            momentum: Gradient momentum coefficient (mu). When > 0, uses
+                candidate. Linearly interpolated over optimization steps; from PAL paper.
+                Defaults to (1, 1) for single-token flips only.
+            candidate_oversample_factor: Craft n_candidates * factor candidates (>1.0), then
+                truncate after retokenization filtering, to fill the required number of candidates.
+                From PAL paper.
+                Defaults to 1.1 (10% oversampling).
+            momentum: Gradient momentum coefficient (mu), from PAL paper. When > 0, uses
                 m = mu*m + grad for candidate ranking instead of raw gradient.
-            buffer_size: If set, maintain a buffer of the best triggers seen. Each step
+                Defaults to 0.0 (no momentum).
+            buffer_size: If set, maintain a buffer of the best triggers seen (from QCG paper). Each step
                 starts from the best buffer entry and updates it with improved candidates.
+                Defaults to None (no buffer).
             n_grad_avg: Number of trigger perturbations to average gradients
-                over. When > 1, flips a random position per copy (GASLITE-style).
+                over. When > 1, flips a random position per copy (from ARCA/GASLITE papers).
+                Defaults to 1 (no averaging, like GCG).
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -99,7 +105,10 @@ class GCGPlusOptimizer(BaseOptimizer):
             assert isinstance(self.proxy_model, GradientTokenAccessMixin), (
                 "candidate_selection='gradient' requires proxy_model with GradientTokenAccessMixin"
             )
+        assert candidate_oversample_factor >= 1.0, "candidate_oversample_factor must be >= 1.0"
+
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
+        # TODO BETTER NAMING!
         use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         # Normalize sample_n_replace to tuple
@@ -155,9 +164,9 @@ class GCGPlusOptimizer(BaseOptimizer):
             buffer = self._init_buffer(trigger_ids, valid_token_ids)
 
         # Number of candidates to generate (oversample if retokenize is on)
-        n_generate = self.n_candidates
+        n_candidates_oversampled = self.n_candidates
         if self.use_retokenize and self.candidate_oversample_factor > 1.0:
-            n_generate = math.ceil(self.n_candidates * self.candidate_oversample_factor)
+            n_candidates_oversampled = math.ceil(self.n_candidates * self.candidate_oversample_factor)
 
         # Initial loss
         current_loss = self._evaluate_candidates(
@@ -197,28 +206,26 @@ class GCGPlusOptimizer(BaseOptimizer):
                         momentum_buffer = trigger_grad.clone()
                     else:
                         momentum_buffer = self.momentum * momentum_buffer + trigger_grad
-                    ranking_signal = momentum_buffer
-                else:
-                    ranking_signal = trigger_grad
+                    trigger_grad = momentum_buffer
 
                 candidate_trigger_ids = self._sample_ids_from_grad(
                     trigger_ids=trigger_ids,
-                    trigger_grad=ranking_signal,
+                    trigger_grad=trigger_grad,
                     blacklist_ids=blacklist_ids,
-                    n_generate=n_generate,
+                    n_candidates=n_candidates_oversampled,
                     n_replace=cur_n_replace,
                 )
             elif self.candidate_selection == "focused":
                 candidate_trigger_ids = self._sample_focused_candidates(
                     trigger_ids=trigger_ids,
                     valid_token_ids=valid_token_ids,
-                    n_generate=n_generate,
+                    n_candidates=n_candidates_oversampled,
                 )
             else:  # "random"
                 candidate_trigger_ids = self._sample_random_candidates(
                     trigger_ids=trigger_ids,
                     valid_token_ids=valid_token_ids,
-                    n_generate=n_generate,
+                    n_candidates=n_candidates_oversampled,  #TODO ->n_candidates
                     n_replace=cur_n_replace,
                 )
 
@@ -306,9 +313,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         trigger_ids: Int[Tensor, "trigger_seq_len"],
         trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"],
         blacklist_ids: list,
-        n_generate: int,
+        n_candidates: int,
         n_replace: int = 1,
-    ) -> Int[Tensor, "n_generate trigger_seq_len"]:
+    ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
         """Sample candidate token sequences via GCG-style random multi-position replacement."""
         trigger_seq_len = trigger_grad.shape[0]
         device = trigger_grad.device
@@ -320,11 +327,11 @@ class GCGPlusOptimizer(BaseOptimizer):
         trigger_grad[:, blacklist_ids] = float("-inf")
         topk_ids = trigger_grad.topk(self.sample_topk, dim=-1).indices
 
-        candidate_trigger_ids = trigger_ids.repeat(n_generate, 1).clone()
+        candidate_trigger_ids = trigger_ids.repeat(n_candidates, 1).clone()
 
         # Random positions to flip
         sampled_ids_pos = torch.rand(
-            n_generate, trigger_seq_len, device=device
+            n_candidates, trigger_seq_len, device=device
         ).argsort(dim=-1)[..., :n_replace]
 
         # Select relevant top-k lists and sample one token from each
@@ -332,7 +339,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         rand_k_indices = torch.randint(
             0,
             self.sample_topk,
-            (n_generate, n_replace, 1),
+            (n_candidates, n_replace, 1),
             device=device,
         )
         sampled_ids_val = torch.gather(
@@ -380,24 +387,24 @@ class GCGPlusOptimizer(BaseOptimizer):
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
         valid_token_ids: Int[Tensor, "n_valid"],
-        n_generate: int,
+        n_candidates: int,
         n_replace: int = 1,
-    ) -> Int[Tensor, "n_generate trigger_seq_len"]:
+    ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
         """Sample candidates by randomly replacing tokens (RAL-style)."""
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device
         n_replace = min(n_replace, trigger_seq_len)
 
-        candidate_trigger_ids = trigger_ids.repeat(n_generate, 1).clone()
+        candidate_trigger_ids = trigger_ids.repeat(n_candidates, 1).clone()
 
         # Random positions to flip
         sampled_ids_pos = torch.rand(
-            n_generate, trigger_seq_len, device=device
+            n_candidates, trigger_seq_len, device=device
         ).argsort(dim=-1)[..., :n_replace]
 
         # Sample uniformly from valid tokens
         rand_indices = torch.randint(
-            0, len(valid_token_ids), (n_generate, n_replace), device=device
+            0, len(valid_token_ids), (n_candidates, n_replace), device=device
         )
         random_tokens = valid_token_ids[rand_indices]
 
@@ -412,14 +419,14 @@ class GCGPlusOptimizer(BaseOptimizer):
         self,
         trigger_ids: Int[Tensor, "trigger_seq_len"],
         valid_token_ids: Int[Tensor, "n_valid"],
-        n_generate: int,
-    ) -> Int[Tensor, "n_generate trigger_seq_len"]:
+        n_candidates: int,
+    ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
         """Focused position sampling (from QCG paper).
 
         Phase 1: Probe each position with one random token replacement,
         evaluate all probes on the target (via _evaluate_candidates) to find
         the most promising position.
-        Phase 2: Generate n_generate candidates at the best position.
+        Phase 2: Generate n_candidates candidates at the best position.
         """
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device
@@ -439,9 +446,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         best_pos = probe_losses.argmin().item()
 
         # Phase 2: Generate candidates at best position only
-        candidates = trigger_ids.repeat(n_generate, 1).clone()
+        candidates = trigger_ids.repeat(n_candidates, 1).clone()
         random_tokens = valid_token_ids[
-            torch.randint(0, len(valid_token_ids), (n_generate,), device=device)
+            torch.randint(0, len(valid_token_ids), (n_candidates,), device=device)
         ]
         candidates[:, best_pos] = random_tokens
         return candidates

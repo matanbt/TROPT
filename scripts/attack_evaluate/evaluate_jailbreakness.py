@@ -3,7 +3,7 @@ Evaluating safety of responses to harmful instructions, using StrongReject's API
 https://strong-reject.readthedocs.io/en/latest/api/index.html
 `pip install git+https://github.com/dsbowen/strong_reject.git@main`
 """
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Literal
 import torch
 
 import pandas as pd
@@ -64,12 +64,14 @@ def evaluate_jailbreakness_of_responses(
     #     "jailbreakness_per_evaluator": evaluator_to_score_list
     # }
 
+ADVBENCH_PLUS_PATH = "scripts/attack_evaluate/advbench_plus.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
 
 def evaluate_triggers(
     model_name: str,
     trigger_strs: List[str],
     trigger_ids: List[Any]=None,
-    eval_dataset_path: str="scripts/attack_evaluate/advbench_plus.csv",
+    harmful_dataset: Literal["advbench_plus", "clearharm"] = "clearharm",
     batch_size: int = 128,
     greedy_decode: bool = True,
     max_new_tokens: int = 128,
@@ -93,7 +95,13 @@ def evaluate_triggers(
 
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
-    base_df = pd.read_csv(eval_dataset_path)
+    if harmful_dataset == "advbench_plus":
+        base_df = pd.read_csv(ADVBENCH_PLUS_PATH)
+    elif harmful_dataset == "clearharm":
+        base_df = pd.read_csv(CLEARHARM_PATH)
+    else:
+        raise ValueError(f"Unsupported harmful_dataset: {harmful_dataset}")
+    
     base_df['message_id'] = range(len(base_df))
 
     if trigger_ids is None:
@@ -183,7 +191,7 @@ def wandb_to_trigger_eval_pipeline(
         model_name=model_name,
         trigger_strs=metadata_df['trigger'].tolist(),
         trigger_ids=metadata_df['trigger_id'].tolist(),
-        eval_dataset_path=DATASET_PATH,
+        harmful_dataset="clearharm",
         batch_size=8,
     )
     eval_df['eval_model'] = model_name

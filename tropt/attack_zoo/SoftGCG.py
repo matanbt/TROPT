@@ -1,11 +1,9 @@
 """
-Soft-GCG: Gumbel-Softmax continuous relaxation attack with CW loss.
+Soft-GCG: An improved Gumbel-Softmax continuous relaxation attack with CW loss, builds on GBDA optimization,
 
-Uses GBDA-style optimization with a 3-phase "slushy" temperature schedule, CW loss
-with first-token weighting, gradient clipping, and random logit initialization.
+Uses GBDA instantiation with a 3-phase temperature schedule, gradient clipping and random logit initialization. For loss, they use CW loss with first-token weighting.
 
-Based on: Cakar, Kehe, Guan (2025) "Accelerating Adversarial Suffix Optimization via
-Continuous Relaxation and Activation-Guided Objectives".
+Based on: https://github.com/Ege-Cakar/ImprovingGCG
 """
 
 from typing import List, Optional
@@ -34,7 +32,7 @@ def run_soft_gcg(
     """
     Run Soft-GCG attack using GBDA with slushy schedule and CW loss.
 
-    The original paper optimizes a universal suffix across 10 harmful instructions
+    The original implementation optimizes a universal suffix across 10 harmful instructions
     simultaneously (from AdvBench). Use `instructions` and `target_responses` to
     replicate that multi-instruction setup.
 

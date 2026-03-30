@@ -44,6 +44,7 @@ class TriggerBuffer:
             self.losses[max_loss_idx] = loss
 
     def get_best_trigger(self) -> torch.Tensor:
+        #TODO add an arg to sample from top-k to enable exploration
         min_loss_idx = self.losses.index(min(self.losses))
         return self.triggers[min_loss_idx]
 

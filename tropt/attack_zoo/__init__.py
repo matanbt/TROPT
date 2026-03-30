@@ -15,6 +15,7 @@ from .IRIS import run_iris, run_iris2
 from .PAL import run_gcgp_pal, run_pal, run_ral
 from .PEZ import run_pez
 from .PGD import run_pgd
+from .PRS import run_prs
 from .QCG import run_qcg, run_qcg_blackbox, run_qcg_whitebox
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 from .SoftGCG import run_soft_gcg
@@ -43,6 +44,7 @@ ATTACK_RECIPES = {
     "pal": run_pal,
     "pez": run_pez,
     "pgd": run_pgd,
+    "prs": run_prs,
     "qcg": run_qcg,
     "qcg_blackbox": run_qcg_blackbox,
     "qcg_whitebox": run_qcg_whitebox,

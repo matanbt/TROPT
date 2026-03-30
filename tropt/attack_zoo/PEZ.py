@@ -42,16 +42,16 @@ def run_pez(
         tracker=tracker,
 
         ## Parameters from the paper:
-        # num_steps=3000,
-        # learning_rate=0.1,
-        # weight_decay=0.1,
-        # gd_optimizer=torch.optim.AdamW,
-
-        # Parameters that we found work well in this context after few runs (can be further tuned):
-        num_steps=1000,
-        learning_rate=5,
+        num_steps=3000,
+        learning_rate=0.1,
         weight_decay=0.1,
         gd_optimizer=torch.optim.AdamW,
+
+        # Parameters that we found work well in this context after few runs (can be further tuned):
+        # num_steps=1000,
+        # learning_rate=5,
+        # weight_decay=0.1,
+        # gd_optimizer=torch.optim.AdamW,
 
     )
     # Init random trigger of length 16 (as in paper):

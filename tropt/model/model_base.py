@@ -152,20 +152,6 @@ class BaseModel(ABC):
         self._grad_sample_count = 0
         self._total_flops = 0
 
-    @property
-    def device(self) -> torch.device:
-        """
-        Returns the default device.
-        Should be overriden by the device in which the model is loaded.
-        """
-        return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    
-    @property
-    def tokenizer(self) -> Optional['BaseTokenizer']:
-        """
-        If available, returns a BaseTokenizer-compatible tokenizer for this model.
-        """
-        raise NotImplementedError
 
 ## -------- Base models by model type ------- ##
 class LMBaseModel(BaseModel):

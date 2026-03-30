@@ -10,5 +10,6 @@ from .gcgplus_optimizer import GCGPlusOptimizer
 from .hotflip_optimizer import HotFlipOptimizer
 from .pal_optimizer import PALOptimizer
 from .pez_optimizer import PEZOptimizer
+from .prs_optimizer import RandomSearchOptimizer
 from .qcg_optimizer import QCGOptimizer
 from .rasliteplus_optimizer import RASLITEPlusOptimizer
