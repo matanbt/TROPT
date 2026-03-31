@@ -81,7 +81,16 @@ class WandbTracker(BaseTracker):
         )
 
     def log(self, data: Dict[str, Any]):
-        wandb.log(data)
+        import torch
+        sanitized = {}
+        for k, v in data.items():
+            if isinstance(v, torch.Tensor):
+                try:
+                    v = v.item()
+                except ValueError:
+                    continue
+            sanitized[k] = v
+        wandb.log(sanitized)
 
     def log_metadata(self, metadata: dict):
         wandb.config.update(metadata, allow_val_change=True)
