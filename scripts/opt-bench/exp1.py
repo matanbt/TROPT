@@ -6,10 +6,7 @@ the same model, isolating optimizer algorithm quality from attack-recipe choices
 
 Usage
 -----
-  python scripts/opt-bench/eval.py whitebox --model-name google/gemma-2-2b-it
-  python scripts/opt-bench/eval.py build-csv-i
-  python scripts/opt-bench/eval.py build-csv-ii --model-name google/gemma-2-2b-it
-  python scripts/opt-bench/eval.py build-csv-iii --model-name google/gemma-2-2b-it
+  python scripts/opt-bench/exp1.py whitebox --model-name google/gemma-2-2b-it
 """
 import tropt.optimizer.utils.token_initializers
 import os

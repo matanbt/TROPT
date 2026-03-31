@@ -18,7 +18,8 @@ MSG_IDS="${MSG_IDS:-0}"
 WHITEBOX_MODELS=(
     ${WHITEBOX_MODELS:-
         "meta-llama/Llama-3.1-8B-Instruct"
-        "google/gemma-2-9b-it"
+        "google/gemma-3-12b-it"
+        "Qwen/Qwen3-8B"
         "mistralai/Mistral-7B-Instruct-v0.3"
     }
 )

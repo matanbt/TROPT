@@ -35,8 +35,22 @@ class OptimizerResult:
 
 ## ------- Base Optimizer ------- ##
 class BaseOptimizer(ABC):
-    # list of model mixin classes that the target `model` must implement to be compatible with this optimizer
-    model_requirements = []
+
+    model_requirements = ()
+    """Tuple of model mixin classes the primary model must satisfy; validated in ``__init__``.
+
+    Convention: declare the least-restrictive configuration the optimizer supports.
+
+    - Black-box only -> ``(LossTextAccessMixin,)``, even if gradient modes exist.
+    - Always needs token-level loss → include ``LossTokenAccessMixin``.
+    - Always needs gradients → include ``GradientTokenAccessMixin`` or ``GradientEmbedAccessMixin``.
+
+    Notes:
+    - Requirements that only occur in an optional flow (e.g.,
+    ``candidate_selection="gradient"`` requiring ``GradientTokenAccessMixin``) must be
+    validated explicitly in ``__init__`` after ``super().__init__()``, with an assert/error.
+    - Requirements on auxiliary models (proxy_model, util_model, etc.) are not covered here, and should also be validated explicitly in ``__init__``.
+    """
 
     def __init__(
         self,

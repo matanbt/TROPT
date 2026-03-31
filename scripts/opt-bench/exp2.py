@@ -136,8 +136,8 @@ def _prs_template(instruction: str, target: str) -> str:
     return _PRS_PROMPT_TEMPLATE.format(goal=goal.lower(), target_str=target)
 
 
-def _iris_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
-    """Generate jailbroken target via refusal ablation (IRIS Section 5.1)."""
+def _jailbroken_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
+    """Generate jailbroken target via refusal ablation."""
     instruction_clean = instruction.replace(
         f" {OPTIMIZED_TRIGGER_PLACEHOLDER}", ""
     ).replace(OPTIMIZED_TRIGGER_PLACEHOLDER, "")
@@ -169,6 +169,7 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             name="gcg_vanilla",
             loss_factory=lambda m: PrefillCELoss(),
         ),
+
         # 2. PrefillCE + Attention Hijacking (GCG-Hijack, middle layers)
         VariantConfig(
             name="gcg_attn_hijack",
@@ -188,24 +189,28 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             ),
             needs_eager_attn=True,
         ),
+
         # 3. Carlini-Wagner loss
         VariantConfig(
             name="gcg_cw",
             loss_factory=lambda m: PrefillCWLoss(),
         ),
+
         # 4. PrefillCE + PRS template
         VariantConfig(
             name="gcg_prs_template",
             loss_factory=lambda m: PrefillCELoss(),
             template_fn=_prs_template,
         ),
+
         # 5. PrefillCE + IRIS-style jailbroken target
         VariantConfig(
-            name="gcg_iris_target",
+            name="gcg_jailbroken_target",
             loss_factory=lambda m: PrefillCELoss(),
-            target_fn=_iris_targets,
+            target_fn=_jailbroken_targets,
             needs_refusal_dirs=True,
         ),
+
         # 6. PrefillCE + Steering away from refusal direction (IRIS loss)
         VariantConfig(
             name="gcg_steering",
@@ -225,6 +230,7 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             target_fn=_steering_targets,
             needs_refusal_dirs=True,
         ),
+        
         # ── Additional tricks (uncomment to include) ─────────────────────
         # CE + TriggerPerplexityLoss — penalizes non-fluent triggers,
         #   may improve transferability (see attack_zoo/GCG.py:run_gcg_perplexity)

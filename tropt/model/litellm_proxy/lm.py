@@ -4,7 +4,8 @@ from typing import Dict, List, Optional
 import litellm
 
 from tropt.common import ModelOutput
-from tropt.model import LMBaseModel, LossTextAccessMixin
+from tropt.model import BaseTokenizer, LMBaseModel, LossTextAccessMixin
+from tropt.model.openai.encoder import OpenAITokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,12 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         self._system_prompt = system_prompt
         self._max_concurrent_requests = max_concurrent_requests
 
+        # Expose an OpenAI-compatible tokenizer (via tiktoken) for optimizers
+        # that need token-level mutations (RS, GCGPlus, etc.).
+        # OpenAI models get their exact tokenizer; others fall back to cl100k_base.
+        bare_name = model_name.split("/", 1)[-1]  # e.g., "openai/gpt-4o-mini" -> "gpt-4o-mini"
+        self._tokenizer = OpenAITokenizer(bare_name)
+
         self._client_kwargs = client_kwargs
         if using_litellm_proxy:
             self._client_kwargs.setdefault("base_url", base_url or _LITELLM_PROXY_URL)
@@ -64,6 +71,14 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             self._client_kwargs["base_url"] = base_url
         if api_key:
             self._client_kwargs["api_key"] = api_key
+
+    @property
+    def tokenizer(self) -> BaseTokenizer:
+        return self._tokenizer
+
+    @property
+    def vocab_size(self) -> int:
+        return self._tokenizer.vocab_size
 
     def invoke_from_texts(
         self,

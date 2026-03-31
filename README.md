@@ -114,7 +114,7 @@ While the Attack Zoo provides predefined attacks for convenience, you can also m
 This allows you to choose what _model_ you would like to target, what _loss_ function to optimize against, and what specific existing _optimization strategy_ to use (along its hyperparameters), etc. 
 Notably, this programmatic composition also underlies the Attack Zoo implementations.
 
-See [guide.ipynb](guide.ipynb) for comprehensive examples covering several features enabled by such manual attack composition (multi-instruction, encoders, combined losses, activation steering, and custom components).
+See [quickstart.ipynb](quickstart.ipynb) for concrete examples covering the key features, including running LM jaibreak, embedding attacks, brewing new trigger objectives, and targeting black-box models.
 
 
 ### 🔬 Research: Custom Optimizers
@@ -145,6 +145,3 @@ uv run pytest
 uv run ruff check .
 ```
 
-## Roadmap
-
-- [ ] 
