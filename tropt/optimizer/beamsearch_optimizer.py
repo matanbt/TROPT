@@ -1,10 +1,8 @@
 import logging
-from typing import Annotated, Any, List, Optional
+from typing import List, Optional
 
 import numpy as np
 import torch
-from jaxtyping import Float
-from torch import Tensor
 from tqdm import tqdm
 
 from tropt.common import Targets, TextTemplates
@@ -13,9 +11,7 @@ from tropt.model import (
     BaseModel,
     LMBaseModel,
     LogitsTokenAccessMixin,
-    LossTokenAccessMixin,
 )
-from tropt.model.huggingface.lm import LMHFModel
 from tropt.model.model_mixins import LossTextAccessMixin
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -36,8 +32,6 @@ class BeamSearchOptimizer(BaseOptimizer):
     """
 
     model_requirements = (LossTextAccessMixin,)
-    # Optimizer also have optional flow for token-level loss access (`use_model_with_token_inputs`)
-    # [TODO consider decouple to two different optimizers (`TokenBeamSearchOptimizer`) for clarity (according to the `use_model_with_token_inputs` flows)]
 
     def __init__(
         self,
@@ -54,7 +48,6 @@ class BeamSearchOptimizer(BaseOptimizer):
         top_k: Optional[int] = None,
         temperature: float = 1.0,
         token_constraints: TokenConstraints = TokenConstraints(),
-        use_model_with_token_inputs: bool = False,
     ):
         """
         Initializes the BeamSearch Optimizer.
@@ -76,16 +69,13 @@ class BeamSearchOptimizer(BaseOptimizer):
                 If None, samples from full distribution (as in original BEAST paper).
             temperature (float): Sampling temperature. Default: 1.0 (as in paper)
             token_constraints (TokenConstraints): An object to manage token blacklisting.
-            use_model_with_token_inputs (bool): Whether we should compute loss on the target model in token-level. Otherwise, we compute loss in text-level by decoding the candidate triggers and querying the model with the full text (including the decoded trigger). Defaults to the latter (False).
-                - For instance, in BEAST the target model and the util-lm are the same.
-                - In other attacks, such as AdvDecoding, the util-lm and the target model are different (could even be of different architectures), so we'd set this to False.
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
         # define the util LM model (defaults to the attacked model)
         if util_lm is None:
             # shallow copies the model object:
-            # (we do this so each model will have its own state, specifically for inputmanagement)
+            # (we do this so each model will have its own state, specifically for input-management)
             import copy
             util_lm = copy.copy(model)
         self.util_lm = util_lm
@@ -100,12 +90,6 @@ class BeamSearchOptimizer(BaseOptimizer):
         self.top_k = top_k
         self.temperature = temperature
         self.token_constraints = token_constraints
-        self.use_model_with_token_inputs = use_model_with_token_inputs
-        if use_model_with_token_inputs:
-            if not isinstance(self.model, LossTokenAccessMixin):
-                raise ValueError("use_model_with_token_inputs is True, but the model does not support token-level loss access. Please set use_model_with_token_inputs to False or use a model that supports token-level loss access.")
-            if self.util_lm.tokenizer != self.model.tokenizer:
-                raise ValueError("use_model_with_token_inputs is True, but util_lm and model have different tokenizers. Please set use_model_with_token_inputs to False or ensure that util_lm and model have the same tokenizer.")
 
     def optimize_trigger(
         self,
@@ -134,14 +118,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             templates=[self.util_lm_prefix] * len(templates) if self.util_lm_prefix is not None else templates,
             targets=targets,
         )
-        if self.use_model_with_token_inputs:
-            # If model has token-level loss access, we use token-level inputs
-            self.model.set_inputs_from_tokens(
-                templates=templates,
-                targets=targets,
-            )
-        else:
-            self.model.set_inputs_from_texts(templates=templates, targets=targets)
+        self.model.set_inputs_from_texts(templates=templates, targets=targets)
 
         util_tokenizer = self.util_lm.tokenizer
         util_blacklist_ids = self.token_constraints.get_blacklist_ids(
@@ -214,20 +191,11 @@ class BeamSearchOptimizer(BaseOptimizer):
             )  # append candidate tokens -> (beam * branching_factor, len+1)
 
             # 5. Compute losses for all beam x branching_factor candidate triggers
-            if not self.use_model_with_token_inputs:
-                # Model computes loss in text-level
-                candidate_triggers_text = self.util_lm.tokenizer.decode_triggers(candidate_triggers)
-                losses = self.model.compute_loss_from_texts(
-                    candidate_triggers_text,
-                    loss_func=self.loss_func
-                )
-            else:
-                # In that case, models share tokenizer, we can directly compute loss without decoding
-                assert self.util_lm.tokenizer == self.model.tokenizer, "Models must share tokenizer to compute loss in token-level."
-                model_candidate_triggers = candidate_triggers
-                losses = self.model.compute_loss_from_tokens(
-                    model_candidate_triggers, loss_func=self.loss_func
-                )
+            candidate_triggers_text = self.util_lm.tokenizer.decode_triggers(candidate_triggers)
+            losses = self.model.compute_loss_from_texts(
+                candidate_triggers_text,
+                loss_func=self.loss_func
+            )
 
             # 6. Select top beam_size candidates with lowest loss, keep their trigger ids
             top_losses, top_indices = torch.topk(losses, self.beam_size, largest=False)
@@ -255,7 +223,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             trigger_strs=trigger_strings,
         )
         self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        self.model.reset_inputs_from_tokens()
+        self.model.reset_inputs_from_texts()
         self.util_lm.reset_inputs_from_tokens()
         return result
 

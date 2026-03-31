@@ -33,6 +33,8 @@ from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
 
+_MAX_TOP_LOGPROBS = 20  # matches OpenAI/LiteLLM convention
+
 
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputManager(HuggingFaceTokenInputManager):
@@ -354,6 +356,7 @@ class LMHFModel(
         require_generation: bool = False,
         require_hidden_states: bool = False,
         require_attentions: bool = False,
+        require_first_token_logprobs: bool = False,
         count_backward: bool = False,
         # generation kwargs (only used when require_generation=True):
         max_new_tokens: int = 128,
@@ -373,6 +376,7 @@ class LMHFModel(
             require_generation: Whether to perform generation, in addition to forward pass.
             require_hidden_states: Whether to return hidden states in the output.
             require_attentions: Whether to return attentions in the output.
+            require_first_token_logprobs: Whether to return log-probabilities for the top-20 candidates for the first generated token.
             count_backward: Whether this forward pass will be back-propagated through (set by gradient methods).
 
         Returns:
@@ -405,6 +409,22 @@ class LMHFModel(
             n_samples=input_embeds.shape[0],
             count_backward=count_backward,
         )
+
+        # Extract first-token logprobs, if requested
+        response_first_token_logprobs = None
+        if require_first_token_logprobs:
+            last_token_indices = input_attention_mask.sum(dim=1).long() - 1  # (bsz,)
+            batch_idx = torch.arange(input_embeds.shape[0], device=input_embeds.device)
+            first_tok_logits = outputs.logits[batch_idx, last_token_indices]  # (bsz, vocab)
+            first_tok_lps = torch.nn.functional.log_softmax(first_tok_logits, dim=-1)
+            top_lps, top_ids = torch.topk(
+                first_tok_lps, min(_MAX_TOP_LOGPROBS, first_tok_lps.shape[-1]), dim=-1
+            )  # (bsz, top_k)
+            response_first_token_logprobs = [
+                {self._tokenizer.decode([top_ids[b, i].item()]): top_lps[b, i].item()
+                 for i in range(top_ids.shape[-1])}
+                for b in range(first_tok_lps.shape[0])
+            ]
 
         # Extract prefill logits, if exist and requested
         prefill_response_logits = None
@@ -449,6 +469,7 @@ class LMHFModel(
             generated_response_strs=generated_response_strs,
             generated_response_ids=generated_response_ids,
             generated_response_logits=generated_response_logits,
+            response_first_token_logprobs=response_first_token_logprobs,
         )
 
     # ======================= Text-access methods =======================
@@ -470,6 +491,7 @@ class LMHFModel(
 
         require_target_prefill: bool = False,
         require_generation: bool = True,
+        require_first_token_logprobs: bool = False,
     ) -> ModelOutput:
         """
         Generate text completions. Always returns a ModelOutput.
@@ -483,6 +505,7 @@ class LMHFModel(
             max_new_tokens: The maximum number of new tokens to generate.
             require_target_prefill: Whether to prefill the target response in the model input (if provided in `message_targets`) and return the corresponding logits.
             require_generation: Whether to perform generation. If False, performs only the forward pass.
+            require_first_token_logprobs: Whether to return log-probabilities for the top-20 candidates for the first generated token.
         """
 
         assert input_texts is not None, "input_texts must be provided."
@@ -534,16 +557,20 @@ class LMHFModel(
                 dim=0,
             )  # (bsz, prefill_len, vocab_size)
 
-        # Logits at the last real token predict the first response token.
-        last_token_indices = inputs.attention_mask.sum(dim=1) - 1  # (bsz,)
-        batch_idx = torch.arange(len(input_texts), device=self.device)
-        first_tok_logits = fwd_out.logits[batch_idx, last_token_indices]  # (bsz, vocab)
-        first_tok_lps = torch.nn.functional.log_softmax(first_tok_logits, dim=-1)
-        first_token_logprobs = [
-            {self._tokenizer.decode([tid]): first_tok_lps[b, tid].item()
-                for tid in range(first_tok_lps.shape[-1])}
-            for b in range(first_tok_lps.shape[0])
-        ]
+        if require_first_token_logprobs:
+            # Logits at the last real token predict the first response token.
+            last_token_indices = inputs.attention_mask.sum(dim=1) - 1  # (bsz,)
+            batch_idx = torch.arange(len(input_texts), device=self.device)
+            first_tok_logits = fwd_out.logits[batch_idx, last_token_indices]  # (bsz, vocab)
+            first_tok_lps = torch.nn.functional.log_softmax(first_tok_logits, dim=-1)
+            top_lps, top_ids = torch.topk(
+                first_tok_lps, min(_MAX_TOP_LOGPROBS, first_tok_lps.shape[-1]), dim=-1
+            )  # (bsz, top_k)
+            first_token_logprobs = [
+                {self._tokenizer.decode([top_ids[b, i].item()]): top_lps[b, i].item()
+                 for i in range(top_ids.shape[-1])}
+                for b in range(first_tok_lps.shape[0])
+            ]
 
         # ---- Early return if generation not requested ----
         if not require_generation:
@@ -600,4 +627,5 @@ class LMHFModel(
             generated_response_logits=generation_logits,
             full_strs=full_strs,
             full_ids=full_toks,
+            response_first_token_logprobs=first_token_logprobs,
         )
