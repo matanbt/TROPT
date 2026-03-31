@@ -12,6 +12,7 @@ Optimizer Interface
    :show-inheritance:
 
 .. raw:: html
+
    <hr class="hr-major">
 
 Optimizers Implementations

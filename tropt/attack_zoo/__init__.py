@@ -16,7 +16,7 @@ from .PAL import run_gcgp_pal, run_pal, run_ral
 from .PEZ import run_pez
 from .PGD import run_pgd
 from .PRS import run_prs
-from .QCG import run_qcg, run_qcg_blackbox, run_qcg_whitebox
+from .QCG import run_gcgp_blackbox, run_gcgp_whitebox, run_qcg
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 from .SoftGCG import run_soft_gcg
 from .SoftPrompt import run_soft_prompt, run_soft_prompt_encoder_attack
@@ -46,8 +46,8 @@ ATTACK_RECIPES = {
     "pgd": run_pgd,
     "prs": run_prs,
     "qcg": run_qcg,
-    "qcg_blackbox": run_qcg_blackbox,
-    "qcg_whitebox": run_qcg_whitebox,
+    "gcgp_blackbox": run_gcgp_blackbox,
+    "gcgp_whitebox": run_gcgp_whitebox,
     "ral": run_ral,
     "rasliteplus": run_rasliteplus,
     "rasliteplus_llm": run_rasliteplus_llm,
