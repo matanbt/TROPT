@@ -24,8 +24,9 @@ from transformers import pipeline
 
 from scripts.attack_evaluate.evaluate_jailbreakness import evaluate_triggers
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
-from tropt.loss import PrefillCELoss
+from tropt.loss import FirstTokenNLLLoss, PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel
+from tropt.model.litellm_proxy.lm import LiteLLMModel
 from tropt.optimizer import (
     ARCAOptimizer,
     AutoPromptOptimizer,
@@ -50,12 +51,17 @@ from tropt.tracker import WandbTracker
 # ─── Constants ───────────────────────────────────────────────────────────────
 WANDB_ENTITY = "matanbt"           # set to your wandb entity
 WANDB_PROJECT = "tropt-optbench"
+WANDB_PROJECT_BB = "tropt-optbench-bb"  # black-box runs go to a separate project
 SEEDS = [42, 123, 777]
-MSG_IDS = list(range(5))          # first 5 ClearHarm messages
+MSG_IDS = list(range(10))          # first 10 ClearHarm messages
 TRIGGER_LEN = 20
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
-UTIL_MODEL = "HuggingFaceTB/SmolLM2-1.7B-Instruct"   # utility LM for AdvDecoding
+UTIL_MODEL = "HuggingFaceTB/SmolLM2-1.7B-Instruct"   # utility LM for AdvDecoding / proxy
+
+## Black-box experiment setting:
+BB_TARGET_TOKEN = "Sure"          # first-token target for black-box loss
 _RUN_TYPE = "optbench_whitebox"
+_RUN_TYPE_BB = "optbench_blackbox"
 
 _LOSS = PrefillCELoss()
 _TC = TokenConstraints()
@@ -236,7 +242,79 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
         is_soft=True),
 ]
 
+_BB_LOSS = FirstTokenNLLLoss(target_token=BB_TARGET_TOKEN)
+
+BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
+    # ── Zeroth-order optimizers (text-access only, no proxy needed) ──────────
+    OptimizerConfig("random_search",
+        lambda model, tracker, seed, **_: RandomSearchOptimizer(
+            model=model, loss=_BB_LOSS, tracker=tracker, seed=seed,
+            num_steps=500, n_candidates=128,
+            token_constraints=_TC,
+        )),
+    # ── Proxy-based optimizers (util_lm provides gradients / token-level proxy) ─
+    OptimizerConfig("gcgplus_rand",
+        lambda model, tracker, seed, util_lm=None, **_: GCGPlusOptimizer(
+            model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
+            num_steps=500, candidate_selection="random",
+            n_candidates=512, sample_topk=256, sample_n_replace=(1, 1),
+            candidate_oversample_factor=1.1,
+            token_constraints=_TC, use_retokenize=True,
+        ),
+        needs_util_lm=True),
+    OptimizerConfig("pal",
+        lambda model, tracker, seed, util_lm=None, **_: PALOptimizer(
+            model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
+            candidate_selection="gradient", num_steps=500,
+            n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,
+            sample_n_replace=1,
+            candidate_oversample_factor=1.1,
+            token_constraints=_TC,
+        ),
+        needs_util_lm=True),
+    OptimizerConfig("ral",
+        lambda model, tracker, seed, util_lm=None, **_: PALOptimizer(
+            model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
+            candidate_selection="random", num_steps=500,
+            n_candidates=32, sample_topk=256, n_candidates_after_proxy_filter=None,
+            sample_n_replace=1,
+            candidate_oversample_factor=1.1,
+            token_constraints=_TC,
+        ),
+        needs_util_lm=True),
+    OptimizerConfig("qcg",
+        lambda model, tracker, seed, util_lm=None, **_: QCGOptimizer(
+            model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
+            num_steps=500, n_proxy_candidates=8192, n_target_candidates=32,
+            buffer_size=128, candidate_oversample_factor=1.1,
+            token_constraints=_TC,
+        ),
+        needs_util_lm=True),
+    # ── Beam-search / decoding-based optimizers ─────────────────────────────
+    OptimizerConfig("beast",
+        lambda model, tracker, seed, util_lm=None, **_: BeamSearchOptimizer(
+            model=model, loss=_BB_LOSS, tracker=tracker, seed=seed,
+            util_lm=util_lm,
+            num_steps=TRIGGER_LEN,
+            beam_size=15, branching_factor=15,
+            top_k=None,
+            token_constraints=_TC,
+        ),
+        needs_util_lm=True),
+    OptimizerConfig("adv_decoding",
+        lambda model, tracker, seed, util_lm=None, **_: BeamSearchOptimizer(
+            model=model, loss=_BB_LOSS, tracker=tracker, seed=seed,
+            util_lm=util_lm,
+            util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",
+            num_steps=TRIGGER_LEN,
+            beam_size=96, branching_factor=10, top_k=10,
+            temperature=1.0, token_constraints=_TC,
+        ),
+        needs_util_lm=True),
+]
+
 _OPT_BY_NAME = {cfg.name: cfg for cfg in WHITEBOX_OPTIMIZER_CONFIGS}
+_BB_OPT_BY_NAME = {cfg.name: cfg for cfg in BLACKBOX_OPTIMIZER_CONFIGS}
 app = typer.Typer()
 
 # TOOD random initial trigger -- from VALID ids!
@@ -250,9 +328,9 @@ def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
     return f"optbench[{opt_name},{_model_short(model_name)},m={msg_id},s={seed}]"
 
 
-def _finished_run_names() -> set[str]:
+def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
     api = wandb.Api()
-    return {r.name for r in api.runs(f"{WANDB_ENTITY}/{WANDB_PROJECT}", filters={"state": "finished"})}
+    return {r.name for r in api.runs(f"{WANDB_ENTITY}/{project}", filters={"state": "finished"})}
 
 
 # ─── Commands ────────────────────────────────────────────────────────────────
@@ -343,6 +421,95 @@ def whitebox(
                 })
                 tracker.finish()
 
+
+
+@app.command()
+def blackbox(
+    model_name: str = typer.Option("openai/gpt-4o-mini", help="LiteLLM model identifier"),
+    msg_ids: List[int] = typer.Option(MSG_IDS, help="ClearHarm message IDs"),
+    seeds: List[int] = typer.Option(SEEDS, help="Random seeds"),
+    optimizers: List[str] = typer.Option(
+        [c.name for c in BLACKBOX_OPTIMIZER_CONFIGS],
+        help="Optimizer names to run",
+    ),
+    skip_existing: bool = typer.Option(True, help="Skip already-finished wandb runs"),
+):
+    """Run black-box optimizers against an API model via LiteLLM + FirstTokenNLLLoss."""
+    selected = [_BB_OPT_BY_NAME[n] for n in optimizers]
+
+    finished: set[str] = _finished_run_names(WANDB_PROJECT_BB) if skip_existing else set()
+    print(f"Skipping {len(finished)} already-finished runs.")
+
+    df = pd.read_csv(CLEARHARM_PATH)
+
+    target_model = LiteLLMModel(model_name=model_name)
+
+    # Load utility LM only if any selected optimizer needs it (proxy / beam generation)
+    util_lm = None
+    if any(cfg.needs_util_lm for cfg in selected):
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"Loading utility LM: {UTIL_MODEL}")
+        util_lm = LMHFModel(
+            model_name=UTIL_MODEL, device=device,
+            use_prefix_cache=False, dtype="bfloat16",
+        )
+
+    for msg_id in msg_ids:
+        row = df.iloc[msg_id]
+        instruction: str = row["message_template"]
+        target: str = row["target_response_prefix"]
+
+        for cfg in selected:
+            for seed in seeds:
+                run_name = _run_name(cfg.name, model_name, msg_id, seed)
+
+                if skip_existing and run_name in finished:
+                    print(f"  skip  {run_name}")
+                    continue
+                print(f"  run   {run_name}")
+
+                tracker = WandbTracker(
+                    run_name,
+                    tags=[_RUN_TYPE_BB, cfg.name],
+                    project_name=WANDB_PROJECT_BB,
+                    entity=WANDB_ENTITY,
+                    config_dump={
+                        "run_type": _RUN_TYPE_BB,
+                        "model_name": model_name,
+                        "optimizer_name": cfg.name,
+                        "msg_id": msg_id,
+                        "seed": seed,
+                        "optimized_instruction": instruction,
+                        "optimized_target": target,
+                        "loss_name": "FirstTokenNLL",
+                        "target_token": BB_TARGET_TOKEN,
+                        "is_soft": cfg.is_soft,
+                    },
+                )
+
+                torch.manual_seed(seed)
+                target_model.reset_usage_stats()
+                # Use the target model's OpenAI tokenizer for initial trigger;
+                # proxy-based optimizers will re-encode via their own tokenizer.
+                init_tokenizer = target_model.tokenizer
+                initial_trigger = tropt.optimizer.utils.token_initializers.get_printable_random_trigger(
+                    trigger_len=TRIGGER_LEN, tokenizer=init_tokenizer,
+                    blacklist_ids=_TC.get_blacklist_ids(init_tokenizer),
+                )
+                optimizer = cfg.optimizer_factory(
+                    target_model, tracker, seed, util_lm=util_lm,
+                )
+                optimizer.optimize_trigger(
+                    templates=[instruction],
+                    targets=Targets(target_response_strs=[target]),
+                    initial_trigger=initial_trigger,
+                )
+
+                usage = target_model.get_usage_stats()
+                wandb.run.summary.update({
+                    "final/total_tokens": usage.get("total_input_tokens"),
+                })
+                tracker.finish()
 
 
 if __name__ == "__main__":
