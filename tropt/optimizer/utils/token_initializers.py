@@ -1,5 +1,4 @@
 from tropt.model.model_base import BaseTokenizer
-from ty_extensions import Unknown
 import random
 import string
 from typing import List, Optional

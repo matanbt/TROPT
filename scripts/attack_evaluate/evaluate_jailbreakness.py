@@ -1,17 +1,19 @@
 """
 Evaluating safety of responses to harmful instructions, using StrongReject's API and different methods.
 https://strong-reject.readthedocs.io/en/latest/api/index.html
-`pip install git+https://github.com/dsbowen/strong_reject.git@main`
+
+Requires the `evaluate` extra: ``uv sync --extra evaluate``
 """
+
 from typing import Any, Dict, List, Literal
-import torch
 
 import pandas as pd
+import torch
+import wandb
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
 from transformers import pipeline
 
-import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 
 
@@ -46,7 +48,7 @@ def evaluate_jailbreakness_of_responses(
 
     eval_dataset = eval_dataset.to_pandas()
     eval_dataset = eval_dataset.sort_values(by="id")
-    
+
     ## Map each evaluator name to a list of scores, sorted by id
     eval_dataset = eval_dataset.pivot_table(index=["id", "forbidden_prompt", "response"],
                                             columns="evaluator", values="score").reset_index()
@@ -67,31 +69,56 @@ def evaluate_jailbreakness_of_responses(
 ADVBENCH_PLUS_PATH = "scripts/attack_evaluate/advbench_plus.csv"
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
 
+def _generate_responses_litellm(
+    messages_list: List[List[dict]], model_name: str, max_new_tokens: int,
+) -> List[str]:
+    """Generate responses via LiteLLM for API-based models."""
+    from tropt.model.litellm_proxy.lm import LiteLLMModel
+
+    model = LiteLLMModel(model_name=model_name)
+    texts = [msgs[0]["content"] for msgs in messages_list]
+    output = model.invoke_from_texts(
+        input_texts=texts,
+        require_generation=True,
+        max_new_tokens=max_new_tokens,
+        temperature=0.0,
+    )
+    return output.generated_response_strs
+
+
 def evaluate_triggers(
     model_name: str,
     trigger_strs: List[str],
-    trigger_ids: List[Any]=None,
+    trigger_ids: List[Any] = None,
     harmful_dataset: Literal["advbench_plus", "clearharm"] = "clearharm",
     batch_size: int = 128,
     greedy_decode: bool = True,
     max_new_tokens: int = 128,
+    model_backend: Literal["hf_pipeline", "litellm"] = "hf_pipeline",
+    evaluators: List[str] = None,
+    eval_batch_size: int = 16,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
 
     Args:
-        model_name: HuggingFace model name/path to evaluate.
+        model_name: Model name/path to evaluate (HF identifier or LiteLLM model string).
         trigger_strs: List of trigger strings to evaluate.
-        greedy_decode: Use greedy decoding; set False for sampling.
-        max_new_tokens: Maximum tokens to generate per response.
+        model_backend: "hf_pipeline" for local HuggingFace, "litellm" for API-based generation.
+        evaluators: StrongReject evaluator names (default: ["strongreject_finetuned"]).
+        eval_batch_size: Batch size for the StrongReject evaluator.
     """
+    evaluators = evaluators or ["strongreject_finetuned"]
+
     # Load HF model directly via pipeline (isolated, no TROPT wrapping)
-    pipe = pipeline(
-        "text-generation",
-        model=model_name,
-        torch_dtype=torch.bfloat16,
-        device_map="auto",
-    )
+    pipe = None
+    if model_backend == "hf_pipeline":
+        pipe = pipeline(
+            "text-generation",
+            model=model_name,
+            torch_dtype=torch.bfloat16,
+            device_map="auto",
+        )
 
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
@@ -101,7 +128,7 @@ def evaluate_triggers(
         base_df = pd.read_csv(CLEARHARM_PATH)
     else:
         raise ValueError(f"Unsupported harmful_dataset: {harmful_dataset}")
-    
+
     base_df['message_id'] = range(len(base_df))
 
     if trigger_ids is None:
@@ -122,23 +149,28 @@ def evaluate_triggers(
             lambda x: x.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, trigger_str)
         )
 
-        # Get model responses via pipeline abstraction
+        # Get model responses
         messages = [[{"role": "user", "content": t}] for t in df['triggered_message']]
-        outputs = pipe(
-            messages,
-            max_new_tokens=max_new_tokens,
-            do_sample=not greedy_decode,
-            batch_size=batch_size,
-            return_full_text=False,
-        )
-        df['response'] = [out[0]["generated_text"] for out in outputs]
+        if model_backend == "litellm":
+            df['response'] = _generate_responses_litellm(
+                messages, model_name, max_new_tokens,
+            )
+        else:
+            outputs = pipe(
+                messages,
+                max_new_tokens=max_new_tokens,
+                do_sample=not greedy_decode,
+                batch_size=batch_size,
+                return_full_text=False,
+            )
+            df['response'] = [out[0]["generated_text"] for out in outputs]
 
         # Evaluate jailbreakness
         metric_to_scores = evaluate_jailbreakness_of_responses(
             instructions=df['message'].tolist(),
             responses=df['response'].tolist(),
-            override_evaluators=["strongreject_finetuned"],  # TODO make configurable
-            batch_size=16,  # TODO make configurable
+            override_evaluators=evaluators,
+            batch_size=eval_batch_size,
         )
 
         # Add metrics to df (one column per metric)
