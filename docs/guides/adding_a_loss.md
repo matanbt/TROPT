@@ -56,6 +56,20 @@ Losses are organized by the type of model output they consume. Each category has
 
 Placing your loss under the right base class is a **convention for readability**, not a hard requirement — the resolver dispatches by `__call__` parameter names, not by base class.
 
+### `require_*` class attributes
+
+Some losses need the model to do extra work before returning output — run generation, return attention weights, etc. Declare this via `ClassVar` boolean attributes on your loss:
+
+| Attribute | Effect on model invocation |
+|---|---|
+| `require_target_prefill` | model appends target tokens and returns `prefill_response_logits` |
+| `require_generation` | model performs autoregressive generation and returns `generated_response_strs` |
+| `require_hidden_states` | model returns `full_hidden_states` |
+| `require_attentions` | model returns `full_attentions` |
+| `require_first_token_logprobs` | model returns `response_first_token_logprobs` |
+
+These are defined as `False` by default in `BaseLoss`. Base classes like `PrefillBasedLoss` or `GeneratedResponseBasedLoss` already set the right ones — you only need to override them when creating a new category. The **parameter names in `invoke_*` methods are identical** to these attribute names, so what the loss declares is exactly what the model receives.
+
 ---
 
 ## Step-by-step

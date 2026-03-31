@@ -125,7 +125,7 @@ def generate_from_soft_trigger(
     # Generate response from model:
     model_output = model.invoke_from_tokens(
         input_embeds=full_input_embeds.unsqueeze(0),  # (w/ batch dim)
-        do_generate=True,
+        require_generation=True,
         max_new_tokens=max_new_tokens,
         greedy_decode=True,
     )

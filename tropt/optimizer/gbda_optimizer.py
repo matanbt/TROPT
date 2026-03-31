@@ -90,6 +90,9 @@ class GBDAOptimizer(BaseOptimizer):
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
+        if temp_schedule not in ("linear", "gradual"):
+            raise ValueError(f"Unknown temp_schedule: {temp_schedule!r}. Must be 'linear' or 'gradual'.")
+
         self.num_steps = num_steps
         self.n_grad_samples = n_grad_samples
         self.learning_rate = learning_rate
@@ -108,9 +111,10 @@ class GBDAOptimizer(BaseOptimizer):
         """Get temperature for the current step based on the configured schedule."""
         if self.temp_schedule == "gradual":
             return self._gradual_temperature(step)
-        # Linear annealing
-        progress = min(1.0, step / max(1, self.num_steps - 1))
-        return self.temp_start + progress * (self.temp_end - self.temp_start)
+        if self.temp_schedule == "linear":
+            progress = min(1.0, step / max(1, self.num_steps - 1))
+            return self.temp_start + progress * (self.temp_end - self.temp_start)
+        raise ValueError(f"Unknown temp_schedule: {self.temp_schedule!r}. Must be 'linear' or 'gradual'.")
 
     def _gradual_temperature(self, step: int) -> float:
         """3-phase schedule (50/25/25): explore -> refine -> discretize."""

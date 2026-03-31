@@ -67,7 +67,7 @@ def run_soft_gcg(
         num_steps=2000,
         n_grad_samples=1,  # no multi-sample averaging — single forward/backward per step
         learning_rate=0.1,
-        temp_schedule="slushy",
+        temp_schedule="gradual",
         n_final_gumbel_samples=0,  # argmax only at the end
         gd_optimizer=torch.optim.Adam,
         use_lr_schedule=False,

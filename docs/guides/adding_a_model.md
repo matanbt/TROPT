@@ -329,6 +329,8 @@ self._tokenizer.add_special_tokens(
 
 **2. `invoke_from_tokens`** — The single entry point for all white/grey-box forward passes. Receives the input embeddings and attention mask (unpacked from `ModelInput` by the caller), runs the model, and returns a `ModelOutput`.
 
+The caller passes `require_*` boolean flags that mirror the loss's `require_*` class attributes — use them to gate optional behaviour (generation, hidden states, attentions, prefill). The parameter names are identical to the loss attributes: `require_target_prefill`, `require_generation`, `require_hidden_states`, `require_attentions`. Only populate the corresponding `ModelOutput` fields when the flag is `True`. `invoke_from_texts` follows the same convention for `require_target_prefill`, `require_generation`, and `require_first_token_logprobs`.
+
 ```python
 def invoke_from_tokens(self, input_embeds, input_attention_mask,
                        input_prefix_cache_kwargs=None, input_slices=None,
