@@ -327,7 +327,10 @@ def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
 
 def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
     api = wandb.Api()
-    return {r.name for r in api.runs(f"{WANDB_ENTITY}/{project}", filters={"state": "finished"})}
+    try:
+        return {r.name for r in api.runs(f"{WANDB_ENTITY}/{project}", filters={"state": "finished"})}
+    except ValueError:
+        return set()  # Project doesn't exist yet (no runs logged)
 
 
 # ─── Commands ────────────────────────────────────────────────────────────────
