@@ -1,5 +1,5 @@
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import litellm
 
@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_LITELLM_URL = "http://localhost:4000"
 
+# Maximum top_logprobs supported by OpenAI (and most providers).
+_MAX_TOP_LOGPROBS = 20
+
+# TODO if we load openai model, we can also add tokenizer; otherwise let's add here a default HF tokenizer (what's the most common tokenizer you can think of in HF? should we just default to OpenAI tokenizer? that's also possible by me!)
 
 class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
     """
@@ -62,17 +66,32 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         max_new_tokens: int = 128,
         temperature: float = 0.0,
 
-        do_generate: bool = False,
+        do_generate: bool = False,  # TODO change to require_generation
         do_prefill_target_response: bool = False,
+        do_first_token_logprobs: bool = False,
         **kwargs,
     ) -> ModelOutput:
         """
         Generates text completions for the given input texts using parallel execution.
+
+        Args:
+            input_texts: List of input strings.
+            do_generate: Whether to perform generation. Currently we default to performing genertion. By default we perform generation.
+            max_new_tokens: Maximum number of tokens to generate for each input. Relevnt for generation.
+            temperature: Sampling temperature for generation. Relevnt for generation.
+
+            do_first_token_logprobs: Whether to return log-probabilities for the first generated token. Default is False.
+
+            do_prefill_target_response: Whether to prefill the target response. Currently *not supported* in this class and will raise an error.
+            
+            **kwargs: Additional arguments to pass to the litellm completion call. 
+    
+        Returns:
+            ModelOutput containing the generated response strings and optionally the first-token logprobs.
         """
         if do_prefill_target_response:
             raise ValueError("Prefill target response is not supported in LiteLLMModel.")
-        if not do_generate:
-            raise ValueError("Currently LiteLLMModel only supports generation (do_generate=True).")
+        assert do_generate or do_first_token_logprobs, "At least one of do_generate or do_first_token_logprobs must be True."
 
         # Build prompts
         prompts = [ [{"role": "user", "content": text}] for text in input_texts]
@@ -87,6 +106,14 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             "temperature": temperature,
         }
 
+        if not do_generate:
+            # if generation is not needed, let's save the tokens
+            generation_kwargs["max_tokens"] = 1
+
+        if do_first_token_logprobs:
+            generation_kwargs["logprobs"] = True
+            generation_kwargs["top_logprobs"] = _MAX_TOP_LOGPROBS
+
         try:
             outputs = litellm.batch_completion(
                 model=self.model_name,
@@ -97,15 +124,19 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
                 **generation_kwargs,
                 **kwargs,
             )
-            responses: list[str] = [
-                output.choices[0].message.content.strip() if hasattr(output, 'choices') else ""
-                for output in outputs
-            ]
+            responses: list[str] = _parse_responses_from_outputs(outputs)
         except Exception as e:
             logger.warning(f"LiteLLM batch completion failed: {e}")
             responses = ["" for _ in input_texts]
+            outputs = []
+
+        # Parse first-token logprobs when requested
+        first_token_logprobs: Optional[List[Dict[str, float]]] = None
+        if do_first_token_logprobs:
+            first_token_logprobs = _parse_first_token_logprobs_from_outputs(outputs)
 
         # Track usage
+        # TODO this can silently fail - not good. we should wrap with `try` and have a warning
         total_tokens = sum(
             (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0)
             for output in outputs
@@ -117,6 +148,34 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         return ModelOutput(
             generated_response_strs=responses,
+            response_first_token_logprobs=first_token_logprobs,
         )
 
 
+## Parsing helpers: ##
+
+def _parse_responses_from_outputs(outputs) -> List[str]:
+    """Extract generated response strings from LiteLLM/OpenAI response objects."""
+    return [
+        output.choices[0].message.content.strip() for output in outputs
+    ]
+
+
+def _parse_first_token_logprobs_from_outputs(outputs) -> List[Dict[str, float]]:
+    """Extract first-token logprobs from LiteLLM/OpenAI response objects.
+
+    Returns a list of dicts (one per sample) mapping token strings to their
+    log-probabilities.  Falls back to an empty dict when logprobs are
+    unavailable for a given sample.
+    """
+    result: List[Dict[str, float]] = []
+    for output in outputs:
+        logprobs_dict: Dict[str, float] = {}
+        logprobs_obj = output.choices[0].logprobs
+        if logprobs_obj is not None and logprobs_obj.content:
+            first_token_info = logprobs_obj.content[0]
+            for top_lp in first_token_info.top_logprobs:
+                logprobs_dict[top_lp.token] = top_lp.logprob
+
+        result.append(logprobs_dict)
+    return result

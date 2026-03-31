@@ -210,6 +210,7 @@ class LossTextAccessMixin(TextAccessMixin):
                 message_targets=curr_targets,
                 do_prefill_target_response=loss_func.requires_target_prefill,
                 do_generate=loss_func.requires_generation,
+                do_first_token_logprobs=loss_func.requires_first_token_logprobs,
             )  # Returns ModelOutput with available data
 
             # Create ModelInput wrapper

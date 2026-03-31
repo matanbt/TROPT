@@ -39,6 +39,9 @@ class BaseLoss(ABC):
     requires_attentions: ClassVar[bool] = False
     """Whether this loss requires the model to return attention weights."""
 
+    requires_first_token_logprobs: ClassVar[bool] = False  # TODO cosider discarding this if it happens by default in OpenAI
+    """Whether this loss requires first-token log-probabilities from generation."""
+
     _last_loss_vals: Optional[Float[Tensor, "bsz"]] = None
     """Loss values from the most recent __call__, shape (bsz,). Set automatically by __init_subclass__."""
 
@@ -158,6 +161,10 @@ class CombinedLoss(BaseLoss):
     @property
     def requires_attentions(self) -> bool:
         return any(lf.requires_attentions for lf in self.loss_funcs)
+
+    @property
+    def requires_first_token_logprobs(self) -> bool:
+        return any(lf.requires_first_token_logprobs for lf in self.loss_funcs)
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""

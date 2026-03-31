@@ -338,6 +338,16 @@ class ModelOutput(pydantic.BaseModel):
     Response lengths may vary across samples.
     """
 
+    # === First-token logprobs (API and HF models with generation) ===
+    response_first_token_logprobs: Optional[List[Dict[str, float]]] = None
+    """Sparse log-probabilities for the first generated token.
+
+    List of length bsz, where each element is a dict mapping token strings to
+    their log-probability.  For API models this is typically the top-k returned
+    by the provider (e.g. top-20 from OpenAI); for HF models it can cover the
+    full vocabulary.
+    """
+
     # === Classification outputs (Classifier models) ===
     output_class_logits: Optional[Float[Tensor, "bsz n_classes"]] = None
     """Classification logits from classifier models (pre-softmax).

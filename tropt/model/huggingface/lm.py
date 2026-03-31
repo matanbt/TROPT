@@ -425,7 +425,7 @@ class LMHFModel(
                 "max_new_tokens": max_new_tokens,
                 "return_dict_in_generate": True,
             }
-            with torch.no_grad():
+            with torch.no_grad():  # generation doesn't require grad anyway
                 generation_output = self._model.generate(
                     inputs_embeds=input_embeds,
                     attention_mask=input_attention_mask,
@@ -490,20 +490,7 @@ class LMHFModel(
             assert message_targets is not None, "message_targets must be provided if do_prefill_target_response is True."
             assert message_targets.target_response_toks is not None and message_targets.target_response_strs is not None, "message_targets must include target_response_toks and target_response_strs if do_prefill_target_response is True."
 
-        hf_gen_kwargs = {
-            "max_new_tokens": max_new_tokens,
-            "do_sample": not greedy_decode,
-            "pad_token_id": self._tokenizer.pad_token_id,
-            "output_logits": True,
-            "return_dict_in_generate": True,
-        }
-
-        # 1. Setup prefill lengths
-        prefill_len = 0
-        if do_prefill_target_response:
-            prefill_len = message_targets.target_response_toks.shape[0]
-
-        # 2. Apply chat template (user turn only; generation prompt adds assistant role marker)
+        # 1. Apply chat template (user turn only; generation prompt adds assistant role marker)
         assert isinstance(input_texts, list), "input_texts must be a list of strings."
         template_tok_ids = []
         for text in input_texts:
@@ -515,13 +502,15 @@ class LMHFModel(
                 )["input_ids"]
             )
 
-        # 3. Append prefill tokens to the prompt
-        if prefill_len > 0:
+        # 2. Append prefill tokens to the prompt
+        prefill_len = 0
+        if do_prefill_target_response:
+            prefill_len = message_targets.target_response_toks.shape[0]
             prefill_list = message_targets.target_response_toks.tolist()
             for prompt_toks in template_tok_ids:
                 prompt_toks.extend(prefill_list)
 
-        # 4. Pad and prep inputs
+        # 3. Pad and prep inputs
         assert self._tokenizer.padding_side == "left", "Tokenizer must use left padding for correct prefiling and generation. Please set `tokenizer.padding_side = 'left'`."
         inputs = self._tokenizer.pad(
             {"input_ids": template_tok_ids},
@@ -529,35 +518,52 @@ class LMHFModel(
             return_tensors="pt"
         ).to(self.device)
         padded_seq_len = inputs.input_ids.shape[1]
-
-        # 5a. Forward pass (currently only needed when prefill logits are requested)
-        # TODO optimize this code so it'll always run the forward pass and *reuse* it for generation, w/ caching
-        prefill_response_logits = None
-        if do_prefill_target_response:
-            with torch.no_grad():
-                fwd_out = self._model(**inputs, use_cache=False)
-            if prefill_len > 0:
-                start = padded_seq_len - prefill_len - 1
-                end   = padded_seq_len - 1
-                prefill_response_logits = torch.stack(
-                    [fwd_out.logits[i, start:end] for i in range(len(input_texts))],
-                    dim=0,
-                )  # (bsz, prefill_len, vocab_size)
-
-        # 5b. Early return if generation not requested
         n_prompt_tokens = inputs.input_ids.numel()
+
+        # ---- Shared forward pass (prefill logits and/or first-token logprobs) ----
+        prefill_response_logits = None
+        first_token_logprobs = None
+
+        fwd_out = self._model(**inputs, use_cache=False)
+
+        if do_prefill_target_response and prefill_len > 0:
+            start = padded_seq_len - prefill_len - 1
+            end   = padded_seq_len - 1
+            prefill_response_logits = torch.stack(
+                [fwd_out.logits[i, start:end] for i in range(len(input_texts))],
+                dim=0,
+            )  # (bsz, prefill_len, vocab_size)
+
+        # Logits at the last real token predict the first response token.
+        last_token_indices = inputs.attention_mask.sum(dim=1) - 1  # (bsz,)
+        batch_idx = torch.arange(len(input_texts), device=self.device)
+        first_tok_logits = fwd_out.logits[batch_idx, last_token_indices]  # (bsz, vocab)
+        first_tok_lps = torch.nn.functional.log_softmax(first_tok_logits, dim=-1)
+        first_token_logprobs = [
+            {self._tokenizer.decode([tid]): first_tok_lps[b, tid].item()
+                for tid in range(first_tok_lps.shape[-1])}
+            for b in range(first_tok_lps.shape[0])
+        ]
+
+        # ---- Early return if generation not requested ----
         if not do_generate:
             self._update_invoke_stats(
                 n_tokens=n_prompt_tokens,
                 n_samples=len(input_texts),
             )
             return ModelOutput(
-                prefill_response_logits=prefill_response_logits
-                # (full logits / full ids can be not aligned, so we currently don't provide them)
-                # TODO also populate with other available properties?
+                prefill_response_logits=prefill_response_logits,
+                response_first_token_logprobs=first_token_logprobs,
             )
 
-        # 5c. Generate
+        # ---- Generation ----
+        hf_gen_kwargs = {
+            "max_new_tokens": max_new_tokens,
+            "do_sample": not greedy_decode,
+            "pad_token_id": self._tokenizer.pad_token_id,
+            "output_logits": True,
+            "return_dict_in_generate": True,
+        }
         generation_output = self._model.generate(
             **inputs,
             **hf_gen_kwargs,
@@ -565,12 +571,12 @@ class LMHFModel(
 
         generation_logits = torch.stack(generation_output.logits, dim=1)  # (bsz, gen_seq_len, vocab_size)
 
-        # 6. Slice generated toks
+        # Slice generated toks
         # generate()'s `.sequences` is a list of tensors of shape (bsz, padded_seq_len [incl. prefill]+ gen_len);
         full_toks = generation_output.sequences
         generated_toks = [full_toks[i][padded_seq_len:] for i in range(len(full_toks))]
 
-        # 7. Post-processing & stats
+        # Post-processing & stats
         generation_strs = self._tokenizer.batch_decode(
             generated_toks,
             skip_special_tokens=True,

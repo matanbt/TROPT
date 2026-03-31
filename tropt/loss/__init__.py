@@ -24,6 +24,7 @@ from .text_losses import (
     BinaryLMJudgeLoss,
     # Concrete text losses
     ExternalTriggerPerplexityLoss,
+    FirstTokenNLLLoss,
     GeneratedResponseBasedLoss,
     InputFluencyLoss,
     ResponseHarmfulnessLoss,

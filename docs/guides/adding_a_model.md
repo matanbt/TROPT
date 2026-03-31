@@ -256,6 +256,8 @@ def compute_loss_from_tokens(
 
 The key line is `resolve_and_compute_loss(model_output, model_input, loss_func)` — this is the [unified loss resolution](../../tropt/loss/resolution.py) function that dispatches to the correct loss computation based on loss type. You don't implement loss logic yourself; you just provide the data via `ModelOutput` and `ModelInput`.
 
+Note that it is `compute_loss_*` duty to wrap/not wrap computations with `no_grad()`, for efficeincy. We assume that all calls to `compute_loss_*` requires not grad, as there is a dedicated method fo grad computation.
+
 `compute_grad_from_tokens` (required by `GradientTokenAccessMixin`) has the same per-template loop structure, but returns the **gradient of the loss w.r.t. the token input** instead of the loss itself. The returned tensor has shape `(n_candidates, trigger_seq_len, vocab_size)` — one gradient value per token position per vocabulary entry, telling the optimizer which substitutions would most reduce the loss. How you compute this gradient is up to your backend.
 
 ### FLOP counting

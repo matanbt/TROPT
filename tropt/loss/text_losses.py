@@ -7,7 +7,7 @@ for unified loss resolution to work properly.
 import logging
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from typing import Annotated, Any, ClassVar, List, Optional, Set
+from typing import Annotated, Any, ClassVar, Dict, List, Optional, Set
 
 import torch
 import transformers
@@ -226,6 +226,66 @@ class ResponseHarmfulnessLoss(BinaryLMJudgeLoss, GeneratedResponseBasedLoss):
         generated_response_strs: Annotated[List[str], "bsz"],
     ) -> Float[torch.Tensor, "bsz"]:
         return -self._compute_scores(generated_response_strs)  # minimizing = maximizing YES (harmful)
+
+
+############################
+
+@dataclass
+class FirstTokenNLLLoss(TextBasedLoss):
+    """Negative log-likelihood of a target token in the model's first generated token.
+
+    From Andriushchenko et al., "Jailbreaking Leading Safety-Aligned LLMs with
+    Simple Adaptive Attacks" (2024).  The model is queried with ``max_tokens=1``
+    and ``top_logprobs`` enabled.  The loss is the negative log-probability of
+    ``target_token`` among the returned logprobs.  If the target token is not in
+    the top-k, the loss is ``missing_logprob_value`` (default ``inf``, matching
+    the paper's ``-(-inf) = inf``).
+
+    To account for tokenizer quirks (leading space), the lookup tries both
+    ``target_token`` and ``" " + target_token`` and takes the better one.
+    """
+
+    requires_first_token_logprobs: ClassVar[bool] = True  # TODO make this `require_first_token_logprobs` and make sure the `invoke_from_*` use the same naming convention to avoid confusion! go over all of the requires_* flags and all of the model invoke methods
+    is_differentiable: ClassVar[bool] = False
+
+    target_token: str = "Sure"
+    """First target token whose probability we maximise."""
+
+    missing_logprob_value: float = float("inf")
+    """Loss returned when the target token is absent from the top-k logprobs."""
+
+    def __call__(
+        self,
+        response_first_token_logprobs: List[Dict[str, float]],
+    ) -> Float[torch.Tensor, "bsz"]:
+        losses = []
+        for logprobs_dict in response_first_token_logprobs:
+            logprob = self._extract_logprob(logprobs_dict)
+            losses.append(-logprob)  # NLL: minimizing = maximizing logprob
+
+        return torch.tensor(losses, dtype=torch.float32)
+
+    def _extract_logprob(self, logprobs_dict: Dict[str, float]) -> float:
+        """
+        Returns the target token's logprob, handling leading-space variants.
+
+        Follows PRS implementation: https://github.com/tml-epfl/llm-adaptive-attacks/blob/main/utils.py#L60
+        """
+        candidates = []
+
+        # Define tokens we mark as matching to the target
+        potential_target_tokens: set[str] = {self.target_token, " " + self.target_token}
+
+        # Collect all matches
+        for token in potential_target_tokens:
+            if token in logprobs_dict:
+                candidates.append(logprobs_dict[token])
+
+        # If no candidates found, return the missing value;
+        if len(candidates) == 0:
+            return self.missing_logprob_value
+        
+        return max(candidates)
 
 
 ############################
