@@ -1,5 +1,0 @@
-defaults:
-  - huggingface-encoder/default@_here_
-  - _self_
-  
-model_name: "sentence-transformers/all-MiniLM-L6-v2"

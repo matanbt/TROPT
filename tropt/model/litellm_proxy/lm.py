@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Optional
-
+import torch
 import litellm
 
 from tropt.common import ModelOutput

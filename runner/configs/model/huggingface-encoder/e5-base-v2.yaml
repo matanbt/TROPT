@@ -1,5 +1,0 @@
-defaults:
-  - huggingface-encoder/default@_here_
-  - _self_
-  
-model_name: "intfloat/e5-base-v2"

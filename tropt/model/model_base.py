@@ -24,6 +24,13 @@ class BaseModel(ABC):
     def __init__(self, model_name: str):
         pass
 
+    @property
+    def device(self):
+        """
+        Defaults to available accelerator. Should be overriden if the model is local, and on a specific device.
+        """
+        return 'cuda' if torch.cuda.is_available() else 'cpu'
+
     @abstractmethod
     def __call__(self, *args, **kwargs):
         """
