@@ -8,10 +8,13 @@
 **Discrete text trigger optimization toward any goal, with any optimizer, for any NLP model**
 
 
+[![PyPI](https://img.shields.io/pypi/v/tropt?style=flat-square&color=blue)](https://pypi.org/project/tropt/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Transformers](https://img.shields.io/badge/transformers-%E2%89%A54.40-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
+[![Transformers](https://img.shields.io/badge/transformers-%E2%89%A55.3-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://opensource.org/licenses/MIT)
-<!-- [![Ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff) -->
+[![Docs](https://img.shields.io/badge/docs-online-green?style=flat-square)](https://matanbt.github.io/tropt/)
+[![Tests](https://img.shields.io/github/actions/workflow/status/matanbt/tropt/test.yml?branch=main&style=flat-square&label=tests)](https://github.com/matanbt/tropt/actions/workflows/test.yml)
+[![Ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
 <!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b?style=flat-square)](https://arxiv.org/) -->
 
 </div>
