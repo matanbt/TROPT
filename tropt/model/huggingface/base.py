@@ -593,16 +593,16 @@ class HuggingFaceBackendModel:
                         trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
                         # loss-conditional flags:
-                        do_append_embeds=loss_func.requires_target_prefill,
+                        do_append_embeds=loss_func.require_target_prefill,
                     )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.requires_target_prefill,
-                        do_generate=loss_func.requires_generation,
-                        return_hidden_states=loss_func.requires_hidden_states,
-                        return_attentions=loss_func.requires_attentions,
+                        require_target_prefill=loss_func.require_target_prefill,
+                        require_generation=loss_func.require_generation,
+                        require_hidden_states=loss_func.require_hidden_states,
+                        require_attentions=loss_func.require_attentions,
                         count_backward=True,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
@@ -692,7 +692,7 @@ class HuggingFaceBackendModel:
                         chosen_template_idx=template_idx,
 
                         # loss-conditional flags:
-                        do_append_embeds=loss_func.requires_target_prefill,
+                        do_append_embeds=loss_func.require_target_prefill,
                     )
 
                     # 3. Forward pass
@@ -700,10 +700,10 @@ class HuggingFaceBackendModel:
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.requires_target_prefill,
-                        do_generate=loss_func.requires_generation,
-                        return_hidden_states=loss_func.requires_hidden_states,
-                        return_attentions=loss_func.requires_attentions,
+                        require_target_prefill=loss_func.require_target_prefill,
+                        require_generation=loss_func.require_generation,
+                        require_hidden_states=loss_func.require_hidden_states,
+                        require_attentions=loss_func.require_attentions,
                         count_backward=True,
                     )
 
@@ -796,16 +796,16 @@ class HuggingFaceBackendModel:
                     chosen_template_idx=template_idx,
 
                     # loss-conditional flags:
-                    do_append_embeds=loss_func.requires_target_prefill,
+                    do_append_embeds=loss_func.require_target_prefill,
                 )
                 model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
-                        do_prefill_target_response=loss_func.requires_target_prefill,
-                        do_generate=loss_func.requires_generation,
-                        return_hidden_states=loss_func.requires_hidden_states,
-                        return_attentions=loss_func.requires_attentions,
+                        require_target_prefill=loss_func.require_target_prefill,
+                        require_generation=loss_func.require_generation,
+                        require_hidden_states=loss_func.require_hidden_states,
+                        require_attentions=loss_func.require_attentions,
                     )
                 loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)
@@ -825,10 +825,10 @@ class HuggingFaceBackendModel:
         input_embeds: Float[Tensor, "bsz seq_len d_model"],
         input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None,
 
-        do_prefill_target_response: bool = False,
-        do_generate: bool = False,
-        return_hidden_states: bool = False,
-        return_attentions: bool = False,
+        require_target_prefill: bool = False,
+        require_generation: bool = False,
+        require_hidden_states: bool = False,
+        require_attentions: bool = False,
         count_backward: bool = False,
         **kwargs,
     ) -> ModelOutput:
@@ -839,13 +839,13 @@ class HuggingFaceBackendModel:
                 the input embeddings with the trigger merged in; if provided, used instead of any other potential input.
             input_attention_mask: Optional[Int[Tensor, "bsz seq_len"]] = None
                 the attention mask matching the input embeddings
-            do_prefill_target_response: bool
+            require_target_prefill: bool
                 whether to prefill the target response, and return the corresponding logits (e.g., for LMs).
-            do_generate: bool
+            require_generation: bool
                 whether to perform autoregressive generation after the forward pass (for LMs).
-            return_hidden_states: bool
+            require_hidden_states: bool
                 whether to return the hidden states from the model output.
-            return_attentions: bool
+            require_attentions: bool
                 whether to return the attention weights from the model output.
             count_backward: bool
                 whether this forward pass will be back-propagated through (set by gradient methods). Could be used by FLOP counters.

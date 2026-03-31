@@ -28,7 +28,7 @@ class PrefillBasedLoss(BaseLoss):
     Using this loss usually implies that the model will prefill the response with these target tokens.
     """
 
-    requires_target_prefill: ClassVar[bool] = True
+    require_target_prefill: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -245,7 +245,7 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 class AttentionBasedLoss(BaseLoss):
     """Loss computed on model attention weights (`full_attentions`)."""
 
-    requires_attentions: ClassVar[bool] = True
+    require_attentions: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -339,7 +339,7 @@ class SimilarityLoss(EmbeddingBasedLoss):
 class HiddenStateBasedLoss(BaseLoss):
     """Loss computed on model hidden states (`full_hidden_states`)."""
 
-    requires_hidden_states: ClassVar[bool] = True
+    require_hidden_states: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(

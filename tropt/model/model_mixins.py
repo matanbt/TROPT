@@ -83,8 +83,8 @@ class InvokeTokenAccessMixin(TokenAccessMixin):
         input_ids: Optional[Float[Tensor, "bsz seq_len"]] = None,
 
         message_targets: Optional[MessageTargets] = None,
-        do_prefill_target_response: bool = False,
-        do_generate: bool = False,
+        require_target_prefill: bool = False,
+        require_generation: bool = False,
         **kwargs
     ) -> ModelOutput:
         """Perform a forward pass from token-level (embedding) inputs.
@@ -93,8 +93,8 @@ class InvokeTokenAccessMixin(TokenAccessMixin):
             input_ids: Token IDs of the full input sequence (incl. trigger), plus optionally target tokens. Shape: (batch_size, seq_len).
 
             message_targets: Optional MessageTargets object containing the targets for the messages.
-            do_prefill_target_response: Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
-            do_generate: Whether to perform autoregressive generation after the forward pass (for LMs).
+            require_target_prefill: Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
+            require_generation: Whether to perform autoregressive generation after the forward pass (for LMs).
 
         Returns:
             ModelOutput with the fields this model can provide.
@@ -208,9 +208,9 @@ class LossTextAccessMixin(TextAccessMixin):
             model_output = self.invoke_from_texts(
                 input_texts=curr_texts,
                 message_targets=curr_targets,
-                do_prefill_target_response=loss_func.requires_target_prefill,
-                do_generate=loss_func.requires_generation,
-                do_first_token_logprobs=loss_func.requires_first_token_logprobs,
+                require_target_prefill=loss_func.require_target_prefill,
+                require_generation=loss_func.require_generation,
+                require_first_token_logprobs=loss_func.require_first_token_logprobs,
             )  # Returns ModelOutput with available data
 
             # Create ModelInput wrapper

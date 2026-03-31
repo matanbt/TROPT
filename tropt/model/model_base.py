@@ -170,7 +170,7 @@ class LMBaseModel(BaseModel):
             input_texts (List[str]): List of input prompt strings to generate completions for.
             return_full_output (bool): If True, returns the full ModelOutput. If False, returns just the generated response strings.
         """
-        result: ModelOutput = self.invoke_from_texts(input_texts=input_texts, do_generate=True, **kwargs)
+        result: ModelOutput = self.invoke_from_texts(input_texts=input_texts, require_generation=True, **kwargs)
         if return_full_output:
             return result
         assert result.generated_response_strs is not None, "Model did not generate response strings"
@@ -182,8 +182,8 @@ class LMBaseModel(BaseModel):
         input_texts: List[str],
 
         message_targets: Optional[MessageTargets] = None,
-        do_prefill_target_response: bool = False,
-        do_generate: bool = False,
+        require_target_prefill: bool = False,
+        require_generation: bool = False,
         **kwargs
     ) -> ModelOutput:
         """
@@ -192,8 +192,8 @@ class LMBaseModel(BaseModel):
         Args:
             input_texts (List[str]): List of input strings.
             message_targets (Optional[MessageTargets]): Targets for the messages.
-            do_prefill_target_response (bool): Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
-            do_generate (bool): Whether to perform autoregressive generation after the forward pass (for LMs).
+            require_target_prefill (bool): Whether to prefill the target response from `message_targets`, and return the corresponding logits (e.g., for LMs).
+            require_generation (bool): Whether to perform autoregressive generation after the forward pass (for LMs).
 
         Always returns ModelOutput with at least `generated_response_strs` populated.
         This method also updates the usage stats (e.g., token counts, forward call counts, etc.). It must call `_update_invoke_stats` after each raw model call.

@@ -2,6 +2,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
+from jaxtyping import Int
 
 import torch
 from torch import Tensor
@@ -103,12 +104,21 @@ class TokenConstraints:
         )
         return blacklist_ids
 
-    def get_valid_token_ids(self, tokenizer, vocab_size: int, device) -> Tensor:
-        """
-        Returns a tensor of valid token ids (reverse of blacklist) based on the constraints.
-        Reuses the potentially cached blacklist for efficiency.
+    def get_whitelist_ids(
+        self,
+        tokenizer,
+        vocab_size: int,
+        device=None,
+        return_tensor: bool = False,
+    ) -> List[int] | Int[Tensor, "n_valid"]:
+        """Returns valid (non-blacklisted) token ids. Reuses the cached blacklist for efficiency.
+
+        Args:
+            return_tensor: If True, return a 1-D int tensor on `device` instead of a list.
+            device: Required when ``return_tensor=True``.
         """
         blacklist_ids = self.get_blacklist_ids(tokenizer, vocab_size)
-        token_mask = torch.ones(vocab_size, device=device, dtype=torch.bool)
-        token_mask[blacklist_ids] = False
-        return token_mask.nonzero(as_tuple=False).squeeze(-1)
+        whitelist_ids = [i for i in range(vocab_size) if i not in set(blacklist_ids)]
+        if return_tensor:
+            return torch.tensor(whitelist_ids, dtype=torch.long, device=device)
+        return whitelist_ids

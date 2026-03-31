@@ -350,12 +350,12 @@ class LMHFModel(
         # TODO make input_ids a second-priority option
 
         # computation flags:
-        do_prefill_target_response: bool = False,
-        do_generate: bool = False,
-        return_hidden_states: bool = False,
-        return_attentions: bool = False,
+        require_target_prefill: bool = False,
+        require_generation: bool = False,
+        require_hidden_states: bool = False,
+        require_attentions: bool = False,
         count_backward: bool = False,
-        # generation kwargs (only used when do_generate=True):
+        # generation kwargs (only used when require_generation=True):
         max_new_tokens: int = 128,
         greedy_decode: bool = True,
         **kwargs
@@ -369,21 +369,21 @@ class LMHFModel(
             input_prefix_cache_kwargs: Optional dict of prefix cache kwargs to pass to the model.
             input_slices: Optional dict mapping slice keys to slices for extracting specific parts of the output.
 
-            do_prefill_target_response: Whether the input includes a prefixed target, of which indices are marked by the input_slices, and we should extract it logits.
-            do_generate: Whether to perform generation, in addition to forward pass.
-            return_hidden_states: Whether to return hidden states in the output.
-            return_attentions: Whether to return attentions in the output.
+            require_target_prefill: Whether the input includes a prefixed target, of which indices are marked by the input_slices, and we should extract it logits.
+            require_generation: Whether to perform generation, in addition to forward pass.
+            require_hidden_states: Whether to return hidden states in the output.
+            require_attentions: Whether to return attentions in the output.
             count_backward: Whether this forward pass will be back-propagated through (set by gradient methods).
 
         Returns:
             ModelOutput: The output of the model containing logits, hidden states, and attentions as applicable.
         """
-        if return_attentions and self._model.config._attn_implementation != "eager":
+        if require_attentions and self._model.config._attn_implementation != "eager":
             logger.warning(
                 "AttentionBasedLoss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
-        if return_attentions and input_prefix_cache_kwargs:
+        if require_attentions and input_prefix_cache_kwargs:
             raise ValueError(
                 "Attention-based losses are incompatible with prefix caching; initialize model with `use_prefix_cache=False`. "
             )
@@ -395,8 +395,8 @@ class LMHFModel(
         outputs = self._model(
             inputs_embeds=input_embeds,
             attention_mask=input_attention_mask,
-            output_attentions=return_attentions,
-            output_hidden_states=return_hidden_states,
+            output_attentions=require_attentions,
+            output_hidden_states=require_hidden_states,
             **(input_prefix_cache_kwargs or {})
         )
 
@@ -408,8 +408,8 @@ class LMHFModel(
 
         # Extract prefill logits, if exist and requested
         prefill_response_logits = None
-        if do_prefill_target_response:
-            assert input_slices is not None, "input_slices must be provided to extract prefill logits when `do_prefill_target_response` is True."
+        if require_target_prefill:
+            assert input_slices is not None, "input_slices must be provided to extract prefill logits when `require_target_prefill` is True."
             response_slc = input_slices[SliceKey.APPENDED]
             prefill_response_logits = outputs.logits[:, response_slc.start - 1 : response_slc.stop - 1, :]  # (bsz, response_seq_len, vocab_size)
 
@@ -417,7 +417,7 @@ class LMHFModel(
         generated_response_strs = None
         generated_response_ids = None
         generated_response_logits = None
-        if do_generate:
+        if require_generation:
             hf_gen_kwargs = {
                 "do_sample": not greedy_decode,
                 "output_logits": True,
@@ -444,8 +444,8 @@ class LMHFModel(
         return ModelOutput(
             full_logits=outputs.logits,
             prefill_response_logits=prefill_response_logits,
-            full_attentions=torch.stack(outputs.attentions, dim=1) if return_attentions else None,
-            full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if return_hidden_states else None,  # (skips input embedding (layer 0))
+            full_attentions=torch.stack(outputs.attentions, dim=1) if require_attentions else None,
+            full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if require_hidden_states else None,  # (skips input embedding (layer 0))
             generated_response_strs=generated_response_strs,
             generated_response_ids=generated_response_ids,
             generated_response_logits=generated_response_logits,
@@ -468,8 +468,8 @@ class LMHFModel(
         greedy_decode: bool = True,
         max_new_tokens: int = 128,
 
-        do_prefill_target_response: bool = False,
-        do_generate: bool = True,
+        require_target_prefill: bool = False,
+        require_generation: bool = True,
     ) -> ModelOutput:
         """
         Generate text completions. Always returns a ModelOutput.
@@ -477,18 +477,18 @@ class LMHFModel(
 
         Args:
             input_texts: list of plain-text prompts.
-            message_targets: Optional MessageTargets object. Only relevant if `do_prefill_response` is True, in which case the target responses will be prefixed to the model output.
+            message_targets: Optional MessageTargets object. Only relevant if `require_target_prefill` is True, in which case the target responses will be prefixed to the model output.
 
             greedy_decode: Whether to use greedy decoding (vs. sampling) for generation.
             max_new_tokens: The maximum number of new tokens to generate.
-            do_prefill_target_response: Whether to prefill the target response in the model input (if provided in `message_targets`) and return the corresponding logits.
-            do_generate: Whether to perform generation. If False, performs only the forward pass.
+            require_target_prefill: Whether to prefill the target response in the model input (if provided in `message_targets`) and return the corresponding logits.
+            require_generation: Whether to perform generation. If False, performs only the forward pass.
         """
 
         assert input_texts is not None, "input_texts must be provided."
-        if do_prefill_target_response:
-            assert message_targets is not None, "message_targets must be provided if do_prefill_target_response is True."
-            assert message_targets.target_response_toks is not None and message_targets.target_response_strs is not None, "message_targets must include target_response_toks and target_response_strs if do_prefill_target_response is True."
+        if require_target_prefill:
+            assert message_targets is not None, "message_targets must be provided if require_target_prefill is True."
+            assert message_targets.target_response_toks is not None and message_targets.target_response_strs is not None, "message_targets must include target_response_toks and target_response_strs if require_target_prefill is True."
 
         # 1. Apply chat template (user turn only; generation prompt adds assistant role marker)
         assert isinstance(input_texts, list), "input_texts must be a list of strings."
@@ -504,7 +504,7 @@ class LMHFModel(
 
         # 2. Append prefill tokens to the prompt
         prefill_len = 0
-        if do_prefill_target_response:
+        if require_target_prefill:
             prefill_len = message_targets.target_response_toks.shape[0]
             prefill_list = message_targets.target_response_toks.tolist()
             for prompt_toks in template_tok_ids:
@@ -526,7 +526,7 @@ class LMHFModel(
 
         fwd_out = self._model(**inputs, use_cache=False)
 
-        if do_prefill_target_response and prefill_len > 0:
+        if require_target_prefill and prefill_len > 0:
             start = padded_seq_len - prefill_len - 1
             end   = padded_seq_len - 1
             prefill_response_logits = torch.stack(
@@ -546,7 +546,7 @@ class LMHFModel(
         ]
 
         # ---- Early return if generation not requested ----
-        if not do_generate:
+        if not require_generation:
             self._update_invoke_stats(
                 n_tokens=n_prompt_tokens,
                 n_samples=len(input_texts),

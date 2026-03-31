@@ -8,21 +8,22 @@ from tropt.model import LMBaseModel, LossTextAccessMixin
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_LITELLM_URL = "http://localhost:4000"
+_LITELLM_PROXY_URL = "http://localhost:4000"
 
 # Maximum top_logprobs supported by OpenAI (and most providers).
 _MAX_TOP_LOGPROBS = 20
 
-# TODO if we load openai model, we can also add tokenizer; otherwise let's add here a default HF tokenizer (what's the most common tokenizer you can think of in HF? should we just default to OpenAI tokenizer? that's also possible by me!)
-
 class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
-    """
-    A model wrapper for interacting with models via the LiteLLM proxy server.
-    This wrapper by default reaches out to a LiteLLM proxy server running at localhost:4000 (which in turn queries the requested model),
-    but can be configured to use any LiteLLM-compatible provider by specifying the `base_url` and `api_key` parameters.
+    """Model wrapper using LiteLLM as a unified interface to LLM providers.
 
-    The default setup requires a running LiteLLM proxy server:
-        litellm serve --host localhost --port 4000
+    By default operates in **library mode**: LiteLLM routes requests directly
+    to the provider based on the model name prefix (e.g. ``"openai/gpt-4o"``
+    -> OpenAI, ``"anthropic/claude-3.5-sonnet"`` -> Anthropic).  API keys are
+    read from environment variables (``OPENAI_API_KEY``, etc.).
+
+    Alternatively, set ``using_litellm_proxy=True`` and ``base_url`` to
+    connect via a running LiteLLM proxy server (``litellm --port 4000``),
+    which is mostly used for centralized key management or shared server setups.
     """
     _N_RETRIES: int = 5
     _RETRY_STRATEGY: str = "exponential_backoff_retry"
@@ -30,21 +31,25 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
     def __init__(
         self,
         model_name: str,
-        base_url: Optional[str] = DEFAULT_LITELLM_URL,
+        base_url: Optional[str] = None,
         api_key: Optional[str] = None,
         system_prompt: Optional[str] = None,
         max_concurrent_requests: int = 20,
-        using_litellm_proxy: bool = True,
+        using_litellm_proxy: bool = False,
         **client_kwargs,
     ):
         """
         Args:
-            model_name: The name of the model to query.
-            base_url: The base URL of the LiteLLM proxy server (e.g. "http://localhost:4000") or provider.
-            api_key: The API key (if required).
+            model_name: LiteLLM model identifier, e.g. ``"openai/gpt-4o-mini"``.
+            base_url: Override the provider URL.  Only needed when using a
+                LiteLLM proxy or a custom endpoint.
+            api_key: API key override (by default read from env vars).
             system_prompt: Optional system prompt to prepend.
             max_concurrent_requests: Maximum number of parallel requests when batching is not supported.
-            using_litellm_proxy: Whether to use LiteLLM proxy specific settings; should be True when connecting to a LiteLLM proxy server (default).
+            using_litellm_proxy: Set True when connecting to a LiteLLM proxy
+                server.  This sets ``base_url`` to ``localhost:4000`` (if not
+                already provided) and tells LiteLLM the endpoint speaks the
+                OpenAI protocol.
             **client_kwargs: Additional arguments for the litellm completion call.
         """
         self.model_name = model_name
@@ -52,13 +57,13 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         self._max_concurrent_requests = max_concurrent_requests
 
         self._client_kwargs = client_kwargs
-        if base_url:
+        if using_litellm_proxy:
+            self._client_kwargs.setdefault("base_url", base_url or _LITELLM_PROXY_URL)
+            self._client_kwargs["custom_llm_provider"] = "openai"
+        elif base_url:
             self._client_kwargs["base_url"] = base_url
         if api_key:
             self._client_kwargs["api_key"] = api_key
-        if using_litellm_proxy:
-            # LiteLLM proxy uses OpenAI-compatible API
-            self._client_kwargs['custom_llm_provider'] = 'openai'
 
     def invoke_from_texts(
         self,
@@ -66,9 +71,9 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         max_new_tokens: int = 128,
         temperature: float = 0.0,
 
-        do_generate: bool = False,  # TODO change to require_generation
-        do_prefill_target_response: bool = False,
-        do_first_token_logprobs: bool = False,
+        require_generation: bool = False,
+        require_target_prefill: bool = False,
+        require_first_token_logprobs: bool = False,
         **kwargs,
     ) -> ModelOutput:
         """
@@ -76,22 +81,22 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         Args:
             input_texts: List of input strings.
-            do_generate: Whether to perform generation. Currently we default to performing genertion. By default we perform generation.
-            max_new_tokens: Maximum number of tokens to generate for each input. Relevnt for generation.
-            temperature: Sampling temperature for generation. Relevnt for generation.
+            require_generation: Whether to perform generation.
+            max_new_tokens: Maximum number of tokens to generate. Relevant when require_generation=True.
+            temperature: Sampling temperature. Relevant when require_generation=True.
 
-            do_first_token_logprobs: Whether to return log-probabilities for the first generated token. Default is False.
+            require_first_token_logprobs: Whether to return log-probabilities for the first generated token. Default is False.
 
-            do_prefill_target_response: Whether to prefill the target response. Currently *not supported* in this class and will raise an error.
-            
-            **kwargs: Additional arguments to pass to the litellm completion call. 
-    
+            require_target_prefill: Whether to prefill the target response. Currently *not supported* in this class and will raise an error.
+
+            **kwargs: Additional arguments to pass to the litellm completion call.
+
         Returns:
             ModelOutput containing the generated response strings and optionally the first-token logprobs.
         """
-        if do_prefill_target_response:
+        if require_target_prefill:
             raise ValueError("Prefill target response is not supported in LiteLLMModel.")
-        assert do_generate or do_first_token_logprobs, "At least one of do_generate or do_first_token_logprobs must be True."
+        assert require_generation or require_first_token_logprobs, "At least one of require_generation or require_first_token_logprobs must be True."
 
         # Build prompts
         prompts = [ [{"role": "user", "content": text}] for text in input_texts]
@@ -106,11 +111,11 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             "temperature": temperature,
         }
 
-        if not do_generate:
+        if not require_generation:
             # if generation is not needed, let's save the tokens
             generation_kwargs["max_tokens"] = 1
 
-        if do_first_token_logprobs:
+        if require_first_token_logprobs:
             generation_kwargs["logprobs"] = True
             generation_kwargs["top_logprobs"] = _MAX_TOP_LOGPROBS
 
@@ -132,15 +137,18 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
 
         # Parse first-token logprobs when requested
         first_token_logprobs: Optional[List[Dict[str, float]]] = None
-        if do_first_token_logprobs:
+        if require_first_token_logprobs:
             first_token_logprobs = _parse_first_token_logprobs_from_outputs(outputs)
 
         # Track usage
-        # TODO this can silently fail - not good. we should wrap with `try` and have a warning
-        total_tokens = sum(
-            (output.usage.total_tokens if hasattr(output, 'usage') and hasattr(output.usage, 'total_tokens') else 0)
-            for output in outputs
-        )
+        try:
+            total_tokens = sum(
+                output.usage.total_tokens
+                for output in outputs
+            )
+        except Exception as e:
+            logger.warning(f"Failed to compute token usage stats: {e}")
+            total_tokens = 0
         self._update_invoke_stats(
             n_tokens=total_tokens,
             n_samples=len(input_texts),

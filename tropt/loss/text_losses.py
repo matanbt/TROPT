@@ -40,7 +40,7 @@ class TextBasedLoss(BaseLoss):
 class GeneratedResponseBasedLoss(TextBasedLoss):
     """Marker base for losses that operate on `generated_response_strs`."""
 
-    requires_generation: ClassVar[bool] = True
+    require_generation: ClassVar[bool] = True
 
     @abstractmethod
     def __call__(
@@ -245,7 +245,7 @@ class FirstTokenNLLLoss(TextBasedLoss):
     ``target_token`` and ``" " + target_token`` and takes the better one.
     """
 
-    requires_first_token_logprobs: ClassVar[bool] = True  # TODO make this `require_first_token_logprobs` and make sure the `invoke_from_*` use the same naming convention to avoid confusion! go over all of the requires_* flags and all of the model invoke methods
+    require_first_token_logprobs: ClassVar[bool] = True
     is_differentiable: ClassVar[bool] = False
 
     target_token: str = "Sure"

@@ -146,8 +146,8 @@ class RandomSearchOptimizer(BaseOptimizer):
         )
         trigger_len = trigger_ids.shape[0]
 
-        valid_token_ids = self.token_constraints.get_valid_token_ids(
-            tokenizer, tokenizer.vocab_size, device
+        valid_token_ids = self.token_constraints.get_whitelist_ids(
+            tokenizer, tokenizer.vocab_size, device, return_tensor=True
         )
         n_valid = len(valid_token_ids)
 

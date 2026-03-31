@@ -142,7 +142,7 @@ class PALOptimizer(BaseOptimizer):
         vocab_size = proxy_model.vocab_size
 
         blacklist_ids = self.token_constraints.get_blacklist_ids(proxy_tokenizer, vocab_size)
-        valid_token_ids = self.token_constraints.get_valid_token_ids(proxy_tokenizer, vocab_size, proxy_model.device)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(proxy_tokenizer, vocab_size, proxy_model.device, return_tensor=True)
 
         best = RunningBest()
         visited: Set[str] = set()  # track visited trigger strings to avoid re-eval

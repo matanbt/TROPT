@@ -26,20 +26,20 @@ class BaseLoss(ABC):
     """Whether this loss is back-propable. Set to False for losses that use external
     models, text generation, or other non-differentiable operations."""
 
-    requires_target_prefill: ClassVar[bool] = False
+    require_target_prefill: ClassVar[bool] = False
     """Whether this loss requires the model to prefill the target response tokens (appending
     them to the input, as a response prefix)."""
 
-    requires_generation: ClassVar[bool] = False
+    require_generation: ClassVar[bool] = False
     """Whether this loss requires autoregressive generation."""
 
-    requires_hidden_states: ClassVar[bool] = False
+    require_hidden_states: ClassVar[bool] = False
     """Whether this loss requires the model to provid the forward pass's hidden states."""
 
-    requires_attentions: ClassVar[bool] = False
+    require_attentions: ClassVar[bool] = False
     """Whether this loss requires the model to return attention weights."""
 
-    requires_first_token_logprobs: ClassVar[bool] = False  # TODO cosider discarding this if it happens by default in OpenAI
+    require_first_token_logprobs: ClassVar[bool] = False
     """Whether this loss requires first-token log-probabilities from generation."""
 
     _last_loss_vals: Optional[Float[Tensor, "bsz"]] = None
@@ -147,24 +147,24 @@ class CombinedLoss(BaseLoss):
         return all(lf.is_differentiable for lf in self.loss_funcs)
 
     @property
-    def requires_target_prefill(self) -> bool:
-        return any(lf.requires_target_prefill for lf in self.loss_funcs)
+    def require_target_prefill(self) -> bool:
+        return any(lf.require_target_prefill for lf in self.loss_funcs)
 
     @property
-    def requires_generation(self) -> bool:
-        return any(lf.requires_generation for lf in self.loss_funcs)
+    def require_generation(self) -> bool:
+        return any(lf.require_generation for lf in self.loss_funcs)
 
     @property
-    def requires_hidden_states(self) -> bool:
-        return any(lf.requires_hidden_states for lf in self.loss_funcs)
+    def require_hidden_states(self) -> bool:
+        return any(lf.require_hidden_states for lf in self.loss_funcs)
 
     @property
-    def requires_attentions(self) -> bool:
-        return any(lf.requires_attentions for lf in self.loss_funcs)
+    def require_attentions(self) -> bool:
+        return any(lf.require_attentions for lf in self.loss_funcs)
 
     @property
-    def requires_first_token_logprobs(self) -> bool:
-        return any(lf.requires_first_token_logprobs for lf in self.loss_funcs)
+    def require_first_token_logprobs(self) -> bool:
+        return any(lf.require_first_token_logprobs for lf in self.loss_funcs)
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """Check if the CombinedLoss contains a loss of the specified type."""
