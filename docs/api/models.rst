@@ -4,7 +4,7 @@ Models
 ======
 
 
-Data Classes
+I/O Classes
 ------------
 .. autoclass:: tropt.common.ModelInput
    :members:

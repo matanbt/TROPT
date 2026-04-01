@@ -87,7 +87,7 @@ class WandbTracker(BaseTracker):
             if isinstance(v, torch.Tensor):
                 try:
                     v = v.item()
-                except ValueError:
+                except (ValueError, RuntimeError):
                     continue
             sanitized[k] = v
         wandb.log(sanitized)
