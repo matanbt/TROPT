@@ -5,7 +5,6 @@ from typing import Optional
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -179,7 +178,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -187,10 +185,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
-
-        token_mask = torch.ones(vocab_size, device=self.model.device, dtype=torch.bool)
-        token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
@@ -200,7 +195,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         current_loss = float("inf")
 
         start_time = time.time()
-        pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
+        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
 
         # Form buffer_size initial triggers
         triggers_for_buffer = [trigger_ids]
@@ -223,14 +218,11 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         )
 
         trigger_str = tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
-        self.tracker.log({"loss": buffer.get_lowest_loss(), "trigger_str": trigger_str})
+        self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
         for step in pbar:
             n_flip = self.n_flip_scheduler.get_n_flip(step)
 
-            pbar.set_description(
-                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
-            )
 
             # Get the best trigger from the buffer
             trigger_ids = buffer.get_best_trigger()
@@ -379,14 +371,5 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 best_loss_global = min(best_loss_global, current_loss)
 
 
-        result = OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        self.model.reset_inputs_from_tokens()
-        return result
+        return best.to_result()
 

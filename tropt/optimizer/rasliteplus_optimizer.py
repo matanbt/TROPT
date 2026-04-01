@@ -1,12 +1,10 @@
 import logging
 import math
-from typing import Annotated, Any, List, Optional
+from typing import Optional
 
-import numpy as np
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -24,6 +22,7 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
@@ -138,7 +137,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         # We prepare inputs for both models.
@@ -162,12 +160,10 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         if isinstance(n_flip, float):
             n_flip = math.ceil(n_flip * trigger_seq_len)
 
-        loss_per_step = []
-        trigger_strings = []
-        trigger_ids_per_step = []
+        best = RunningBest()
         current_loss = float("inf")
 
-        pbar = tqdm(range(self.num_steps), desc="Optimizing with RASLITEPlus...")
+        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with RASLITEPlus...")
 
         # Form buffer_size initial triggers
         triggers_for_buffer = [util_trigger_ids]
@@ -191,12 +187,9 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         )
 
         trigger_str = util_tokenizer.decode_trigger(buffer.get_best_trigger())
-        self.tracker.log({"loss": buffer.get_lowest_loss(), "trigger_str": trigger_str})
+        self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
         for step in pbar:
-            pbar.set_description(
-                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
-            )
 
             # Get the best trigger from the buffer
             util_trigger_ids = buffer.get_best_trigger()
@@ -333,9 +326,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
             # Logging:
             self.log(loss=current_loss, trigger_str=trigger_str)
-            loss_per_step.append(current_loss)
-            trigger_strings.append(trigger_str)
-            trigger_ids_per_step.append(util_trigger_ids)
+            best.update(loss=current_loss, trigger_ids=util_trigger_ids, trigger_str=trigger_str)
 
             # (Optional) Early stopping
             if self.early_stopping_patience is not None:
@@ -359,24 +350,9 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
 
         # Return the best trigger found
-        best_loss_idx = np.argmin(loss_per_step)
-        best_trigger_str = trigger_strings[best_loss_idx]
-        best_trigger_ids = trigger_ids_per_step[best_loss_idx]
-
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in templates]
-
-        result = OptimizerResult(
-            best_loss=loss_per_step[best_loss_idx],
-            best_trigger_str=best_trigger_str,
-            best_trigger_ids=best_trigger_ids,
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        result = best.to_result()
+        result.full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best.trigger_str) for t in templates]
         logger.info(f"Best loss: {result.best_loss} | Best trigger: {result.best_trigger_str}")
-        self.model.reset_inputs_from_texts()
-        self.util_model.reset_inputs_from_tokens()
         return result
 
 

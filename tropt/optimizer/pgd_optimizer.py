@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -238,7 +237,6 @@ class PGDOptimizer(BaseOptimizer):
     ) -> OptimizerResult:
         raise NotImplementedError("PGD optimization is WIP and not fully implemented.")
 
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Initialization ---
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -275,7 +273,7 @@ class PGDOptimizer(BaseOptimizer):
         steps_since_improvement = 0
         relaxation_gap = 1.0  # starts at 1 (no weakening)
 
-        pbar = tqdm(range(self.num_steps), desc="PGD Optimization")
+        pbar = self.register_tqdm(range(self.num_steps), desc="PGD Optimization")
 
         for step in pbar:
             optimizer.zero_grad()
@@ -369,10 +367,6 @@ class PGDOptimizer(BaseOptimizer):
 
             self.log(loss=current_loss, trigger_str=current_trigger_str, best_loss=best.loss, entropy_target=current_entropy_target, lr=scheduler.get_last_lr()[0])
 
-            pbar.set_description(
-                f"loss={current_loss:.4f} best={best.loss:.4f} "
-                f"trigger={current_trigger_str[:30]}"
-            )
 
         # --- Use the best trigger found during optimization ---
         if best.trigger_ids is None:
@@ -382,17 +376,6 @@ class PGDOptimizer(BaseOptimizer):
             best.update(loss=best_loss, trigger_ids=best_ids, trigger_str=best_str)
 
 
-        result = OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
+        result = best.to_result()
 
-        self.tracker.log({
-            "best_loss": result.best_loss,
-            "best_trigger_str": result.best_trigger_str,
-        })
-        self.model.reset_inputs_from_tokens()
         return result

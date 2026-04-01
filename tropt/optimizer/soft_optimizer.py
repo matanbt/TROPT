@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -19,6 +18,7 @@ from tropt.model import (
     GradientEmbedAccessMixin,
 )
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,6 @@ class SoftPromptOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -80,10 +79,9 @@ class SoftPromptOptimizer(BaseOptimizer):
         # Initialize Adam optimizer on the logits
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
 
-        # Tracking
-        loss_per_step = []
+        best = RunningBest()
 
-        pbar = tqdm(range(self.num_steps), desc="Soft Prompt Optimization")
+        pbar = self.register_tqdm(range(self.num_steps), desc="Soft Prompt Optimization")
 
         for step in pbar:
             optimizer.zero_grad()
@@ -102,24 +100,9 @@ class SoftPromptOptimizer(BaseOptimizer):
             # Adam step
             optimizer.step()
 
-            # Track
-            loss_per_step.append(curr_loss)
-
+            best.update(loss=curr_loss, trigger_emb=trigger_embeds.detach().squeeze(0))
             self.log(loss=curr_loss, lr=optimizer.param_groups[0]["lr"], grad_norm=trigger_grad.norm().item())
 
-            pbar.set_description(
-                f"loss={curr_loss:.4f}, trigger={trigger_embeds[0, :2, :2].detach().cpu().tolist()}..."
-            )
+        result = best.to_result()
 
-        result = OptimizerResult(
-            best_loss=min(loss_per_step),
-            best_trigger_emb=trigger_embeds.detach().squeeze(0),  # (trigger_seq_len, embd_dim)
-            losses=loss_per_step,
-        )
-
-        self.tracker.log({
-            "best_loss": result.best_loss,
-            "best_trigger_embeds": result.best_trigger_emb
-        })
-        self.model.reset_inputs_from_tokens()
         return result

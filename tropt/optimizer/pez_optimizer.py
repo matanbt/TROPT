@@ -5,7 +5,6 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -74,7 +73,6 @@ class PEZOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -91,7 +89,7 @@ class PEZOptimizer(BaseOptimizer):
             [trigger_embeds], lr=self.learning_rate, weight_decay=self.weight_decay
         )
 
-        pbar = tqdm(range(self.num_steps), desc="PEZ Optimization")
+        pbar = self.register_tqdm(range(self.num_steps), desc="PEZ Optimization")
         best = RunningBest()
 
         for step in pbar:
@@ -121,9 +119,6 @@ class PEZOptimizer(BaseOptimizer):
 
             self.log(loss=curr_loss, trigger_str=current_trigger_str)
 
-            pbar.set_description(
-                f"loss={curr_loss:.4f}, trigger={current_trigger_str[:30]}"
-            )
             best.update(loss=curr_loss, trigger_ids=projected_ids.cpu(), trigger_str=current_trigger_str)
 
         # Final projection and evaluation on discrete tokens
@@ -137,18 +132,7 @@ class PEZOptimizer(BaseOptimizer):
         ).item()
         best.update(loss=final_loss, trigger_ids=final_ids.cpu(), trigger_str=final_trigger_str)
 
-        self.tracker.log({
-            "best_loss": best.loss,
-            "best_trigger_str": best.trigger_str
-        })
-        self.model.reset_inputs_from_tokens()
-        return OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
+        return best.to_result()
 
     @torch.no_grad()
     def _project_to_vocab(

@@ -1,3 +1,5 @@
+import functools
+import inspect
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -5,6 +7,7 @@ from typing import Annotated, Any, List, Optional
 
 import pydantic
 import torch
+from tqdm import tqdm
 from jaxtyping import Float
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
@@ -33,8 +36,23 @@ class OptimizerResult:
     # Complete artifacts:
     full_prompt: Optional[str | List[str]] = None
 
+    def to_dict(self) -> dict:
+        """Lightweight summary dict for final logging (no tensors or lists !)."""
+        d: dict = {"best_loss": self.best_loss}
+        if self.best_trigger_str is not None:
+            d["best_trigger_str"] = self.best_trigger_str
+        if self.full_prompt is not None:
+            d["full_prompt"] = self.full_prompt
+        return d
+
 ## ------- Base Optimizer ------- ##
 class BaseOptimizer(ABC):
+    """
+    Base class for all trigger optimizers.
+
+    - Implements common functionality and interface for optimizers, including tracking.
+    - Subclasses must implement the ``optimize_trigger`` method, which contains the core optimization loop and returns an ``OptimizerResult``; this method is automatically wrapped to handle logging, model state resets, and tracker finalization.
+    """
 
     model_requirements = ()
     """Tuple of model mixin classes the primary model must satisfy; validated in ``__init__``.
@@ -52,6 +70,52 @@ class BaseOptimizer(ABC):
     - Requirements on auxiliary models (proxy_model, util_model, etc.) are not covered here, and should also be validated explicitly in ``__init__``.
     """
 
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        # Inject a wrapper around optimize_trigger
+        # This saves some boilerplate in optimizers impl.
+        if "optimize_trigger" in cls.__dict__:
+            original = cls.optimize_trigger
+            # Capture once at class-definition time (not per call).
+            # _sig is needed to resolve subclass-specific defaults (e.g. DEFAULT_INIT_TRIGGER)
+            # so log_config receives the actual values used, not None.
+            _sig = inspect.signature(original)
+            validated = pydantic.validate_call(
+                config=pydantic.ConfigDict(arbitrary_types_allowed=True)
+            )(original)
+
+            @functools.wraps(original)
+            def _wrapper(self, *args, **kwargs):
+                # Reset usage stats on all models before the run
+                for val in self.__dict__.values():
+                    if isinstance(val, BaseModel):
+                        val.reset_usage_stats()
+
+                # Resolve full arg values (including defaults) for logging
+                ba = _sig.bind(self, *args, **kwargs)
+                ba.apply_defaults()
+                self.log_config(ba.arguments.get("templates"), ba.arguments.get("initial_trigger"), ba.arguments.get("targets"))
+
+                # Run the actual optimization method
+                result: OptimizerResult = validated(self, *args, **kwargs)
+
+                # Post-run teardown: log summary, reset all model input state, close tracker
+                self.log(**result.to_dict())
+                # Make sure we reset the model's input state after the optimization
+                # (just to avoid any unexpected, accidental state leakage across runs, although optimizers
+                #  should set the state (`set_inputs_from_*`) and override it anyway)
+                for val in self.__dict__.values():
+                    if isinstance(val, BaseModel):
+                        for _reset in ("reset_inputs_from_tokens", "reset_inputs_from_texts"):
+                            fn = getattr(val, _reset, None)
+                            if fn is not None:
+                                fn()
+                self.tracker.finish()
+                return result
+
+            cls.optimize_trigger = _wrapper
+
     def __init__(
         self,
         model: BaseModel,
@@ -59,6 +123,13 @@ class BaseOptimizer(ABC):
         tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
     ):
+        """
+        Args:
+            model: The target model to attack.
+            loss: The loss function to be optimized (optional, but most optimizers will require one).
+            tracker: An optional tracker for logging optimization progress.
+            seed: Random seed for reproducibility; set in initialization.
+        """
         # Model requirements validation
         assert isinstance(self.model_requirements, tuple), "model_requirements must be a tuple"
         assert all(
@@ -73,16 +144,18 @@ class BaseOptimizer(ABC):
         assert isinstance(loss, BaseLoss), "loss must be an instance of BaseLoss"
         self.loss_func = loss
 
-        self.set_tracker(tracker if tracker is not None else DummyTracker())
+        tracker = tracker if tracker is not None else DummyTracker()
+        assert isinstance(tracker, BaseTracker), "tracker must be an instance of BaseTracker"
+        self.tracker = tracker
+
+        self._pbar = None
 
         if seed is not None:
             from transformers import set_seed
             set_seed(seed)
             torch.use_deterministic_algorithms(True, warn_only=True)
 
-
     @abstractmethod
-    @pydantic.validate_call(config=pydantic.ConfigDict(arbitrary_types_allowed=True))
     def optimize_trigger(
         self,
         templates: TextTemplates,
@@ -90,6 +163,11 @@ class BaseOptimizer(ABC):
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
         """Optimize the trigger to minimize the loss on the given inputs.
+
+        Subclasses only implement the search loop and return an
+        ``OptimizerResult``. 
+        
+        Note: this method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading `log_config(...)``, model state resets (``model.reset_inputs_from_*()``), logging the final result, and calling tracker's `finish()`. 
 
         Args:
             templates: Can be a single string or a list of (n_templates) strings.
@@ -101,13 +179,16 @@ class BaseOptimizer(ABC):
         """
         ...
 
-    def _log_run_config_to_tracker(
+    def log_config(
         self,
         templates: TextTemplates,
         initial_trigger: Optional[str] = None,
         targets: Optional[Targets] = None,
     ):
-        """Logs run metadata to the tracker at the start of optimization."""
+        """
+        Logs run metadata, along the full optimizer config, to the tracker.
+        Ideally called at the start of optimization (the `optimize_trigger` method).
+        """
         _skip = {"model", "loss_func", "tracker"}
         hparams = {
             f"hparam/{k}": v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
@@ -141,21 +222,28 @@ class BaseOptimizer(ABC):
         lines.append("===========================")
         logger.info("\n".join(lines))
 
-    def log(self, loss: float, trigger_str: Optional[str] = None, **extra):
-        """Log per-step metrics to the tracker.
+    def log(self, loss: Optional[float] = None, trigger_str: Optional[str] = None, **extra) -> None:
+        """Log metrics to the tracker.
 
-        Automatically adds:
+        When ``loss`` is omitted (e.g. ``self.log(**result.to_dict())`` at the end of a run),
+        the kwargs are forwarded directly to the tracker with no per-step enrichment.
+
+        When ``loss`` is provided, automatically enriches with per-step stats:
           - ``loss/*``: loss function component stats via ``loss_func.get_loss_log_dict()``.
           - ``target_model_stats/*``: usage stats for ``self.model``.
           - ``{attr}_stats/*``: usage stats for any other ``BaseModel`` instances found on ``self``
             (that are _not_ ``self.model``).
-          - ``total_models_stats/*``: element-wise sum across all model stats (if only target model is present, this will be identical to that target model's stats).
+          - ``total_models_stats/*``: element-wise sum across all model stats.
 
         Args:
-            loss: Current step loss value.
+            loss: Per-step loss value. Omit for final/summary logging.
             trigger_str: Current trigger string (omitted from log dict if None).
             **extra: Any additional key-value pairs to include in the log dict.
         """
+        if loss is None:
+            self.tracker.log(extra)
+            return
+
         log_dict: dict = {"loss": loss}
         if trigger_str is not None:
             log_dict["trigger_str"] = trigger_str
@@ -189,10 +277,22 @@ class BaseOptimizer(ABC):
 
         self.tracker.log(log_dict)
 
-    def set_tracker(self, tracker: BaseTracker):
+        if self._pbar is not None:
+            desc = f"{loss=:.4f}"
+            if trigger_str is not None:
+                desc += f" {trigger_str=}"
+            self._pbar.set_description(desc)
+
+    def register_tqdm(self, *args, **kwargs) -> tqdm:
+        """Create, register, and return a tqdm progress bar.
+
+        Accepts the same arguments as ``tqdm()``. 
+        ``self.log()`` calls will automatically update its description with the current 
+        loss (and trigger string if available) on every step, so not need to set that manually in the loop.
+
+        Usage::
+            for _ in self.register_tqdm(range(self.num_steps)):
+                ...
         """
-        Set the tracker for logging optimization progress.
-        Useful for resetting or changing the tracker after optimizer initialization.
-        """
-        assert isinstance(tracker, BaseTracker), "tracker must be an instance of BaseTracker"
-        self.tracker = tracker
+        self._pbar = tqdm(*args, **kwargs)
+        return self._pbar

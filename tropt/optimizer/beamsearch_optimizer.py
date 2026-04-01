@@ -1,9 +1,7 @@
 import logging
 from typing import List, Optional
 
-import numpy as np
 import torch
-from tqdm import tqdm
 
 from tropt.common import Targets, TextTemplates
 from tropt.loss import BaseLoss
@@ -14,6 +12,7 @@ from tropt.model import (
 )
 from tropt.model.model_mixins import LossTextAccessMixin
 from tropt.optimizer import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
 
@@ -111,7 +110,6 @@ class BeamSearchOptimizer(BaseOptimizer):
         - This loss evaluation against the target model is usually done in a black-box manner using text-level access (i.e., we query the model with the full text including the decoded candidate triggers), to enable the attack of fully black-box models; however, if util and target model share the same tokenizer, we can compute loss in token-level using the `use_model_with_token_inputs` option.
         """
 
-        self._log_run_config_to_tracker(templates, targets=targets)
 
         # Prepare inputs for both target model and util LM
         self.util_lm.set_inputs_from_tokens(
@@ -151,13 +149,11 @@ class BeamSearchOptimizer(BaseOptimizer):
         # Initialize beam with different starting tokens
         beam_trigger_ids = initial_tokens.t()  # (beam_size, 1)
 
-        loss_per_step = []
-        trigger_strings = []
-        trigger_tensors = []
+        best = RunningBest()
 
         # Iterate for num_steps steps (BEAST: Algorithm 1 in paper; lines 8-23)
         # We already have 1 token, so iterate num_steps - 1 times
-        pbar = tqdm(range(self.num_steps - 1), desc="Beam Search optimization")
+        pbar = self.register_tqdm(range(self.num_steps - 1), desc="Beam Search optimization")
 
         for step in pbar:
             # 1. Get logits for the next trigger token  (adv[-1]'s)
@@ -206,26 +202,11 @@ class BeamSearchOptimizer(BaseOptimizer):
             # Track best trigger
             best_trigger_ids = beam_trigger_ids[0]
             trigger_str = util_tokenizer.decode_trigger(best_trigger_ids)
-            trigger_strings.append(trigger_str)
-            trigger_tensors.append(best_trigger_ids)
-            loss_per_step.append(current_loss)
+            best.update(loss=current_loss, trigger_ids=best_trigger_ids, trigger_str=trigger_str)
             self.log(loss=current_loss, trigger_str=trigger_str)
 
-            pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
-        min_loss_index = np.argmin(loss_per_step)
-
-        result = OptimizerResult(
-            best_loss=loss_per_step[min_loss_index],
-            losses=loss_per_step,
-            best_trigger_str=trigger_strings[min_loss_index],
-            best_trigger_ids=trigger_tensors[min_loss_index].squeeze(),
-            trigger_strs=trigger_strings,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        self.model.reset_inputs_from_texts()
-        self.util_lm.reset_inputs_from_tokens()
-        return result
+        return best.to_result()
 
     @staticmethod
     @torch.no_grad()

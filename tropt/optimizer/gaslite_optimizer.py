@@ -4,7 +4,6 @@ from typing import Optional
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -87,7 +86,6 @@ class GASLITEOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # Initialization:
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -96,10 +94,7 @@ class GASLITEOptimizer(BaseOptimizer):
 
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
-        token_mask = torch.ones(vocab_size, device=self.model.device, dtype=torch.bool)
-        if blacklist_ids:
-            token_mask[blacklist_ids] = False
-        valid_token_ids = token_mask.nonzero(as_tuple=False).squeeze(-1)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
@@ -113,12 +108,9 @@ class GASLITEOptimizer(BaseOptimizer):
         ).item()
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
+        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
 
         for step in pbar:
-            pbar.set_description(
-                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
-            )
 
             # --- (I) Gradient and candidate selection step ---
             if self.use_random_gradient:
@@ -203,16 +195,7 @@ class GASLITEOptimizer(BaseOptimizer):
             self.log(loss=current_loss, trigger_str=trigger_str)
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
-        result = OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        self.model.reset_inputs_from_tokens()
-        return result
+        return best.to_result()
 
 
     def _get_trigger_variations(

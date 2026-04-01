@@ -6,7 +6,6 @@ import torch
 import torch.nn.functional as F
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -135,7 +134,6 @@ class GBDAOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Initialization ---
         self.model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -169,7 +167,7 @@ class GBDAOptimizer(BaseOptimizer):
         best = RunningBest()
 
         # --- Optimization of `trigger_probs` ---
-        pbar = tqdm(range(self.num_steps), desc="GBDA Optimization")
+        pbar = self.register_tqdm(range(self.num_steps), desc="GBDA Optimization")
 
         for step in pbar:
             temperature = self._get_temperature(step)
@@ -208,12 +206,8 @@ class GBDAOptimizer(BaseOptimizer):
 
             best.update(loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str)
 
-            self.log(loss=current_loss, trigger_str=current_trigger_str, best_loss=best.loss, temperature=temperature, lr=scheduler.get_last_lr()[0])
+            self.log(loss=current_loss, trigger_str=current_trigger_str, curr_best_loss=best.loss, temperature=temperature, lr=scheduler.get_last_lr()[0])
 
-            pbar.set_description(
-                f"loss={current_loss:.4f} best={best.loss:.4f} "
-                f"T={temperature:.4f} trigger={current_trigger_str[:30]}"
-            )
 
         # --- Final sampling ---
         # Collect candidates: argmax from final theta, best from optimization, and drawn gumbel samples
@@ -245,9 +239,4 @@ class GBDAOptimizer(BaseOptimizer):
             best_trigger_probs=trigger_probs.detach(),
         )
 
-        self.tracker.log({
-            "best_loss": result.best_loss,
-            "best_trigger_str": result.best_trigger_str,
-        })
-        self.model.reset_inputs_from_tokens()
         return result

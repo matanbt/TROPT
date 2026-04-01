@@ -17,7 +17,6 @@ from typing import Optional, Literal
 import torch
 from jaxtyping import Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import DEFAULT_INIT_TRIGGER, Targets, TextTemplates
 from tropt.loss import BaseLoss
@@ -134,7 +133,6 @@ class RandomSearchOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Setup ---
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
@@ -167,7 +165,7 @@ class RandomSearchOptimizer(BaseOptimizer):
         restart_count = 0  # number of restarts (for logging purposes)
 
         # --- Optimization loop ---
-        pbar = tqdm(range(self.num_steps))
+        pbar = self.register_tqdm(range(self.num_steps))
         for step_i in pbar:
             # Check patience — restart if stuck
             if self.patience > 0 and steps_without_improvement >= self.patience:
@@ -226,21 +224,9 @@ class RandomSearchOptimizer(BaseOptimizer):
                 patience_counter=steps_without_improvement,
             )
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
-            pbar.set_description(f"loss={current_loss:.4f}, trigger={trigger_str}")
 
         # --- Finalize ---
-        result = OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
-        self.tracker.log(
-            {"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str}
-        )
-        self.model.reset_inputs_from_texts()
-        return result
+        return best.to_result()
 
     # ------------------------------------------------------------------ #
     #  Mutation strategies

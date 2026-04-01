@@ -5,7 +5,6 @@ from typing import Optional
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
@@ -95,7 +94,6 @@ class QCGOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # --- Initialization ---
         proxy_model = self.proxy_model
@@ -128,7 +126,7 @@ class QCGOptimizer(BaseOptimizer):
         trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = tqdm(range(self.num_steps))
+        pbar = self.register_tqdm(range(self.num_steps))
 
         for _ in pbar:
             # Work on the best trigger in the buffer
@@ -172,21 +170,10 @@ class QCGOptimizer(BaseOptimizer):
 
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
             self.log(loss=current_loss, trigger_str=trigger_str)
-            pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
 
         # --- Finalize ---
-        result = OptimizerResult(
-            best_loss=best.loss,
-            best_trigger_str=best.trigger_str,
-            best_trigger_ids=best.trigger_ids,
-            losses=best.losses,
-            trigger_strs=best.trigger_strs,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
+        result = best.to_result()
 
-        proxy_model.reset_inputs_from_tokens()
-        target_model.reset_inputs_from_texts()
-        target_model.reset_inputs_from_tokens()
 
         return result
 
