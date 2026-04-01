@@ -106,6 +106,15 @@ class OpenAITokenizer(BaseTokenizer):
         assert isinstance(ids, list) and isinstance(
             ids[0], int
         ), f"ids must be list or int, got {type(ids)} {ids}"
+        # Single-token fast path: decode_single_token_bytes is ~10x faster than
+        # decode() when iterating the full vocabulary (e.g. in TokenConstraints).
+        if len(ids) == 1:
+            try:
+                return self._encoding.decode_single_token_bytes(ids[0]).decode(
+                    "utf-8", errors="replace"
+                ).replace(self.eot_token, "")
+            except KeyError:
+                raise KeyError(f"Invalid token for decoding: {ids[0]}")
         decoded = self._encoding.decode(ids)
         return decoded.replace(self.eot_token, "")
 

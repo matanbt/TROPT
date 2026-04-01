@@ -10,6 +10,8 @@ from .base import DEFAULT_EXPERIMENT_NAME, BaseTracker
 
 
 class DummyTracker(BaseTracker):
+    """No-op tracker. Discards all logged data."""
+
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
@@ -27,6 +29,8 @@ class DummyTracker(BaseTracker):
 
 
 class JSONTracker(BaseTracker):
+    """Writes accumulated logs to a JSON file on ``finish()``."""
+
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
@@ -53,6 +57,8 @@ class JSONTracker(BaseTracker):
 
 
 class WandbTracker(BaseTracker):
+    """Logs to Weights & Biases. Extra kwargs are forwarded to ``wandb.init``."""
+
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
@@ -175,6 +181,8 @@ class PrintTracker(BaseTracker):
 
 
 class LiveLossPlotTracker(BaseTracker):
+    """Live-updating loss plot via ``livelossplot``."""
+
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
@@ -182,9 +190,6 @@ class LiveLossPlotTracker(BaseTracker):
         focus_on_metrics: tuple = ("loss",),
         **llp_kwargs
     ):
-        """
-        Initializes the LiveLossPlotTracker.
-        """
         super().__init__(experiment_name)
         self._plotlosses = livelossplot.PlotLosses()
         self.focus_on_metrics = focus_on_metrics

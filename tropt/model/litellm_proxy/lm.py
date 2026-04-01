@@ -85,7 +85,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         input_texts: List[str],
         max_new_tokens: int = 128,
         temperature: float = 0.0,
-
+        message_targets=None,
         require_generation: bool = False,
         require_target_prefill: bool = False,
         require_first_token_logprobs: bool = False,
@@ -146,11 +146,13 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             )
             responses: list[str] = _parse_responses_from_outputs(outputs)
         except Exception as e:
-            logger.warning(f"LiteLLM batch completion failed: {e}")
+            logger.error(f"LiteLLM batch completion failed: {e}")
+            raise e
+            
             responses = ["" for _ in input_texts]
             outputs = []
 
-        # Parse first-token logprobs when requested
+        # Parse first-token logprobs when requested.
         first_token_logprobs: Optional[List[Dict[str, float]]] = None
         if require_first_token_logprobs:
             first_token_logprobs = _parse_first_token_logprobs_from_outputs(outputs)

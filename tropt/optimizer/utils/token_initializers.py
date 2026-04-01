@@ -5,7 +5,7 @@ from typing import List, Optional
 
 import torch
 import transformers
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 
 
@@ -17,9 +17,9 @@ def get_printable_random_trigger(
 ) -> str | Float[Tensor, "trigger_seq_len"]:
     """
     Generates a random initial trigger consisting of printable ASCII english letters.
-    If the tokenizer is provided, the trigger is tokenized and truncated to ensure it fits within the specified length.
-    Tokens whose IDs appear in blacklist_ids are resampled until a clean sequence is found.
-    Otherwise, the trigger is generated as a string of the specified length.
+    - If the tokenizer is provided, the trigger is tokenized and truncated to ensure it fits within the specified length. Otherwise, the length stands for the number of characters.
+    - Tokens whose IDs appear in `blacklist_ids` are resampled until a clean sequence is found.
+    - `return_ids`: If True, returns a 1-D LongTensor of token IDs (requires `tokenizer`), instead of the string.
     """
     _chars = string.ascii_letters + string.digits + ' '  # + string.punctuation
     _chars += ' ' * 10  # adding more spaces to increase their appearance

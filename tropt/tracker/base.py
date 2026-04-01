@@ -4,10 +4,13 @@ from typing import Optional
 DEFAULT_EXPERIMENT_NAME = "tropt_experiment"
 
 class BaseTracker(ABC):
+    """Interface for trackers.
+
+    In this project, the optimizer do most interaction with the trackers.Concretely, ``BaseOptimizer`` (from which other optimizers inherit) calls ``log`` (per-step logging), ``log_metadata`` (one-time logging at start), and ``finish`` (finalization) on the tracker.
+    Also usable as a
+    context manager.
     """
-    Base class for trackers.
-    Supports context manager usage.
-    """
+
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
@@ -33,14 +36,15 @@ class BaseTracker(ABC):
 
     @abstractmethod
     def finish(self):
-        """Closes the tracker and performs any necessary cleanup."""
+        """Flush/close the backend tracker. 
+        
+        In this project, finish is handled automatically by ``BaseOptimizer`` at the end of ``optimize_trigger``."""
         pass
 
     def log_metadata(self, metadata: dict):
         """Logs run metadata (hparams, model name, templates, targets) once at run start.
 
-        Called automatically by BaseOptimizer before optimization begins.
-        Override in subclasses to persist metadata in the appropriate backend.
+        Called automatically by ``BaseOptimizer`` before optimization begins.
         """
         pass
 
