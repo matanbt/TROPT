@@ -3,6 +3,7 @@ import random
 import string
 from typing import List, Optional
 
+import torch
 import transformers
 from jaxtyping import Float
 from torch import Tensor
@@ -39,6 +40,6 @@ def get_printable_random_trigger(
 
     if return_ids:
         assert tokenizer is not None, "Tokenizer must be provided to return token IDs."
-        return tokenizer.encode(initial_trigger, add_special_tokens=False)  # shape: (trigger_seq_len,)
+        return torch.tensor(tokenizer.encode(initial_trigger, add_special_tokens=False))  # shape: (trigger_seq_len,)
 
     return initial_trigger
