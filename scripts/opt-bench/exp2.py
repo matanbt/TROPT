@@ -45,7 +45,7 @@ from tropt.utils.refusal_dir import (
 
 # ─── Constants (shared with exp1) ───────────────────────────────────────────
 WANDB_ENTITY = "matanbt"
-WANDB_PROJECT = "tropt-optbench"
+WANDB_PROJECT = "tropt-tweakbench"
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))
 TRIGGER_LEN = 20
