@@ -34,9 +34,7 @@ def run_advdecoding_retrieval(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     util_lm_name: str = UTIL_LM_PAPER,
     mal_info_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
-    target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
-        1, 384
-    ),  # random target vector for demo purposes
+    target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,  # random target vector for demo purposes
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     high_compute: bool = False,
@@ -61,6 +59,8 @@ def run_advdecoding_retrieval(
     - AdvDecoding is a variant of BEAST, but uses specific set of params, a combined loss with "scorers",
       and a util LM to filter the beam candidates. Thus, we use BEASTOptimizer here.
     """
+    if target_vector is None:
+        target_vector = torch.randn(1, 384)
     if model_obj is None:
         model = EncoderHFModel(model_name=model_name)
     else:
