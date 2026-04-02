@@ -5,25 +5,26 @@ from typing import Annotated, List, Optional
 import sentence_transformers
 import sentence_transformers.models
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    ModelInput,
     ModelOutput,
     Targets,
     TextTemplates,
 )
-from tropt.loss import BaseLoss
 from tropt.model import (
     EncoderBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
+from tropt.model.huggingface.base import (
+    HuggingFaceBackendModel,
+    HuggingFaceTokenInputManager,
+)
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -94,7 +95,7 @@ class EncoderHFModel(
             except Exception as e:
                 logger.error(f"Error loading model `{model_name}`. Please make sure you load the model properly per the HuggingFace model card (e.g., you might need to pass `trust_remote_code=True` to `{self.__class__.__name__}`): {e}")
                 raise e
-            
+
         # Add tokenizer and embedding layer:
         self._tokenizer = self._model.tokenizer
         self._embedding_layer = self._get_input_embeddings()

@@ -5,9 +5,9 @@ Important note: The losses arguments must match the fields in ModelOutput and Mo
 for unified loss resolution to work properly.
 """
 import logging
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, ClassVar, List, Optional
+from typing import ClassVar, Optional
 
 import torch
 from jaxtyping import Float, Int

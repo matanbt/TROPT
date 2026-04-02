@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, List, Optional
+from typing import List, Optional
 
 import torch
 from jaxtyping import Float, Int
@@ -7,7 +7,6 @@ from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )

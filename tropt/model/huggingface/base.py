@@ -1,14 +1,12 @@
-from tropt.model.model_base import HFTokenizerWrapper
 import itertools
 import logging
 from abc import abstractmethod
 from functools import cached_property
 from typing import Annotated, Any, Dict, List, Optional, Tuple
 
-import numpy as np
 import torch
 import transformers
-from accelerate.utils.memory import clear_device_cache, find_executable_batch_size
+from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
 from transformers.cache_utils import DynamicCache
@@ -26,6 +24,7 @@ from tropt.loss.resolution import resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
 )
+from tropt.model.model_base import HFTokenizerWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -451,7 +450,7 @@ class HuggingFaceBackendModel:
 
             do_gumbel_softmax: If True, apply Gumbel-softmax to `candidate_trigger_probs`
                 before embedding. That is, the provided `candidate_trigger_probs` are treated as logits, and Gumbel-softmax is applied to *draw* a `n_candidades` samples, each respective to its logits.
-                - A common pattern here is for `candidate_trigger_probs` to be a repeated tensor of the 
+                - A common pattern here is for `candidate_trigger_probs` to be a repeated tensor of the
                   *same* logits, so we can draw here multiple samples from the same distribution--which is often the one being optimized.
                 - Requires `gumbel_softmax_temp` to be set.
 

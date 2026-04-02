@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Type
+from typing import Optional
 
 import torch
 import torch.nn.functional as F
@@ -8,7 +8,6 @@ from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )

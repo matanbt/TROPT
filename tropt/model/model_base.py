@@ -3,19 +3,15 @@ Base definitions, classes, and mixins for targeted text models.
 """
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Dict, List, Literal, Optional
 
-import numpy as np
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from transformers import BatchEncoding, PreTrainedTokenizer
+from transformers import BatchEncoding
 
-from tropt.common import DEFAULT_INIT_TRIGGER, MessageTargets, ModelOutput, Targets
-from tropt.model.flop_counter import ManualFlopCounter, FlopCounterBase
-from tropt.model.inputs_manager import (
-    TextInputManager,
-)
+from tropt.common import MessageTargets, ModelOutput
+from tropt.model.flop_counter import FlopCounterBase, ManualFlopCounter
 
 # ====================== Model Base Classes =======================
 
@@ -69,7 +65,7 @@ class BaseModel(ABC):
             mode: The method to use for counting FLOPs. Options:
                 -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires ``_model`` to be a HuggingFace ``PreTrainedModel``. This is the default.
                 -> "none": Disables FLOP counting.
-        
+
         - FLOP counting will appear in :meth:`get_usage_stats` under ``"usage/total_flops"``.
         """
         if mode == "manual":

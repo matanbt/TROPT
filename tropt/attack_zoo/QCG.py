@@ -4,7 +4,6 @@ Implements QCG (Algorithm 1) via QCGOptimizer, and white-box/black-box
 variants via GCGPlusOptimizer.
 Reference: https://arxiv.org/abs/2402.12329
 """
-import math
 from typing import Optional
 
 from tropt.common import Targets

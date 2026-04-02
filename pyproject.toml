@@ -122,10 +122,9 @@ include = ["tropt/**/*.py", "tests/**/*.py"]
 select = ["E", "F", "W", "I"]
 
 ignore = [
-    "E501",  # line length — handled by formatter
+    "E501",  # line length (currently ignored, TODO: re-format long lines)
     "F722",  # Forward annotation false positive from jaxtyping
     "F821",  # Undefined name false positive from jaxtyping
-    "F401",  # allow empty imports
 ]
 
 [tool.ruff.lint.per-file-ignores]

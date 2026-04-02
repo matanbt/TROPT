@@ -2,9 +2,9 @@ import logging
 import re
 from dataclasses import dataclass, field
 from typing import List, Optional
-from jaxtyping import Int
 
 import torch
+from jaxtyping import Int
 from torch import Tensor
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class TokenConstraints:
                 # Check non-ASCII constraint
                 if self.disallow_non_ascii and token_str and not is_ascii(token_str):
                     blacklist_ids.add(i)
-                    
+
                 # Check unused token constraint
                 elif self.disallow_unused_tokens and unused_pattern and token_str and unused_pattern.match(token_str):
                     blacklist_ids.add(i)

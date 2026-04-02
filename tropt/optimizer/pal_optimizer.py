@@ -17,7 +17,6 @@ from tropt.model import (
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
-    TokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering

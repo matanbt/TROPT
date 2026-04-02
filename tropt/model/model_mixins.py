@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import List, Optional
 
-import numpy as np
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
-from transformers import BatchEncoding, PreTrainedTokenizer
 
 from tropt.common import (
     MessageTargets,
@@ -16,9 +14,7 @@ from tropt.common import (
     TokenTriggerCandidates,
 )
 from tropt.loss import BaseLoss
-from tropt.loss.losses import PrefillBasedLoss
 from tropt.loss.resolution import resolve_and_compute_loss
-from tropt.loss.text_losses import GeneratedResponseBasedLoss
 
 from .inputs_manager import (
     TextInputManager,
@@ -191,7 +187,7 @@ class LossTextAccessMixin(TextAccessMixin):
 
         input_manager = self._text_input_manager
         n_templates: int = input_manager.n_templates
-        n_candidates: int = len(candidate_trigger_strs)
+        n_candidates: int = len(candidate_trigger_strs)  # noqa
 
         # Main Loop: for each template, we compute the loss for all candidates
         losses = []

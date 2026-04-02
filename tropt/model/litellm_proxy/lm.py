@@ -1,6 +1,6 @@
 import logging
 from typing import Dict, List, Optional
-import torch
+
 import litellm
 
 from tropt.common import ModelOutput
@@ -148,7 +148,7 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         except Exception as e:
             logger.error(f"LiteLLM batch completion failed: {e}")
             raise e
-            
+
             responses = ["" for _ in input_texts]
             outputs = []
 

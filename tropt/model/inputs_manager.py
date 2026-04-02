@@ -1,15 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Annotated, Any, Dict, List, Optional
+from typing import Annotated, Any, List, Optional
 
 import torch
-from jaxtyping import Float, Int
+from jaxtyping import Int
 from torch import Tensor
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    MessageTargets,
     ModelInput,
-    SliceKey,
     Targets,
     TextTemplates,
 )
@@ -88,7 +86,7 @@ class TextInputManager(InputsManager):
         assert isinstance(trigger_strs, list) and all(
             isinstance(s, str) for s in trigger_strs
         ), "trigger_strs must be a list of strings."
-        n_candidates: int = len(trigger_strs)
+        n_candidates: int = len(trigger_strs)  # noqa 
 
         input_texts: List[str] = []
         for trigger_str in trigger_strs:

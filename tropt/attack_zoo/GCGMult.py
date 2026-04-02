@@ -1,7 +1,5 @@
 from typing import List, Optional
 
-import torch
-
 from tropt.common import Targets
 from tropt.loss import PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel

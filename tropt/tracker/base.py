@@ -36,8 +36,8 @@ class BaseTracker(ABC):
 
     @abstractmethod
     def finish(self):
-        """Flush/close the backend tracker. 
-        
+        """Flush/close the backend tracker.
+
         In this project, finish is handled automatically by ``BaseOptimizer`` at the end of ``optimize_trigger``."""
         pass
 

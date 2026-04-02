@@ -6,7 +6,7 @@ and transformation (produce the retokenized version of a token sequence).
 """
 
 import logging
-from typing import Any, List, Tuple
+from typing import List
 
 import torch
 import transformers

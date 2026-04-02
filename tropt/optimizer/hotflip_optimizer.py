@@ -120,14 +120,14 @@ class HotFlipOptimizer(BaseOptimizer):
         """Select and apply token flip(s) using the first-order Taylor approximation.
 
         The estimated loss change from flipping position i (token a_i -> b) is:
-            
+
 
         """
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device
 
         # Compute the flips' derivatives for every (position, replacement_token) pair
-        # Implementer note: this substraction is not really required, as it doesn't affect the candidate ranking; 
+        # Implementer note: this substraction is not really required, as it doesn't affect the candidate ranking;
         #                   indeed, later adaptations of HotFlip (such as GCG) omit this substraction.
         current_grad = trigger_grad[torch.arange(trigger_seq_len, device=device), trigger_ids]
         delta = trigger_grad - current_grad.unsqueeze(1)  # (trigger_seq_len, vocab_size)

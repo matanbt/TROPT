@@ -1,7 +1,5 @@
 from typing import Optional
 
-import torch
-
 from tropt.common import Targets
 from tropt.loss import CombinedLoss, PrefillCELoss, TriggerPerplexityLoss
 from tropt.model.huggingface.lm import LMHFModel

@@ -284,7 +284,7 @@ class FirstTokenNLLLoss(TextBasedLoss):
         # If no candidates found, return the missing value;
         if len(candidates) == 0:
             return self.missing_logprob_value
-        
+
         return max(candidates)
 
 

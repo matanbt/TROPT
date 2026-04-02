@@ -7,7 +7,6 @@ from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )

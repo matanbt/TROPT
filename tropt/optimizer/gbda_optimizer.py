@@ -1,5 +1,4 @@
 import logging
-from enum import Enum
 from typing import Literal, Optional, Type
 
 import torch
@@ -9,7 +8,6 @@ from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )
@@ -68,7 +66,7 @@ class GBDAOptimizer(BaseOptimizer):
         learning_rate: float = 0.3,
         grad_clip_norm: Optional[float] = None,
     ):
-    # TODO rearrange and categorize the docstring parameters 
+    # TODO rearrange and categorize the docstring parameters
         """
         Args:
             num_steps: Number of optimization steps.

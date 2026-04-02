@@ -8,8 +8,6 @@ Official Implementation: https://github.com/chawins/pal
 
 from typing import Optional
 
-import torch
-
 from tropt.common import Targets
 from tropt.loss.losses import PrefillCELoss, PrefillCWLoss
 from tropt.model import BaseModel

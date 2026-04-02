@@ -8,19 +8,16 @@ import transformers
 from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
-from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
     MessageTargets,
-    ModelInput,
     ModelOutput,
     SliceKey,
     Targets,
     TextTemplates,
 )
-from tropt.loss import BaseLoss
 from tropt.model import (
     GradientTokenAccessMixin,
     LMBaseModel,
@@ -28,7 +25,10 @@ from tropt.model import (
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
+from tropt.model.huggingface.base import (
+    HuggingFaceBackendModel,
+    HuggingFaceTokenInputManager,
+)
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)

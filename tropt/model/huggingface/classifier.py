@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import torch
 from jaxtyping import Float, Int
@@ -8,19 +8,20 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
-    ModelInput,
     ModelOutput,
     Targets,
     TextTemplates,
 )
-from tropt.loss import BaseLoss
 from tropt.model import (
     ClassifierBaseModel,
     GradientTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
+from tropt.model.huggingface.base import (
+    HuggingFaceBackendModel,
+    HuggingFaceTokenInputManager,
+)
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -72,7 +73,7 @@ class ClassifierHFModel(
                     f"You might need to pass `trust_remote_code=True`: {e}"
                 )
                 raise
-        
+
         # Set tokenizer and embedding layer:
         self._tokenizer = AutoTokenizer.from_pretrained(
             model_name, **{k: v for k, v in kwargs.items() if k == "trust_remote_code"}

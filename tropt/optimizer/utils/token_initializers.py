@@ -1,12 +1,12 @@
-from tropt.model.model_base import BaseTokenizer
 import random
 import string
 from typing import List, Optional
 
 import torch
-import transformers
-from jaxtyping import Float, Int
+from jaxtyping import Float
 from torch import Tensor
+
+from tropt.model.model_base import BaseTokenizer
 
 
 def get_printable_random_trigger(

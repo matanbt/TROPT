@@ -18,7 +18,7 @@ Notes on differences from the original:
 
 from typing import Optional
 
-from tropt.common import Targets, OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss import FirstTokenNLLLoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.model.model_base import LMBaseModel

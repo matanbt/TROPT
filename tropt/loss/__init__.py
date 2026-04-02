@@ -32,6 +32,6 @@ from .text_losses import (
 )
 
 from .resolution import (
-    resolve_and_compute_loss,
     LossResolutionError,
+    resolve_and_compute_loss,
 )

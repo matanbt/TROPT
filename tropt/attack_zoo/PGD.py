@@ -29,7 +29,7 @@ def run_pgd(
 ) -> OptimizerResult:
     """
     Run PGD attack (in jailbreak variant) on a given model.
-    
+
     *Note*: Optimizer parameters follow the paper.
 
     Args:

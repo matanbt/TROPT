@@ -4,7 +4,7 @@ import torch
 from jaxtyping import Float
 
 from tropt.common import DEFAULT_INIT_TRIGGER, Targets
-from tropt.loss import ResponseHarmfulnessLoss, SimilarityLoss
+from tropt.loss import SimilarityLoss
 from tropt.loss.losses import PrefillCELoss
 from tropt.model import EncoderBaseModel
 from tropt.model.huggingface.encoder import EncoderHFModel
