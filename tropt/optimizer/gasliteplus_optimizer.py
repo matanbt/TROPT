@@ -167,6 +167,8 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             tok_to_flip_to = valid_token_ids[
                 torch.randint(0, len(valid_token_ids), (1,), device=device)
             ].item()  # apply the flip
+            assert isinstance(pos_to_flip, int) and isinstance(tok_to_flip_to, int)
+
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 
         return trigger_vars_ids
@@ -184,7 +186,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
-        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True).to(self.model.device)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)

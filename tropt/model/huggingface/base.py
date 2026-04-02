@@ -400,6 +400,7 @@ class HuggingFaceBackendModel:
         Returns:
             Tensor of shape (vocab_size, embd_dim)
         """
+        assert isinstance(self._embedding_layer, torch.nn.Embedding), "We currently only support models with a standard, yet potentially subclassed, embedding layer."
         all_token_ids = torch.arange(self._embedding_layer.num_embeddings, device=self._model.device)
         effective_embedding_matrix = self._embedding_layer(all_token_ids)  # (vocab_size, dim)
         return effective_embedding_matrix  # shape: (vocab_size, embd_dim)

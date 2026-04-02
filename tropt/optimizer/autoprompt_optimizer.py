@@ -87,6 +87,7 @@ class AutoPromptOptimizer(BaseOptimizer):
             pos = torch.randint(
                 0, trigger_seq_len, (1,), device=trigger_ids.device
             ).item()
+            assert isinstance(pos, int)
 
             # Compute gradient
             trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (

@@ -367,6 +367,8 @@ class GCGPlusOptimizer(BaseOptimizer):
             tok = valid_token_ids[
                 torch.randint(0, len(valid_token_ids), (1,), device=device)
             ].item()
+            assert isinstance(pos, int) and isinstance(tok, int)
+
             grad_triggers[idx, pos] = tok
 
         return grad_triggers
@@ -432,6 +434,7 @@ class GCGPlusOptimizer(BaseOptimizer):
 
         probe_losses = self._evaluate_candidates(probe_candidates)
         best_pos = probe_losses.argmin().item()
+        assert isinstance(best_pos, int)
 
         # Phase 2: Generate candidates at best position only
         candidates = trigger_ids.repeat(n_candidates, 1).clone()

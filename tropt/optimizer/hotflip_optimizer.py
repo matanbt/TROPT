@@ -142,6 +142,8 @@ class HotFlipOptimizer(BaseOptimizer):
 
         # Greedy: single best flip
         best_pos = best_delta_per_pos.argmin().item()
+        assert isinstance(best_pos, int)
+
         new_trigger_ids = trigger_ids.clone()
         new_trigger_ids[best_pos] = best_token_per_pos[best_pos]
         return new_trigger_ids

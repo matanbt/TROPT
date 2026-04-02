@@ -76,6 +76,7 @@ class BeamSearchOptimizer(BaseOptimizer):
             # shallow copies the model object:
             # (we do this so each model will have its own state, specifically for input-management)
             import copy
+            assert isinstance(model, LMBaseModel)
             util_lm = copy.copy(model)
         self.util_lm = util_lm
         assert isinstance(self.util_lm, LMBaseModel) and isinstance(
