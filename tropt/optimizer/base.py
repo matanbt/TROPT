@@ -3,12 +3,12 @@ import inspect
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Annotated, Any, List, Optional
+from typing import Any, List, Optional
 
 import pydantic
 import torch
-from tqdm import tqdm
 from jaxtyping import Float
+from tqdm import tqdm
 
 from tropt.common import Targets, TextTemplates, TokenTrigger
 from tropt.loss import BaseLoss
@@ -165,9 +165,7 @@ class BaseOptimizer(ABC):
         """Optimize the trigger to minimize the loss on the given inputs.
 
         Subclasses only implement the search loop and return an
-        ``OptimizerResult``. 
-        
-        Note: this method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading `log_config(...)``, model state resets (``model.reset_inputs_from_*()``), logging the final result, and calling tracker's `finish()`. 
+        ``OptimizerResult``.
 
         Args:
             templates: Can be a single string or a list of (n_templates) strings.
@@ -176,6 +174,10 @@ class BaseOptimizer(ABC):
 
         Returns:
             Optimized trigger.
+
+
+        Note:
+            this method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading `log_config(...)``, model state resets (``model.reset_inputs_from_*()``), logging the final result, and calling tracker's `finish()`.
         """
         ...
 
@@ -286,8 +288,8 @@ class BaseOptimizer(ABC):
     def register_tqdm(self, *args, **kwargs) -> tqdm:
         """Create, register, and return a tqdm progress bar.
 
-        Accepts the same arguments as ``tqdm()``. 
-        ``self.log()`` calls will automatically update its description with the current 
+        Accepts the same arguments as ``tqdm()``.
+        ``self.log()`` calls will automatically update its description with the current
         loss (and trigger string if available) on every step, so not need to set that manually in the loop.
 
         Usage::

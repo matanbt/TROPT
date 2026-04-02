@@ -402,7 +402,6 @@ def whitebox(
                 )
 
                 torch.manual_seed(seed)
-                model.reset_usage_stats()
                 initial_trigger = tropt.optimizer.utils.token_initializers.get_printable_random_trigger(
                     trigger_len=TRIGGER_LEN, tokenizer=model.tokenizer,
                     blacklist_ids=_TC.get_blacklist_ids(model.tokenizer)
@@ -414,12 +413,6 @@ def whitebox(
                     initial_trigger=initial_trigger,
                 )
 
-                usage = model.get_usage_stats()
-                wandb.run.summary.update({
-                    "final/total_flops": usage.get("total_flops"),
-                    "final/total_tokens": usage.get("total_input_tokens"),
-                })
-                tracker.finish()
 
 
 
@@ -488,7 +481,6 @@ def blackbox(
                 )
 
                 torch.manual_seed(seed)
-                target_model.reset_usage_stats()
                 # Use the target model's OpenAI tokenizer for initial trigger;
                 # proxy-based optimizers will re-encode via their own tokenizer.
                 init_tokenizer = target_model.tokenizer
@@ -505,11 +497,6 @@ def blackbox(
                     initial_trigger=initial_trigger,
                 )
 
-                usage = target_model.get_usage_stats()
-                wandb.run.summary.update({
-                    "final/total_tokens": usage.get("total_input_tokens"),
-                })
-                tracker.finish()
 
 
 if __name__ == "__main__":

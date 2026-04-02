@@ -324,12 +324,15 @@ def _run_name_multi(variant: str, model_name: str, seed: int) -> str:
 
 def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
     api = wandb.Api()
-    return {
-        r.name
-        for r in api.runs(
-            f"{WANDB_ENTITY}/{project}", filters={"state": "finished"}
-        )
-    }
+    try:
+        return {
+            r.name
+            for r in api.runs(
+                f"{WANDB_ENTITY}/{project}", filters={"state": "finished"}
+            )
+        }
+    except ValueError:
+        return set()  # project doesn't exist yet
 
 
 def _load_model(model_name: str, needs_eager: bool) -> LMHFModel:
@@ -381,7 +384,6 @@ def _run_single_attack(
 ):
     """Run one GCG optimization and log final stats."""
     torch.manual_seed(seed)
-    model.reset_usage_stats()
 
     blacklist_ids = _TC.get_blacklist_ids(model.tokenizer)
     initial_trigger = cfg.initial_trigger_fn(model.tokenizer, blacklist_ids, seed)
@@ -394,12 +396,6 @@ def _run_single_attack(
         initial_trigger=initial_trigger,
     )
 
-    usage = model.get_usage_stats()
-    wandb.run.summary.update({
-        "final/total_flops": usage.get("total_flops"),
-        "final/total_tokens": usage.get("total_input_tokens"),
-    })
-    tracker.finish()
 
 
 def _run_multi_attack(
@@ -412,7 +408,6 @@ def _run_multi_attack(
 ):
     """Run one GCG optimization over multiple instructions simultaneously."""
     torch.manual_seed(seed)
-    model.reset_usage_stats()
 
     blacklist_ids = _TC.get_blacklist_ids(model.tokenizer)
     initial_trigger = cfg.initial_trigger_fn(model.tokenizer, blacklist_ids, seed)
@@ -425,12 +420,6 @@ def _run_multi_attack(
         initial_trigger=initial_trigger,
     )
 
-    usage = model.get_usage_stats()
-    wandb.run.summary.update({
-        "final/total_flops": usage.get("total_flops"),
-        "final/total_tokens": usage.get("total_input_tokens"),
-    })
-    tracker.finish()
 
 
 # ─── CLI ────────────────────────────────────────────────────────────────────
