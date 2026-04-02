@@ -91,7 +91,6 @@ def run_advdecoding_retrieval(
         tracker=tracker,
         **(HIGH_COMP_PARAMS if high_compute else PAPER_PARAMS),
         temperature=1.0,  # as there is no sampling anyway
-        use_model_with_token_inputs=False,  # computes the target model loss in text-level
         # a prompt for util LM to compute logits of the trigger; prompt is taken from the paper:
         # util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",
     )

@@ -29,6 +29,8 @@ uv sync --all-extras
 pre-commit install
 ```
 
+Always invoke tools via `uv run` (e.g. `uv run ruff check`, `uv run ty check`, `uv run pytest`).
+
 The project uses Weights & Biases for experiment tracking. Ensure `wandb` is configured if running experiments.
 
 ## Architecture

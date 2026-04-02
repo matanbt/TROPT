@@ -52,10 +52,6 @@ def run_rasliteplus(
 
     util_lm = None  # we dont use logits
 
-    result = model(["paris is the capital of france. It is also known for the Eiffel Tower, its art, culture, and history."])
-    assert isinstance(result, torch.Tensor)
-    target_vector = result
-
     loss = SimilarityLoss()
 
     optimizer = RASLITEPlusOptimizer(

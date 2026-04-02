@@ -43,8 +43,6 @@ def run_beast(
         branching_factor=15,  # k2 in paper: number of candidates per beam
         top_k=None,  # Paper uses full distribution multinomial sampling
         temperature=1.0,  # As specified in paper
-        # We can use token-level loss computation for this attack, per the original implementation
-        use_model_with_token_inputs=True,
     )
 
     return optimizer.optimize_trigger(

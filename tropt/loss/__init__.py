@@ -2,6 +2,10 @@ from .base import (
     BaseLoss,
     CombinedLoss,
 )
+from .resolution import (
+    LossResolutionError,
+    resolve_and_compute_loss,
+)
 from .losses import (
     AttentionBasedLoss,
     AttentionEnhLoss,
@@ -19,7 +23,6 @@ from .losses import (
     TriggerLogitBasedLoss,
     TriggerPerplexityLoss,
 )
-
 from .text_losses import (
     BinaryLMJudgeLoss,
     # Concrete text losses
@@ -29,9 +32,4 @@ from .text_losses import (
     InputFluencyLoss,
     ResponseHarmfulnessLoss,
     TextBasedLoss,
-)
-
-from .resolution import (
-    LossResolutionError,
-    resolve_and_compute_loss,
 )
