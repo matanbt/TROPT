@@ -6,6 +6,7 @@ dist/
 *.slurm
 .pypirc
 
+.vscode/
 internal.md
 site/
 
@@ -15,3 +16,4 @@ docs/build/
 # Not ready for public yet
 runner/
 tests/
+misc/

@@ -9,7 +9,7 @@ from torch import Tensor
 
 logger = logging.getLogger(__name__)
 
-UNUSED_TOKEN_REGEX = r"<unused\d+>"
+UNUSED_TOKEN_REGEX = r"(\[unused\d+\]|<unused\d+>)"
 
 @dataclass
 class TokenConstraints:
