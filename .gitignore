@@ -12,6 +12,8 @@ site/
 
 docs/_build/
 docs/build/
+docs/compatibility_matrix.md
+docs/guides/compatibility_matrix.md
 
 # Not ready for public yet
 runner/

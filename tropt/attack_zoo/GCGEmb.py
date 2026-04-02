@@ -15,9 +15,7 @@ from tropt.tracker import BaseTracker
 def run_gcg_embedding_variant(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     prefix_info: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
-    target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(
-        1, 384
-    ),  # random target vector for demo purposes
+    target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
@@ -32,6 +30,7 @@ def run_gcg_embedding_variant(
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
     """
+    assert target_vector is not None, "target_vector must be provided"
     if model_obj is None:
         model_obj = EncoderHFModel(
             model_name=model_name,

@@ -25,10 +25,10 @@ The resolver matches against fields in three dataclasses:
 | Parameter name | Type | Provided by |
 |---|---|---|
 | `output_embeddings` | `Float[Tensor, "bsz d_model"]` | Encoder models |
-| `output_logits` | `Float[Tensor, "bsz seq_len vocab_size"]` | LMs (full sequence) |
-| `response_logits` | `Float[Tensor, "bsz response_seq_len vocab_size"]` | LMs (response region only) |
-| `output_hidden_states` | `Float[Tensor, "bsz n_layers seq_len d_model"]` | Models with `output_hidden_states=True` |
-| `output_attentions` | `Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]` | Models with `output_attentions=True` |
+| `full_logits` | `Float[Tensor, "bsz seq_len vocab_size"]` | LMs (full sequence) |
+| `prefill_response_logits` | `Float[Tensor, "bsz response_seq_len vocab_size"]` | LMs (response region only, prefilled) |
+| `full_hidden_states` | `Float[Tensor, "bsz n_layers seq_len d_model"]` | Models with `require_hidden_states=True` |
+| `full_attentions` | `Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]` | Models with `require_attentions=True` |
 | `generated_response_strs` | `List[str]` | LMs after generation |
 
 **From `ModelInput`** (input metadata):
@@ -52,7 +52,7 @@ For the full definitions, see [`ModelOutput`, `ModelInput`, and `MessageTargets`
 
 ### Loss hierarchy
 
-Losses are organized by the type of model output they consume. Each category has an abstract base class (e.g., `LogitBasedLoss`, `EmbeddingBasedLoss`, `TextBasedLoss`). Browse [`tropt/loss/`](../../tropt/loss/) for the full set.
+Losses are organized by the type of model output they consume. Each category has an abstract base class (e.g., `PrefillBasedLoss`, `EmbeddingBasedLoss`, `TextBasedLoss`). Browse [`tropt/loss/`](../../tropt/loss/) for the full set.
 
 Placing your loss under the right base class is a **convention for readability**, not a hard requirement — the resolver dispatches by `__call__` parameter names, not by base class.
 
@@ -106,11 +106,11 @@ from dataclasses import dataclass
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.loss.losses import LogitBasedLoss  # or another base class
+from tropt.loss import EmbeddingBasedLoss  # or another base class; see tropt/loss/losses.py
 
 
 @dataclass
-class MyLoss(LogitBasedLoss):
+class MyLoss(EmbeddingBasedLoss):
     # Hyperparameters as dataclass fields with defaults
     # my_param: float = 1.0
 

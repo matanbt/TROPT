@@ -4,7 +4,7 @@ This guide walks you through wrapping a new model backend in TROPT. Pick the sec
 
 - **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
-- **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `_HuggingFaceModelMixins` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
+- **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `HuggingFaceBackendModel` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
 
 > This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (especially "Pillar 1: Target Model"). For full API reference, see the [models API docs](../api/models.html).
 
@@ -20,13 +20,13 @@ Every model is composed of methods from three families. Understanding these help
 
 2. **Input methods** (`set_inputs_from_tokens`, `set_inputs_from_texts`) — store an `InputsManager` for use during optimization. Default implementations exist for both flows, so most models don't need custom logic here. You only customize this when your backend has special input handling (e.g., HuggingFace's embedding-level prefix caching).
 
-3. **Compute methods** (`compute_loss_from_tokens`, `compute_grad_from_tokens`, etc.) — the methods optimizers actually call. These use the stored inputs (from family 2) and the invoke methods (from family 1) internally. For text-access models, `LossTextAccessMixin` provides `compute_loss_from_texts` for free. For HuggingFace models, `_HuggingFaceModelMixins` provides all token-based compute methods. For other token-access backends, you implement these yourself.
+3. **Compute methods** (`compute_loss_from_tokens`, `compute_grad_from_tokens`, etc.) — the methods optimizers actually call. These use the stored inputs (from family 2) and the invoke methods (from family 1) internally. For text-access models, `LossTextAccessMixin` provides `compute_loss_from_texts` for free. For HuggingFace models, `HuggingFaceBackendModel` provides all token-based compute methods. For other token-access backends, you implement these yourself.
 
 **In practice**: for most new models, you implement `invoke_from_texts` and get everything else for free. Token-access models additionally implement `invoke_from_tokens` and `set_inputs_from_tokens`. The compute methods are only hand-written for non-HF token-access backends.
 
 ### Base Classes
 
-Every model inherits from one of two base classes in [`tropt/models/model_base.py`](../../tropt/models/model_base.py):
+Every model inherits from one of two base classes in [`tropt/model/model_base.py`](../../tropt/model/model_base.py):
 
 | Base class | Use for | Inference method you implement |
 |---|---|---|
@@ -55,7 +55,7 @@ Mixins declare what *type of access* the model exposes. Optimizers check these a
 | `GradientEmbedAccessMixin` | white-box | `compute_grad_from_embeds` |
 
 All token-access mixins inherit from `TokenAccessMixin`, which requires:
-- **`tokenizer`** property — HuggingFace `PreTrainedTokenizer` or [`BaseTokenizer`](../../tropt/models/model_base.py) subclass.
+- **`tokenizer`** property — HuggingFace `PreTrainedTokenizer` or [`BaseTokenizer`](../../tropt/model/model_base.py) subclass.
 - **`set_inputs_from_tokens(templates, targets)`** — builds and stores an `InputsManager` for the optimization run.
 
 You implement `tokenizer` and `set_inputs_from_tokens` **once**, regardless of how many token mixins you include.
@@ -75,18 +75,17 @@ A model can include both token-access and text-access mixins — see `LMHFModel`
 [`ModelOutput`](../../tropt/common.py) is a dataclass that standardizes what your model returns. All fields are optional — populate only the ones your backend can provide:
 
 ```python
-@dataclass
 class ModelOutput:
-    output_embeddings: ...   # Encoder models
-    output_logits: ...       # LMs (prefill logits)
-    response_logits: ...     # LMs (response-region logits)
-    output_hidden_states: ...
-    output_attentions: ...
-    generated_response_strs: ...  # LMs (generated text)
+    output_embeddings: ...         # Encoder models
+    full_logits: ...               # LMs (full sequence logits)
+    prefill_response_logits: ...   # LMs (response-region logits, prefilled)
+    full_hidden_states: ...
+    full_attentions: ...
+    generated_response_strs: ...   # LMs (generated text)
     generated_response_ids: ...
     generated_response_logits: ...
-    full_template_strs: ...
-    full_template_ids: ...
+    full_strs: ...
+    full_ids: ...
 ```
 
 The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `ResponseLMScoreLoss`). The [loss resolution system](../../tropt/loss/resolution.py) validates this at runtime and raises clear errors if a required field is missing.
@@ -101,7 +100,7 @@ Your class will inherit from:
 - A **base class**: `EncoderBaseModel` (for embedding models) or `LMBaseModel` (for language models)
 - The **`LossTextAccessMixin`** mixin — which provides `compute_loss_from_texts` and `set_inputs_from_texts` for free
 
-**Existing examples**: [`EncoderGeminiModel`](../../tropt/models/google/encoder.py), [`LiteLLMModel`](../../tropt/models/litellm_proxy/lm.py).
+**Existing examples**: [`EncoderGeminiModel`](../../tropt/model/google/encoder.py), [`LiteLLMModel`](../../tropt/model/litellm_proxy/lm.py).
 
 ### What to implement
 
@@ -130,7 +129,7 @@ Everything else — `set_inputs_from_texts`, `compute_loss_from_texts` — is pr
 
 ```python
 from tropt.common import ModelOutput
-from tropt.models import LMBaseModel, LossTextAccessMixin
+from tropt.model import LMBaseModel, LossTextAccessMixin
 
 
 class MyLMModel(LMBaseModel, LossTextAccessMixin):
@@ -149,14 +148,14 @@ class MyLMModel(LMBaseModel, LossTextAccessMixin):
         return ModelOutput(generated_response_strs=responses)
 ```
 
-For complete working examples, see [`LiteLLMModel`](../../tropt/models/litellm_proxy/lm.py) (LM) or [`EncoderGeminiModel`](../../tropt/models/google/encoder.py) (encoder).
+For complete working examples, see [`LiteLLMModel`](../../tropt/model/litellm_proxy/lm.py) (LM) or [`EncoderGeminiModel`](../../tropt/model/google/encoder.py) (encoder).
 
 ### File placement
 
-Create a directory under `tropt/models/` for your backend:
+Create a directory under `tropt/model/` for your backend:
 
 ```
-tropt/models/
+tropt/model/
 ├── huggingface/
 ├── openai/
 ├── google/
@@ -166,7 +165,7 @@ tropt/models/
     └── encoder.py       # or lm.py
 ```
 
-Then export your class from [`tropt/models/__init__.py`](../../tropt/models/__init__.py).
+Then export your class from [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
 
 ---
 
@@ -174,13 +173,13 @@ Then export your class from [`tropt/models/__init__.py`](../../tropt/models/__in
 
 Use this when your backend supports embedding-level input — you can pass raw input embeddings (not just text) and receive model outputs like logits or gradients. This is the path for non-HuggingFace backends with internal access.
 
-> If your model is HuggingFace-based, skip to [Adding a HuggingFace Model](#adding-a-huggingface-model) — the `_HuggingFaceModelMixins` class already provides the compute loop.
+> If your model is HuggingFace-based, skip to [Adding a HuggingFace Model](#adding-a-huggingface-model) — the `HuggingFaceBackendModel` class already provides the compute loop.
 
 ### The InputsManager
 
 The `InputsManager` pre-processes text templates once (splitting at the `{{OPTIMIZED_TRIGGER}}` placeholder, tokenizing, embedding) and then efficiently inserts candidate triggers at each optimization step via `get_triggered_inputs(trigger_ids, chosen_template_idx)`, which returns a [`ModelInput`](../../tropt/common.py) dataclass.
 
-The default [`DefaultTokenInputManager`](../../tropt/models/inputs_manager.py) works with any tokenizer supporting the `BaseTokenizer` interface — it decodes trigger IDs to strings and reconstructs full texts. The HuggingFace backend uses [`_HFTokenInputManager`](../../tropt/models/huggingface/base.py), which overrides this with embedding-level input construction, attention masks, prefix caching, and position slicing.
+The default [`DefaultTokenInputManager`](../../tropt/model/inputs_manager.py) works with any tokenizer supporting the `BaseTokenizer` interface — it decodes trigger IDs to strings and reconstructs full texts. The HuggingFace backend uses [`HuggingFaceTokenInputManager`](../../tropt/model/huggingface/base.py), which overrides this with embedding-level input construction, attention masks, prefix caching, and position slicing.
 
 ### The setup-then-compute pattern
 
@@ -197,7 +196,7 @@ Cleanup is handled by `reset_inputs_from_tokens()` (provided by `TokenAccessMixi
 
 **1. Inference method** — Same as for text-access models (see [above](#what-to-implement)).
 
-**2. `tokenizer` property** — Required by `TokenAccessMixin`. Must be a HuggingFace `PreTrainedTokenizer` or a [`BaseTokenizer`](../../tropt/models/model_base.py) subclass. The optimizer uses it to encode/decode triggers.
+**2. `tokenizer` property** — Required by `TokenAccessMixin`. Must be a HuggingFace `PreTrainedTokenizer` or a [`BaseTokenizer`](../../tropt/model/model_base.py) subclass. The optimizer uses it to encode/decode triggers.
 
 ```python
 @property
@@ -205,7 +204,7 @@ def tokenizer(self):
     return self._tokenizer
 ```
 
-If your backend doesn't use a HuggingFace tokenizer, implement the `BaseTokenizer` interface — see [`OpenAITokenizer`](../../tropt/models/openai/encoder.py) for an example wrapping `tiktoken`.
+If your backend doesn't use a HuggingFace tokenizer, implement the `BaseTokenizer` interface — see [`OpenAITokenizer`](../../tropt/model/openai/encoder.py) for an example wrapping `tiktoken`.
 
 **3. `set_inputs_from_tokens`** — Tokenize the templates and construct your `InputsManager`. Store it via `self._token_input_manager`. In most cases you can use the `DefaultTokenInputManager`, which works with any `BaseTokenizer`:
 
@@ -220,7 +219,7 @@ def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) 
     )
 ```
 
-Only subclass or replace the input manager if your backend needs custom input construction (e.g., embedding-level assembly — see HuggingFace's `_HFTokenInputManager`).
+Only subclass or replace the input manager if your backend needs custom input construction (e.g., embedding-level assembly — see HuggingFace's `HuggingFaceTokenInputManager`).
 
 **4. `compute_{value}_from_tokens`** — Implement one method per token-access mixin you include. Each compute method should use your `invoke_from_tokens` internally to run the forward pass. The structure is the same for all: loop over templates, call `get_triggered_inputs` to get a `ModelInput`, invoke the model, and return the result.
 
@@ -262,7 +261,7 @@ Note that it is `compute_loss_*` duty to wrap/not wrap computations with `no_gra
 
 ### FLOP counting
 
-TROPT supports optional FLOP counting via invoke-level tracking (see [`tropt/models/flop_counter.py`](../../tropt/models/flop_counter.py)), using the [Kaplan et al. (2020)](https://arxiv.org/abs/2001.08361) approximation. Cheap and deterministic. Requires `_model` to be a HuggingFace `PreTrainedModel`.
+TROPT supports optional FLOP counting via invoke-level tracking (see [`tropt/model/flop_counter.py`](../../tropt/model/flop_counter.py)), using the [Kaplan et al. (2020)](https://arxiv.org/abs/2001.08361) approximation. Cheap and deterministic. Requires `_model` to be a HuggingFace `PreTrainedModel`.
 
 FLOP counting is handled entirely inside `invoke_from_tokens` / `invoke_from_texts` — these are the model-call bottleneck. To support it:
 
@@ -273,17 +272,17 @@ FLOP counting is handled entirely inside `invoke_from_tokens` / `invoke_from_tex
 
 ### File placement
 
-Same as for text-access models — one directory per backend, exported from `tropt/models/__init__.py`.
+Same as for text-access models — one directory per backend, exported from `tropt/model/__init__.py`.
 
 ---
 
 ## Adding a HuggingFace Model
 
-HuggingFace models get the full token-access compute loop for free via [`_HuggingFaceModelMixins`](../../tropt/models/huggingface/base.py). You only implement the model-specific parts.
+HuggingFace models get the full token-access compute loop for free via [`HuggingFaceBackendModel`](../../tropt/model/huggingface/base.py). You only implement the model-specific parts.
 
-**Existing examples**: [`LMHFModel`](../../tropt/models/huggingface/lm.py), [`EncoderHFModel`](../../tropt/models/huggingface/encoder.py).
+**Existing examples**: [`LMHFModel`](../../tropt/model/huggingface/lm.py), [`EncoderHFModel`](../../tropt/model/huggingface/encoder.py).
 
-### What `_HuggingFaceModelMixins` provides
+### What `HuggingFaceBackendModel` provides
 
 These methods are fully implemented and call `invoke_from_tokens` internally:
 
@@ -299,7 +298,7 @@ The mixin also handles the template loop, batching, and loss resolution via `res
 
 ### What you implement
 
-**1. `__init__`** — Load the HF model and set these fields (expected by `_HuggingFaceModelMixins`):
+**1. `__init__`** — Load the HF model and set these fields (expected by `HuggingFaceBackendModel`):
 
 ```python
 self._model                    # transformers.PreTrainedModel (or SentenceTransformer)
@@ -346,18 +345,18 @@ def invoke_from_tokens(self, input_embeds, input_attention_mask,
         count_backward=count_backward,
     )
     return ModelOutput(
-        output_logits=outputs.logits,   # populate what your model provides
+        full_logits=outputs.logits,   # populate what your model provides
     )
 ```
 
 The `count_backward` flag is set to `True` by gradient methods (`compute_grad_from_tokens`, `compute_grad_from_embeds`) so that FLOPs include the backward pass cost.
 
-**3. `set_inputs_from_tokens`** — Build an [`_HFTokenInputManager`](../../tropt/models/huggingface/base.py) (or a model-specific subclass) and store it:
+**3. `set_inputs_from_tokens`** — Build an [`HuggingFaceTokenInputManager`](../../tropt/model/huggingface/base.py) (or a model-specific subclass) and store it:
 
 ```python
 def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) -> None:
     tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
-    self._token_input_manager = _HFTokenInputManager(
+    self._token_input_manager = HuggingFaceTokenInputManager(
         tok_ids=tok_ids,
         model=self._model,
         tokenizer=self.tokenizer,
@@ -367,29 +366,29 @@ def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) 
     )
 ```
 
-LM models typically apply the chat template and tokenize target responses before building the manager — see [`LMHFModel.set_inputs_from_tokens`](../../tropt/models/huggingface/lm.py) for the full pattern. You may also subclass `_HFTokenInputManager` if your model has special target handling — see [`LMHFTokenInputManager`](../../tropt/models/huggingface/lm.py) (which auto-appends target response embeddings for prefill-based losses) and [`EncoderHFTokenInputManager`](../../tropt/models/huggingface/encoder.py).
+LM models typically apply the chat template and tokenize target responses before building the manager — see [`LMHFModel.set_inputs_from_tokens`](../../tropt/model/huggingface/lm.py) for the full pattern. You may also subclass `HuggingFaceTokenInputManager` if your model has special target handling — see [`LMHFTokenInputManager`](../../tropt/model/huggingface/lm.py) (which auto-appends target response embeddings for prefill-based losses) and [`EncoderHFTokenInputManager`](../../tropt/model/huggingface/encoder.py).
 
-**4. Inference method** — The public method called by `__call__`. This is a **separate code path** from `invoke_from_tokens` — it handles plain-text evaluation, not optimization. See [`LMHFModel.invoke_from_texts`](../../tropt/models/huggingface/lm.py) or [`EncoderHFModel.invoke_from_texts`](../../tropt/models/huggingface/encoder.py) for full examples.
+**4. Inference method** — The public method called by `__call__`. This is a **separate code path** from `invoke_from_tokens` — it handles plain-text evaluation, not optimization. See [`LMHFModel.invoke_from_texts`](../../tropt/model/huggingface/lm.py) or [`EncoderHFModel.invoke_from_texts`](../../tropt/model/huggingface/encoder.py) for full examples.
 
 ### Class skeleton
 
 ```python
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, ModelInput, ModelOutput, Targets
 from tropt.loss.base import BaseLoss
-from tropt.models import (
+from tropt.model import (
     LMBaseModel,
     GradientTokenAccessMixin,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
-from tropt.models.huggingface.base import _HFTokenInputManager, _HuggingFaceModelMixins
-from tropt.models.model_mixins import GradientEmbedAccessMixin
+from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
+from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 
 class MyHFLMModel(
     LMBaseModel,
-    _HuggingFaceModelMixins,
+    HuggingFaceBackendModel,
     # token-level access:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -424,7 +423,7 @@ class MyHFLMModel(
     def invoke_from_texts(self, input_texts, **kwargs): ...
 ```
 
-You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `_HuggingFaceModelMixins`.
+You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `HuggingFaceBackendModel`.
 
 ---
 
@@ -432,7 +431,7 @@ You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`,
 
 After implementing your model:
 
-1. **Export** — Add your class to [`tropt/models/__init__.py`](../../tropt/models/__init__.py).
+1. **Export** — Add your class to [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
 2. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
 3. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
-4. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `_HuggingFaceModelMixins`. This takes care of usage tracking and FLOPs.
+4. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.

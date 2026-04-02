@@ -109,6 +109,7 @@ from tropt.common import DEFAULT_INIT_TRIGGER, Targets, TextTemplates
 from tropt.loss import BaseLoss
 from tropt.model import BaseModel, LossTokenAccessMixin  # import the mixins you need
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.tracker import BaseTracker
 
 
@@ -122,10 +123,12 @@ class MyOptimizer(BaseOptimizer):
         loss: BaseLoss,
         tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
-        # ... your optimizer's hyperparameters ...
+        num_steps: int = 500,
+        # ... other hyperparameters ...
     ):
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
-        # ... store your hyperparameters ...
+        self.num_steps = num_steps
+        # ... store other hyperparameters ...
 
     def optimize_trigger(
         self,
@@ -133,16 +136,15 @@ class MyOptimizer(BaseOptimizer):
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
     ) -> OptimizerResult:
-        # 0. Log run configuration (hyperparams, templates, targets, etc.)
-        self._log_run_config_to_tracker(templates, initial_trigger, targets)
 
         # 1. Setup: prepare model inputs
         #    Choose the flow matching your access level:
         #    self.model.set_inputs_from_{tokens|texts}(templates, targets)
         self.model.set_inputs_from_tokens(templates, targets)
+        best = RunningBest()
 
-        # 2. Optimization loop
-        for step in range(self.n_steps):
+        # 2. Optimization loop — register_tqdm wires self.log() into the progress bar
+        for _ in self.register_tqdm(range(self.num_steps)):
             # Use compute_* methods matching your model_requirements:
             #   compute_{loss|grad|logits}_from_{tokens|texts}(...)
             losses = self.model.compute_loss_from_tokens(
@@ -150,23 +152,12 @@ class MyOptimizer(BaseOptimizer):
             )
             # ... generate candidates, evaluate, update trigger ...
 
-            # Log metrics each step (trigger_str + loss details + model usage stats)
-            self.tracker.log({"loss": current_loss, "trigger_str": trigger_str, **self.loss_func.get_loss_log_dict(), **self.model.get_usage_stats()})
+            # self.log() enriches automatically with loss stats and model usage
+            self.log(loss=current_loss, trigger_str=trigger_str)
+            best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
-        # 3. Cleanup: release stored model state
-        self.model.reset_inputs_from_tokens()
-
-        # 4. Log final results
-        result = OptimizerResult(
-            best_trigger=...,      # token IDs of best trigger
-            best_loss=...,         # float
-            best_trigger_str=...,  # decoded string
-            losses=...,            # list of per-step losses (optional)
-            trigger_strs=...,      # list of per-step trigger strings (optional)
-            full_prompt=...,       # templates with best trigger substituted (optional)
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        return result
+        # Saves the best trigger found
+        return best.to_result()
 ```
 
 ---
@@ -189,7 +180,7 @@ Optimizers *should* use the utilities in `tropt/optimizer/utils/`:
 
 ### The `set_inputs_from_tokens` / `reset_inputs_from_tokens` contract
 
-Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start and the corresponding `reset_*` at the end. The model stores state between these calls — forgetting to reset leaks state into subsequent runs.
+Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start of `optimize_trigger`. Cleanup (`reset_inputs_from_*`) is called automatically by `BaseOptimizer` after your method returns — you don't need to call it yourself. The same wrapper also calls `log_config`, logs the final result, and calls `tracker.finish()`.
 
 ### Multi-template aggregation
 
@@ -204,7 +195,7 @@ Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start a
 ## Checklist
 
 1. **`model_requirements`** — Declare the exact mixins your optimizer calls.
-2. **Cleanup** — Always call `reset_inputs_from_tokens()` / `reset_inputs_from_texts()` at the end.
+2. **Cleanup** — `reset_inputs_from_*`, final logging, and `tracker.finish()` are handled automatically by `BaseOptimizer`; no need to call them in your implementation.
 3. **Register** — Export from `tropt/optimizer/__init__.py`.
 4. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/`.
 5. **Attack zoo entry** (optional) — Add a recipe in `tropt/attack_zoo/` for published attacks.

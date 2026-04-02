@@ -106,11 +106,11 @@ def build_docs():
     try:
         from scripts.generate_compat_matrix import generate_markdown
         md = generate_markdown()
-        compat_path = os.path.join(docs_copy, "compatibility_matrix.md")
+        compat_path = os.path.join(docs_copy, "guides", "compatibility_matrix.md")
         with open(compat_path, "w", encoding="utf-8") as f:
             f.write(md)
         # Also write to original docs so it's available outside builds
-        with open(os.path.join(docs_original, "compatibility_matrix.md"), "w", encoding="utf-8") as f:
+        with open(os.path.join(docs_original, "guides", "compatibility_matrix.md"), "w", encoding="utf-8") as f:
             f.write(md)
         print("  Compatibility matrix generated.")
     except Exception as e:
