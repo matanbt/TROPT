@@ -137,7 +137,6 @@ unresolved-attribute = "ignore"   # HF/ST models expose attrs dynamically (e.g. 
 invalid-argument-type = "ignore"  # jaxtyping annotations (Float[Tensor, ...]) confuse ty's type narrowing
 call-non-callable = "ignore"      # ST's _first_module(), .encode(), HF's .generate() seen as Tensor|Module union
 invalid-method-override = "ignore"  # model/loss subclasses intentionally specialize abstract signatures
-invalid-assignment = "ignore"     # HF's apply_chat_template return type; copy.copy narrows to BaseModel
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

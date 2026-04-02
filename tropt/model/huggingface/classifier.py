@@ -106,7 +106,7 @@ class ClassifierHFModel(
         assert self._model.config.id2label is not None
         for k, v in self._model.config.id2label.items():
             assert isinstance(k, int) and isinstance(v, str)
-        return self._model.config.id2label
+        return self._model.config.id2label  # type: ignore[return-value] (verified by assertions)
 
     # ----------------------- set_inputs_from_tokens -----------------------
 

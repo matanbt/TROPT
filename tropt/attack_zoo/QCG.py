@@ -42,6 +42,7 @@ def run_qcg(
 
     if proxy_model_obj is None:
         if model_name == proxy_model_name:
+            assert isinstance(model_obj, LMHFModel)
             proxy_model_obj = model_obj  # reuse target model as proxy if same name
         else:
             proxy_model_obj = LMHFModel(
@@ -94,6 +95,7 @@ def run_gcgp_whitebox(
 
     if proxy_model_obj is None:
         if model_name == proxy_model_name:
+            assert isinstance(model_obj, LMHFModel)
             proxy_model_obj = model_obj  # reuse target model as proxy if same name
         else:
             proxy_model_obj = LMHFModel(

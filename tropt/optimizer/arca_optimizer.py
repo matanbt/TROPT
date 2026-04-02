@@ -79,7 +79,7 @@ class ARCAOptimizer(BaseOptimizer):
 
         _vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, _vocab_size)
-        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, _vocab_size, return_tensor=True)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, _vocab_size, return_tensor=True).to(self.model.device)
 
         best = RunningBest()
 

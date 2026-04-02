@@ -93,7 +93,7 @@ class GASLITEOptimizer(BaseOptimizer):
 
         vocab_size = self.model.vocab_size
         blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
-        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True).to(self.model.device)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
@@ -214,10 +214,10 @@ class GASLITEOptimizer(BaseOptimizer):
 
         for idx in range(1, self.n_grad):  # (keep the first intact)
             # select a random position and a random token
-            pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = valid_token_ids[
+            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
+            tok_to_flip_to = int(valid_token_ids[
                 torch.randint(0, len(valid_token_ids), (1,), device=device)
-            ].item()  # apply the flip
+            ].item())  # apply the flip
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 
         return trigger_vars_ids

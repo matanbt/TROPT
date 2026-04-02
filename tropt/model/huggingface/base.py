@@ -358,7 +358,7 @@ class HuggingFaceBackendModel:
     """Implementation of common methods for HuggingFace models."""
 
     _model: transformers.PreTrainedModel
-    _embedding_layer: torch.nn.Embedding
+    _embedding_layer: torch.nn.Module
 
     @property
     def n_layers(self) -> int:

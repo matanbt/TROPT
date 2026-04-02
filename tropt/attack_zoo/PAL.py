@@ -106,7 +106,8 @@ def run_pal(
         )
     if proxy_model_obj is None:
         if model_name == proxy_model_name:
-            proxy_model_obj = model_obj  # reuse target model as proxy if same name
+            assert isinstance(model_obj, LMHFModel)
+            proxy_model_obj: LMHFModel = model_obj  # reuse target model as proxy if same name
         else:
             proxy_model_obj = LMHFModel(
                 model_name=proxy_model_name,

@@ -114,7 +114,7 @@ class BaseOptimizer(ABC):
                 self.tracker.finish()
                 return result
 
-            cls.optimize_trigger = _wrapper
+            setattr(cls, 'optimize_trigger', _wrapper)
 
     def __init__(
         self,
