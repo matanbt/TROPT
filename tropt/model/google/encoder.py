@@ -61,9 +61,9 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             "document",
             "query",
         ), f"Unsupported text_type {text_type}"
-        task_type = self._text_to_task_type.get(text_type, None)
+        task_type = self._text_to_task_type.get(text_type) if text_type else None
 
-        import google.genai as genai  # optional dependency
+        import google.genai as genai
 
         response = self._client.models.embed_content(
             contents=input_texts,
@@ -74,6 +74,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             ),
         )
 
+        assert response.embeddings is not None, "embed_content returned no embeddings"
         result = torch.stack(
             [torch.tensor(emb.values) for emb in response.embeddings], dim=0
         )  # shape: (n_texts, d_model)

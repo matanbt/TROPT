@@ -29,6 +29,7 @@ Usage::
 """
 
 import logging
+from transformers import PreTrainedModel
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,7 @@ class ManualFlopCounter(FlopCounterBase):
         num_experts = getattr(config, "num_local_experts", None) or getattr(
             config, "num_experts", None
         )
-        if not all([h, intermediate, n_layers, num_experts]):
+        if h is None or intermediate is None or n_layers is None or num_experts is None:
             return None
         return 3 * h * intermediate * num_experts * n_layers
 
@@ -175,7 +176,7 @@ class ManualFlopCounter(FlopCounterBase):
         num_experts = getattr(config, "num_local_experts", None) or getattr(
             config, "num_experts", None
         )
-        if not all([h, n_layers, n_heads]):
+        if h is None or n_layers is None or n_heads is None:
             return None
         if head_dim is None:
             head_dim = h // n_heads
@@ -196,7 +197,7 @@ class ManualFlopCounter(FlopCounterBase):
         intermediate = getattr(config, "intermediate_size", None)
         n_layers = getattr(config, "num_hidden_layers", None)
         n_heads = getattr(config, "num_attention_heads", None)
-        if not all([h, intermediate, n_layers, n_heads]):
+        if h is None or intermediate is None or n_layers is None or n_heads is None:
             return None
         head_dim = getattr(config, "head_dim", h // n_heads)
         n_kv_heads = getattr(config, "num_key_value_heads", n_heads)

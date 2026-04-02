@@ -1,14 +1,10 @@
 import logging
-from typing import List, Optional, Type
+from typing import Callable, Optional
 
 import torch
-import torch.nn.functional as F
-from jaxtyping import Float
-from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )
@@ -41,7 +37,7 @@ class SoftPromptOptimizer(BaseOptimizer):
         # Soft prompt optimization parameters:
         num_steps: int = 100,
         learning_rate: float = 0.001,
-        gd_optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam,
+        gd_optimizer: Callable[..., torch.optim.Optimizer] = torch.optim.Adam,
     ):
         """
 

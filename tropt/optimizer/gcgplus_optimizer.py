@@ -277,6 +277,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         valid_token_ids: Int[Tensor, "n_valid"],
     ) -> TriggerBuffer:
         """Initialize the buffer with the initial trigger and random variants. Batched."""
+        assert self.buffer_size is not None
         trigger_seq_len = initial_trigger_ids.shape[0]
         device = initial_trigger_ids.device
 

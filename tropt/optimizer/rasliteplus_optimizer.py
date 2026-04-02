@@ -8,7 +8,6 @@ from torch import Tensor
 
 from tropt.common import (
     DEFAULT_INIT_TRIGGER,
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     Targets,
     TextTemplates,
 )
@@ -22,8 +21,8 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
@@ -351,7 +350,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         # Return the best trigger found
         result = best.to_result()
-        result.full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best.trigger_str) for t in templates]
         logger.info(f"Best loss: {result.best_loss} | Best trigger: {result.best_trigger_str}")
         return result
 

@@ -12,7 +12,7 @@ restarts when the search stalls.
 """
 
 import logging
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 import torch
 from jaxtyping import Int
@@ -41,15 +41,15 @@ class RandomSearchOptimizer(BaseOptimizer):
       4. Keep best if it improves current loss
       5. If no improvement for ``patience`` steps, restart from random init
 
-    
+
     Implementation Notes:
-    - Candidate evaluation is always text-based (``compute_loss_from_texts``); even for HF model, 
+    - Candidate evaluation is always text-based (``compute_loss_from_texts``); even for HF model,
     we decode to strings and re-encode for model input.
-    - A tokenizer is needed for the optimizer's token-level mutations; it should eitehr be provided, or we fall back to the model's tokenizer if it has one. 
+    - A tokenizer is needed for the optimizer's token-level mutations; it should eitehr be provided, or we fall back to the model's tokenizer if it has one.
     - The original implementation employs a "warm" intiial trigger (eg another GCG suffix), and uses it as the starting point for all restarts.  Here, we sample random triggers for all restarts for diversity.
     - The original implementation employs an LLM judge for early stopping; here we use a simple patience counter for restarts.
-    - The original implementation mostly use a loss-based scheduler. For generality (e.g., different potential loss values) we avoid using it. 
-    
+    - The original implementation mostly use a loss-based scheduler. For generality (e.g., different potential loss values) we avoid using it.
+
 
     Reference implementation:
     - The original implementation: https://github.com/tml-epfl/llm-adaptive-attacks/blob/main/main.py
@@ -81,12 +81,12 @@ class RandomSearchOptimizer(BaseOptimizer):
         """
         Args:
             num_steps: Total optimization steps.
-            n_candidates: Number of mutated candidates per step. 
+            n_candidates: Number of mutated candidates per step.
             mutation_mode: ``"block_random"`` for random contiguous block mutation
                 (original PRS), ``"single_cyclic"`` for single-token mutations
                 spread across positions (candidate ``i`` mutates position
                 ``i % trigger_len``).
-            
+
             schedule: Schedule for block size decay. Relevant for block mutation mode(s).
                 ``"fixed"`` for step-based coarse-to-fine decay,
                 ``"none"`` to keep block size constant.
@@ -147,7 +147,7 @@ class RandomSearchOptimizer(BaseOptimizer):
         valid_token_ids = self.token_constraints.get_whitelist_ids(
             tokenizer, tokenizer.vocab_size, device, return_tensor=True
         )
-        n_valid = len(valid_token_ids)
+        n_valid = len(valid_token_ids)  # noqa: F841
 
         best = RunningBest()
 

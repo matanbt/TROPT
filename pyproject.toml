@@ -46,7 +46,7 @@ openai = [
 ]
 
 google = [
-  "google-generativeai>=0.3.0",
+  "google-genai>=1.0.0",
 ]
 
 litellm = [
@@ -114,7 +114,6 @@ allow-direct-references = true
 packages = ["tropt"]
 
 [tool.ruff]
-line-length = 88
 include = ["tropt/**/*.py", "tests/**/*.py"]
 
 [tool.ruff.lint]
@@ -128,7 +127,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"__init__.py" = ["F401"]
+"__init__.py" = ["F401", "I001"]  # custom import order in init files 
 
 [tool.ty.src]
 include = ["tropt/"]
@@ -137,13 +136,8 @@ include = ["tropt/"]
 unresolved-attribute = "ignore"   # HF/ST models expose attrs dynamically (e.g. .generate, .encode, .config)
 invalid-argument-type = "ignore"  # jaxtyping annotations (Float[Tensor, ...]) confuse ty's type narrowing
 call-non-callable = "ignore"      # ST's _first_module(), .encode(), HF's .generate() seen as Tensor|Module union
-unresolved-import = "ignore"      # optional deps imported at runtime (google.genai)
 invalid-method-override = "ignore"  # model/loss subclasses intentionally specialize abstract signatures
-no-matching-overload = "ignore"   # torch.full, dict.get, str.replace with dynamic union args
-unknown-argument = "ignore"       # self.GDOptimizer is assigned dynamically (Adam/SGD), ty sees base Optimizer
-missing-argument = "ignore"       # same as above — GDOptimizer's __init__ resolved against wrong overload
 invalid-assignment = "ignore"     # HF's apply_chat_template return type; copy.copy narrows to BaseModel
-invalid-return-type = "ignore"    # HF config.id2label typed as generic dict, not Dict[int, str]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

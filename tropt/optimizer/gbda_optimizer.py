@@ -1,5 +1,5 @@
 import logging
-from typing import Literal, Optional, Type
+from typing import Callable, Literal, Optional
 
 import torch
 import torch.nn.functional as F
@@ -61,7 +61,7 @@ class GBDAOptimizer(BaseOptimizer):
         temp_end: float = 0.1,
 
         # Optimization parameters:
-        gd_optimizer: Type[torch.optim.Optimizer] = torch.optim.Adam,
+        gd_optimizer: Callable[..., torch.optim.Optimizer] = torch.optim.Adam,
         use_lr_schedule: bool = True,
         learning_rate: float = 0.3,
         grad_clip_norm: Optional[float] = None,

@@ -103,6 +103,9 @@ class ClassifierHFModel(
 
     @property
     def id2label(self) -> Dict[int, str]:
+        assert self._model.config.id2label is not None
+        for k, v in self._model.config.id2label.items():
+            assert isinstance(k, int) and isinstance(v, str)
         return self._model.config.id2label
 
     # ----------------------- set_inputs_from_tokens -----------------------
