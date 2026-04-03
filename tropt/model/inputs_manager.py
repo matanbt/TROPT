@@ -17,11 +17,12 @@ from tropt.common import (
 
 class InputsManager(ABC):
     """
-    Base class for maintaining the input template, corresponding targets, and the method for injecting triggers into the inputs.
-    This class wraps `n_templates` templates and targets, and provides a unified interface for different types of inputs (e.g., text-based, token-based) used in adversarial trigger optimization.
+    Base class for maintaining the input template, corresponding targets, and the method for 
+    injecting triggers into the inputs.
+    This class wraps `n_templates` templates (that contain the substring `OPTIMIZED_TRIGGER_PLACEHOLDER` as 
+    a trigger placeholder) and targets, and provides a unified interface for different types of inputs 
+    (e.g., text-based, token-based) used in adversarial trigger optimization.
     """
-
-    optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER
 
     def __init__(
         self,
@@ -31,7 +32,18 @@ class InputsManager(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_triggered_inputs(self, *args, **kwargs) -> ModelInput:
+    def get_triggered_inputs(self, chosen_template_idx: int, *args, **kwargs) -> ModelInput:
+        """
+        Returns the trigger-combined model inputs, for the specified template index. 
+        
+        Args: 
+            chosen_template_idx: Index of the template to use for generating the inputs.
+            ... args for receiving the trigger candidates ...
+
+        Returns:
+            A ModelInput object containing the crafted triggered-combined inputs, which includes the 
+            corresponding targets for the specified template.
+        """
         raise NotImplementedError
 
 
@@ -50,7 +62,6 @@ class TextInputManager(InputsManager):
         self,
         templates: TextTemplates,
         targets: Optional[Targets] = None,
-        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
     ):
         assert isinstance(templates, list), "templates must be a list of strings."
         if targets is None:
@@ -60,7 +71,7 @@ class TextInputManager(InputsManager):
 
         before_texts, after_texts = [], []
         for template in templates:
-            bef, aft = template.split(optimized_trigger_placeholder)
+            bef, aft = template.split(OPTIMIZED_TRIGGER_PLACEHOLDER, 1)
             before_texts.append(bef)
             after_texts.append(aft)
 
@@ -74,8 +85,8 @@ class TextInputManager(InputsManager):
 
     def get_triggered_inputs(
         self,
-        trigger_strs: Annotated[List[str], "n_candidates"],
         chosen_template_idx: int,
+        trigger_strs: Annotated[List[str], "n_candidates"],
     ) -> ModelInput:
         """
         Returns a list of inputs with the given trigger strings merged in.
@@ -133,8 +144,7 @@ class DefaultTokenInputManager(TokenInputManager):
     def __init__(
         self,
         tokenizer: Any,
-        tok_ids: List[List[int]],
-        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
+        templates_ids: List[List[int]],
         targets: Optional[Targets] = None,
         **kwargs,
     ):
@@ -145,15 +155,15 @@ class DefaultTokenInputManager(TokenInputManager):
         self.targets = targets
 
         # Decode the input tokens back to text and split by placeholder
-        raw_texts = tokenizer.batch_decode(tok_ids)
+        raw_texts = tokenizer.batch_decode(templates_ids)
         self.before_texts = []
         self.after_texts = []
 
         for text in raw_texts:
-            assert text.count(optimized_trigger_placeholder) == 1, (
-                f"Text must contain exactly one placeholder '{optimized_trigger_placeholder}'"
+            assert text.count(OPTIMIZED_TRIGGER_PLACEHOLDER) == 1, (
+                f"Text must contain exactly one placeholder '{OPTIMIZED_TRIGGER_PLACEHOLDER}'"
             )
-            bef, aft = text.split(optimized_trigger_placeholder, 1)
+            bef, aft = text.split(OPTIMIZED_TRIGGER_PLACEHOLDER, 1)
             self.before_texts.append(bef)
             self.after_texts.append(aft)
 
@@ -165,8 +175,8 @@ class DefaultTokenInputManager(TokenInputManager):
 
     def get_triggered_inputs(
         self,
-        trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         chosen_template_idx: int,
+        trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         **kwargs
     ) -> ModelInput:
         """

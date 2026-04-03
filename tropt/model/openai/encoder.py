@@ -245,8 +245,7 @@ class EncoderOpenAIModel(
         # 2. Build the Manager and store it
         self._token_input_manager = DefaultTokenInputManager(
             tokenizer=self._tokenizer,
-            tok_ids=tok_ids,
-            optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
+            templates_ids=tok_ids,
             targets=targets,
         )
 

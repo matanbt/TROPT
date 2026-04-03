@@ -51,51 +51,21 @@ class ClassifierHFModel(
         set_model_to_eval: bool = True,
         **kwargs,
     ):
-        self._model_name = model_name
-        self._forward_pass_batch_size = forward_pass_batch_size
-        self._backward_pass_batch_size = backward_pass_batch_size
-
         if device is None:
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
         if loaded_model is not None:
             self._model = loaded_model
         else:
-            try:
-                self._model = AutoModelForSequenceClassification.from_pretrained(
-                    model_name,
-                    torch_dtype=dtype or "auto",
-                    **kwargs,
-                ).to(device)
-            except Exception as e:
-                logger.error(
-                    f"Error loading model `{model_name}`. "
-                    f"You might need to pass `trust_remote_code=True`: {e}"
-                )
-                raise
+            self._model = AutoModelForSequenceClassification.from_pretrained(
+                model_name,
+                torch_dtype=dtype or "auto",
+                **kwargs,
+            ).to(device)
 
         # Set tokenizer and embedding layer:
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            model_name, **{k: v for k, v in kwargs.items() if k == "trust_remote_code"}
-        )
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
         self._embedding_layer = self._model.get_input_embeddings()
-
-        # Set model to eval and freeze parameters by default
-        if set_model_to_eval:
-            self._model.eval()
-            for param in self._model.parameters():
-                param.requires_grad = False
-
-        if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
-            self._tokenizer.add_special_tokens(
-                {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-            )
-
-        if self._model.dtype in (torch.float32, torch.float64):
-            logger.warning(
-                f"Model is in {self._model.dtype}. Use a lower precision data type, "
-                f"if possible, for much faster optimization."
-            )
 
     @property
     def n_classes(self) -> int:
@@ -121,11 +91,10 @@ class ClassifierHFModel(
 
         tok_ids = self._tokenizer(templates, add_special_tokens=True)["input_ids"]
         self._token_input_manager = HuggingFaceTokenInputManager(
-            tok_ids=tok_ids,
-            model=self._model,
             tokenizer=self._tokenizer,
+            device=self.device,
+            templates_ids=tok_ids,
             embed_func=self._embedding_layer,
-            optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             use_prefix_cache=False,
             targets=targets,
         )

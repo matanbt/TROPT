@@ -28,13 +28,6 @@ from tropt.model.huggingface.base import (
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
-# ======================= Input/Output Handlers logic =======================
-
-
-class EncoderHFTokenInputManager(HuggingFaceTokenInputManager):
-    targets: Targets
-    # includes `target_vectors` (n_templates, d_model) if target outputs are provided;
-    # to optimize towards an vector per message
 
 
 # ======================= Model logic =======================
@@ -77,10 +70,6 @@ class EncoderHFModel(
             run_additional_checks (bool): Whether to run additional checks on the model to ensure compliance with this module computations. Can be disabed for faster initialization, but is good for identfying incompatability issues (mostly with models overriding HF default code).
             **kwargs: Additional arguments for SentenceTransformer.
         """
-        self._model_name = model_name
-        self._forward_pass_batch_size = forward_pass_batch_size
-        self._backward_pass_batch_size = backward_pass_batch_size
-
         if loaded_model is not None:
             assert isinstance(loaded_model, SentenceTransformer), "loaded_model must be a SentenceTransformer instance."
             self._model = loaded_model
@@ -100,23 +89,7 @@ class EncoderHFModel(
         self._tokenizer = self._model.tokenizer
         self._embedding_layer = self._get_input_embeddings()
 
-        # Set model to eval mode
-        if set_model_to_eval:
-            self._model.eval()
-            for param in self._model.parameters():
-                param.requires_grad = False
-
-        # To make sure the placeholder will be tokenizer as is
-        if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
-            self._tokenizer.add_special_tokens(
-                {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-            )
-
         ## warning and checks:
-        if self._model.dtype in (torch.float32, torch.float64):
-            logger.warning(
-                f"Model is in {self._model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
-            )
         if run_additional_checks:
             if self._requires_input_ids_with_embeds():
                 logger.warning(
@@ -191,12 +164,11 @@ class EncoderHFModel(
 
         # Build the input manager, that will allow combining with different triggers
         tok_ids = self._tokenizer(templates, add_special_tokens=True)["input_ids"]
-        self._token_input_manager = EncoderHFTokenInputManager(
-            tok_ids=tok_ids,
-            model=self._model,
+        self._token_input_manager = HuggingFaceTokenInputManager(
+            templates_ids=tok_ids,
+            device=self.device,
             tokenizer=self._tokenizer,
             embed_func=self._embedding_layer,
-            optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             use_prefix_cache=False,  # prefix caching is not meant for encoder-only architectures
             targets=targets,
         )

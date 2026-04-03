@@ -193,7 +193,7 @@ class LossTextAccessMixin(TextAccessMixin):
         losses = []
         for template_idx in range(n_templates):
             curr_model_input = input_manager.get_triggered_inputs(
-                candidate_trigger_strs, chosen_template_idx=template_idx
+                chosen_template_idx=template_idx, trigger_strs=candidate_trigger_strs
             )
             curr_texts, curr_targets = (
                 curr_model_input.input_texts,

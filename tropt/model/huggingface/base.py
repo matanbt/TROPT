@@ -1,3 +1,5 @@
+import functools
+import inspect
 import itertools
 import logging
 from abc import abstractmethod
@@ -46,29 +48,53 @@ class HuggingFaceTokenInputManager(TokenInputManager):
     @torch.no_grad()
     def __init__(
         self,
-        model: transformers.PreTrainedModel,
         tokenizer: transformers.PreTrainedTokenizerBase,
-        tok_ids: Annotated[List[List[int]], "n_templates seq_len"],
+        device: torch.device,
+        templates_ids: Annotated[List[List[int]], "n_templates seq_len"],
         embed_func: torch.nn.Module,
-        optimized_trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
+        targets: Targets,
         use_prefix_cache: Optional[bool] = False,
-        targets: Optional[Targets] = None,
+        model: Optional[transformers.PreTrainedModel] = None,
     ):
+        """
+        Initializes the HuggingFace input manager for a given tokenzier and input templates.
+
+        Args:
+            tokenizer: The HuggingFace tokenizer to use.
+            device: The device to use for any tensors created by the input manager.
+            templates_ids: the user-provided input templates tokenized into token ids, as a list of lists of 
+            ints (n_templates, seq_len). These are expected to include all special tokens, including the 
+            chat template in the case of instruction-tuned LMs.
+            embed_func: The embedding function (torch module) to use for embedding token ids into vectors.
+
+            use_prefix_cache: Whether to compute and use the prefix cache for the part before the trigger (as 
+            it is static throughout optimization).
+            model: The HuggingFace model, required if `use_prefix_cache` is True, to compute the prefix cache.
+            targets: The Targets object containing the optimization targets for the input templates.
+
+
+        Notes:
+        - The inputs templates is split into *before* and *after* the trigger parts, and then maintained separately by the input manager. Then, given trigger candidates, we craft multiple inputs from the templates.
+        - HuggingFaceBackend ensures that the `OPTIMIZED_TRIGGER_PLACEHOLDER` token is registered 
+        in the tokenizer (as a _single_ token), so we can reliably split the templates into 
+        before/after trigger parts by this input manager.
+        - Each input template is handled separately, as it they may vary in length, have their own targets, etc.
+        """
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
 
         ## Split texts into before/after optimized trigger parts
         placeholder_id = tokenizer.convert_tokens_to_ids(
-            optimized_trigger_placeholder  # expected to be a single token
+            OPTIMIZED_TRIGGER_PLACEHOLDER  # expected to be a single token
         )
         before_ids, after_ids = [], []
         before_texts, after_texts = [], []
-        for ids in tok_ids:  # iterate on each template
+        for ids in templates_ids:  # iterate on each template
             # extract trigger position:
             ids = torch.tensor(ids, device=model.device, dtype=torch.int64)
             trig_positions = (ids == placeholder_id).nonzero(as_tuple=True)[0]
             assert len(trig_positions) == 1, (
-                f"Expected exactly 1 '{optimized_trigger_placeholder}' token in the template "
+                f"Expected exactly 1 '{OPTIMIZED_TRIGGER_PLACEHOLDER}' token in the template "
                 f"token sequence, found {len(trig_positions)}."
             )
             trig_pos = trig_positions.item()
@@ -86,7 +112,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         self.tokenizer = tokenizer
 
         # Prepare targets
-        self.targets = targets.to_device(model.device)
+        self.targets: Targets = targets.to_device(model.device)
 
         # Compute the KV Cache for tokens that appear before the optimized tokens
         prefix_cache: List[ # per message
@@ -99,6 +125,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         ] = []
 
         if use_prefix_cache:
+            assert model is not None, "Model must be provided to compute prefix cache."
             for i in range(self.n_templates):
                 # (seq, emb) -> (1, seq, emb)
                 curr_embeds = self.before_embeds[i].unsqueeze(0)
@@ -158,6 +185,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         # trigger options:
         trigger_ids: Optional[Float[Tensor, "n_candidates trigger_seq_len"]] = None,
         trigger_embeds: Optional[Float[Tensor, "n_candidates trigger_seq_len embd_dim"]] = None,
+
         append_embeds: Optional[List[Float[Tensor, "n_app_ids embd_dim"]]] = None,  # of length n_templates
         do_append_embeds: bool = False,
         chosen_template_idx: Optional[int] = None,
@@ -355,10 +383,81 @@ class HuggingFaceTokenInputManager(TokenInputManager):
 
 
 class HuggingFaceBackendModel:
-    """Implementation of common methods for HuggingFace models."""
+    """Implementation of common methods for HuggingFace models.
+
+    Should be used as a mixin for specific HuggingFace model wrappers (e.g., ClassifierHFModel, CLIPEncoderHFModel).
+
+    Implementation Notes:
+    - This class wraps the __init__ method of subclasses to handle common bookkeeping tasks, done before and after initialization.
+    These include storing common fields (e.g., batch sizes), optionally setting eval mode and freezing weights, registering special tokens, etc.
+    - Subclasses are expected to initialize the model object in `self._model`, the tokenizer in `self._tokenizer`, and the _embedding_layer property (used for token embedding) in their __init__ method.
+    """
 
     _model: transformers.PreTrainedModel
     _embedding_layer: torch.nn.Module
+
+    # -- fields extracted from subclass __init__ signatures --
+    _PRE_INIT_FIELDS = ("model_name", "forward_pass_batch_size", "backward_pass_batch_size")
+
+    def __init_subclass__(cls, **kwargs):
+        """
+         Subclass ``__init__`` methods are automatically wrapped (via
+    ``__init_subclass__``) to handle common bookkeeping:
+
+        **Before** the subclass ``__init__`` body runs:
+        - ``_model_name``, ``_forward_pass_batch_size``, and
+            ``_backward_pass_batch_size`` are stored from the matching
+            ``__init__`` parameters (looked up by name).
+
+        **After** the subclass ``__init__`` body runs (expects ``_model`` and
+        ``_tokenizer`` to be set by then):
+        - Model set to eval mode and parameters frozen (if ``set_model_to_eval``).
+        - ``OPTIMIZED_TRIGGER_PLACEHOLDER`` registered as a special token.
+        - Precision warning emitted when model dtype is float32/float64.
+        """
+        super().__init_subclass__(**kwargs)
+        if "__init__" not in cls.__dict__:
+            return
+        original_init = cls.__dict__["__init__"]
+        _sig = inspect.signature(original_init)
+
+        @functools.wraps(original_init)
+        def _wrapped_init(self, *args, **kwargs):
+            ba = _sig.bind(self, *args, **kwargs)
+            ba.apply_defaults()
+
+            # --- pre-init: store common fields ---
+            for field in HuggingFaceBackendModel._PRE_INIT_FIELDS:
+                if field in ba.arguments:
+                    setattr(self, f"_{field}", ba.arguments[field])
+
+            # --- run the subclass __init__ ---
+            original_init(self, *args, **kwargs)
+
+            # --- post-init: eval, freeze, placeholder, warnings ---
+            set_model_to_eval = ba.arguments.get("set_model_to_eval", True)
+
+            if set_model_to_eval:
+                self._model.eval()
+                for param in self._model.parameters():
+                    param.requires_grad = False
+
+            if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
+                self._tokenizer.add_special_tokens(
+                    {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
+                )
+
+            if self._model.dtype in (torch.float32, torch.float64):
+                logger.warning(
+                    f"Model is in {self._model.dtype}. Use a lower precision data type, "
+                    "if possible, for much faster optimization."
+                )
+            
+            if self._model.device == torch.device("cpu"):
+                logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
+
+        # Replace the subclass __init__ with the wrapped version
+        setattr(cls, "__init__", _wrapped_init)
 
     @property
     def n_layers(self) -> int:
@@ -383,16 +482,16 @@ class HuggingFaceBackendModel:
         return self._embedding_layer
 
     @cached_property
-    def effective_embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
+    def embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
         """
         Compuates the effective embedding matrix used by the model.
 
         Explanation:
-            Sometimes the input embedding function is not a simple matmul embedding layer, but rather it's
+            Sometimes the input embedding function is not a simple one-hot-matmul embedding layer, but rather it's
             enriched with some additional logic (e.g. scaling the embeddings).
             See Gemma3 for example: https://github.com/huggingface/transformers/blob/a7f29523361b2cc12e51c1f5133d95f122f6f45c/src/transformers/models/gemma3/modular_gemma3.py#L348
             Since our (gradient) calculation operates on the matrix *directly*, we need to take this into account.
-            In this non-matmul case, merely multiplying the one-hot encoding with the matrix may provide
+            In this not-exactly-matmul case, merely multiplying the one-hot encoding with the matrix may provide
             an incorrect embedding. One possible fix is to require the "effective" embedding matrix, and
             operate on it instead, as we do here.
             Naturally, this assumes that the embedding function works position-wise, which is usually the case.
@@ -401,14 +500,9 @@ class HuggingFaceBackendModel:
             Tensor of shape (vocab_size, embd_dim)
         """
         assert isinstance(self._embedding_layer, torch.nn.Embedding), "We currently only support models with a standard, yet potentially subclassed, embedding layer."
-        all_token_ids = torch.arange(self._embedding_layer.num_embeddings, device=self._model.device)
+        all_token_ids = torch.arange(self._embedding_layer.num_embeddings, device=self.device)
         effective_embedding_matrix = self._embedding_layer(all_token_ids)  # (vocab_size, dim)
         return effective_embedding_matrix  # shape: (vocab_size, embd_dim)
-
-    @property
-    def embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
-        """The raw embedding matrix from the model's embedding layer, without any enrichment."""
-        return self.effective_embedding_matrix
 
     def compute_grad_from_tokens(
         self,
@@ -499,7 +593,7 @@ class HuggingFaceBackendModel:
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
         assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
-        model = self._model
+        device, dtype = self.device, self.dtype
         embedding_layer = self._embedding_layer
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
@@ -531,12 +625,12 @@ class HuggingFaceBackendModel:
                 candidate_ids_onehot_detached = torch.nn.functional.one_hot(
                     candidate_trigger_ids,
                     num_classes=embedding_layer.num_embeddings,
-                ).to(model.device, model.dtype)
+                ).to(device, dtype)
             else:
-                candidate_ids_onehot_detached = candidate_trigger_probs.to(model.device, model.dtype)
+                candidate_ids_onehot_detached = candidate_trigger_probs.to(device, dtype)
 
             # Prepare the effective embedding matrix:
-            embedding_matrix = self.effective_embedding_matrix  # (vocab_size, embd_dim)
+            embedding_matrix = self.embedding_matrix  # (vocab_size, embd_dim)
 
             for cand_idx_start in range(0, n_candidates, batch_size):
                 # for each batch we calculate its gradients, through the per-message loss
@@ -588,8 +682,8 @@ class HuggingFaceBackendModel:
                         ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
 
                     model_input = input_manager.get_triggered_inputs(
-                        trigger_embeds=candidate_embeds,
                         chosen_template_idx=template_idx,
+                        trigger_embeds=candidate_embeds,
                         trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
                         # loss-conditional flags:
@@ -618,7 +712,7 @@ class HuggingFaceBackendModel:
                 candidate_onehot_grad = torch.autograd.grad(
                     outputs=batch_losses,
                     inputs=[candidate_ids_onehot],
-                    grad_outputs=torch.ones_like(batch_losses, device=model.device),
+                    grad_outputs=torch.ones_like(batch_losses, device=device),
                 )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
                 all_grads.append(candidate_onehot_grad)
                 all_losses.append(batch_losses.detach())
@@ -658,7 +752,7 @@ class HuggingFaceBackendModel:
         """
         assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
-        model = self._model
+        device, dtype = self.device, self.dtype
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
         n_candidates = candidate_trigger_embeds.shape[0]
@@ -688,8 +782,8 @@ class HuggingFaceBackendModel:
 
                     # 2. Get batched inputs
                     model_input = input_manager.get_triggered_inputs(
-                        trigger_embeds=candidate_embeds,
                         chosen_template_idx=template_idx,
+                        trigger_embeds=candidate_embeds,
 
                         # loss-conditional flags:
                         do_append_embeds=loss_func.require_target_prefill,
@@ -719,13 +813,13 @@ class HuggingFaceBackendModel:
                 candidate_embeds_grad = torch.autograd.grad(
                     outputs=batch_losses,
                     inputs=[candidate_embeds],
-                    grad_outputs=torch.ones_like(batch_losses, device=model.device),
+                    grad_outputs=torch.ones_like(batch_losses, device=device),
                 )[0] # (bsz_triggers, trigger_seq_len, embed_dim)
 
                 all_grads.append(candidate_embeds_grad)
                 all_losses.extend(batch_losses.detach().cpu().tolist())
 
-            return torch.cat(all_grads, dim=0), float(torch.tensor(all_losses, device=model.device).mean().item())
+            return torch.cat(all_grads, dim=0), float(torch.tensor(all_losses, device=device).mean().item())
 
         # Execute batched computation
         all_grads, avg_loss = _compute_grad__batched()
@@ -792,8 +886,8 @@ class HuggingFaceBackendModel:
 
                 logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
                 model_input = input_manager.get_triggered_inputs(
-                    trigger_ids=batch_candidate_trigger_ids,
                     chosen_template_idx=template_idx,
+                    trigger_ids=batch_candidate_trigger_ids,
 
                     # loss-conditional flags:
                     do_append_embeds=loss_func.require_target_prefill,

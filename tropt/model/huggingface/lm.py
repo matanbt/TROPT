@@ -95,10 +95,6 @@ class LMHFModel(
         loaded_model: Optional[AutoModelForCausalLM] = None,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
-        self._model_name = model_name
-        self._forward_pass_batch_size = forward_pass_batch_size
-        self._backward_pass_batch_size = backward_pass_batch_size
-
         if loaded_model is not None:
             logger.info(f"Using provided loaded model for {model_name}.")
             self._model = loaded_model
@@ -130,26 +126,6 @@ class LMHFModel(
         self._embedding_layer: torch.nn.Module = embedding_layer
         self._use_prefix_cache = use_prefix_cache
 
-        # Set model to eval mode
-        if set_model_to_eval:
-            self._model.eval()
-            for param in self._model.parameters():
-                param.requires_grad = False
-
-        # To make sure the placeholder will be tokenizer as is
-        if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
-            self._tokenizer.add_special_tokens(
-                {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
-            )
-
-        ## warning and checks:
-        if self._model.dtype in (torch.float32, torch.float64):
-            logger.warning(
-                f"Model is in {self._model.dtype}. Use a lower precision data type, if possible, for much faster optimization."
-            )
-
-        if self._model.device == torch.device("cpu"):
-            logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
         if not self._tokenizer.chat_template:
             logger.warning(
@@ -177,6 +153,9 @@ class LMHFModel(
                 )
 
     def _update_targets_by_model(self, targets: Optional[Targets]) -> Targets:
+        """
+        An LM-specific logic to update the targets. Particularly, if target response strings are provided, we tokenize them and store in `target_response_toks`.
+        """
         if targets is None:
             targets = Targets()
 
@@ -229,11 +208,11 @@ class LMHFModel(
 
         # Build the input manager, that will allow combining with different triggers
         self._token_input_manager = LMHFTokenInputManager(
-            tok_ids=template_tok_ids,
+            templates_ids=template_tok_ids,
+            device=self._model.device,
             model=self._model,
             tokenizer=self._tokenizer,
             embed_func=self._embedding_layer,
-            optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
             use_prefix_cache=self._use_prefix_cache,
             targets=targets,
         )
@@ -290,8 +269,8 @@ class LMHFModel(
 
                 # Get inputs for this specific message
                 model_input = input_manager.get_triggered_inputs(
-                    trigger_ids=batch_candidate_trigger_ids,
                     chosen_template_idx=template_idx,
+                    trigger_ids=batch_candidate_trigger_ids,
                 )
                 # Compute the logits
                 logits_batch = self.invoke_from_tokens(
