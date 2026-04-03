@@ -35,31 +35,41 @@ MSG_ID_FLAGS=""
 for mid in $MSG_IDS; do
     MSG_ID_FLAGS="$MSG_ID_FLAGS --msg-ids $mid"
 done
-echo "Message IDs: $MSG_IDS"
+
+SEED_FLAGS=""
+for s in $SEEDS; do
+    SEED_FLAGS="$SEED_FLAGS --seeds $s"
+done
+echo "Message IDs: $MSG_IDS  |  Seeds: $SEEDS"
 
 # ─── Exp1: Optimizer Benchmarks ─────────────────────────────────────────────
 echo "=== Exp1: White-box optimizer sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp1 whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    python scripts/opt-bench/exp1.py whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
 
+echo "=== Exp1: External NanoGCG sweep ==="
+for model in "${WHITEBOX_MODELS[@]}"; do
+    echo "--- Model: $model ---"
+    python scripts/opt-bench/exp1.py external-nanogcg --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+done
 
 echo "=== Exp1: Black-box optimizer sweep ==="
-python -m scripts.opt-bench.exp1 blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
+python scripts/opt-bench/exp1.py blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
 
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
 echo "=== Exp2: Single-instruction tweak sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp2 single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
 exit 0
 
 echo "=== Exp2: Multi-instruction tweak sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp2 multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
 
 

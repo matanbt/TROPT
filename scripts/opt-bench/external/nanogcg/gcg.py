@@ -20,7 +20,7 @@ try:
 except ImportError:
     WANDB_AVAILABLE = False
 
-from nanogcg.utils import (
+from .utils import (
     INIT_CHARS,
     configure_pad_token,
     find_executable_batch_size,

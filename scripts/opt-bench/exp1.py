@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 import typer
 import wandb
-from transformers import pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
 from scripts.attack_evaluate.evaluate_jailbreakness import evaluate_triggers
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
@@ -498,6 +498,96 @@ def blackbox(
                     initial_trigger=initial_trigger,
                 )
 
+
+
+@app.command()
+def external_nanogcg(
+    model_name: str = typer.Option("google/gemma-2-2b-it", help="HuggingFace model identifier"),
+    msg_ids: List[int] = typer.Option(MSG_IDS, help="ClearHarm message IDs"),
+    seeds: List[int] = typer.Option(SEEDS, help="Random seeds"),
+    skip_existing: bool = typer.Option(True, help="Skip already-finished wandb runs"),
+):
+    """Run the external NanoGCG implementation with the same wandb conventions as TROPT optimizers."""
+    import sys
+    _ext_dir = os.path.join(os.path.dirname(__file__), "external")
+    if _ext_dir not in sys.path:
+        sys.path.insert(0, _ext_dir)
+    from nanogcg import GCG as NanoGCG
+    from nanogcg import GCGConfig as NanoGCGConfig
+
+    finished: set[str] = _finished_run_names() if skip_existing else set()
+    print(f"Skipping {len(finished)} already-finished runs.")
+
+    df = pd.read_csv(CLEARHARM_PATH)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    print(f"Loading model {model_name} on {device}...")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, torch_dtype=torch.bfloat16,
+    ).to(device)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+    for msg_id in msg_ids:
+        row = df.iloc[msg_id]
+        instruction: str = row["message_template"]
+        target: str = row["target_response_prefix"]
+
+        for seed in seeds:
+            run_name = _run_name("nanogcg", model_name, msg_id, seed)
+
+            if skip_existing and run_name in finished:
+                print(f"  skip  {run_name}")
+                continue
+            print(f"  run   {run_name}")
+
+            # Use the same random initial trigger as TROPT optimizers
+            torch.manual_seed(seed)
+            initial_trigger = tropt.optimizer.utils.token_initializers.get_printable_random_trigger(
+                trigger_len=TRIGGER_LEN, tokenizer=tokenizer,
+                blacklist_ids=_TC.get_blacklist_ids(tokenizer),
+            )
+
+            # NanoGCG expects {optim_str} placeholder instead of {{OPTIMIZED_TRIGGER}}
+            messages = instruction.replace("{{OPTIMIZED_TRIGGER}}", "{optim_str}")
+
+            config = NanoGCGConfig(
+                optim_str_init=initial_trigger,
+                seed=seed,
+                num_steps=500,
+                search_width=512,
+                topk=256,
+                n_replace=1,
+                use_prefix_cache=False,
+                filter_ids=True,
+                wandb_log=True,
+            )
+
+            wandb.init(
+                name=run_name,
+                tags=[_RUN_TYPE, "nanogcg"],
+                project=WANDB_PROJECT,
+                entity=WANDB_ENTITY,
+                config={
+                    "run_type": _RUN_TYPE,
+                    "model_name": model_name,
+                    "optimizer_name": "nanogcg",
+                    "msg_id": msg_id,
+                    "seed": seed,
+                    "optimized_instruction": instruction,
+                    "optimized_target": target,
+                    "loss_name": "PrefillCE",
+                    "is_soft": False,
+                },
+            )
+
+            gcg = NanoGCG(model, tokenizer, config)
+            result = gcg.run(messages, target, wandb_metadata={})
+
+            # Ensure summary fields match TROPT convention
+            wandb.summary["best_loss"] = result.best_loss
+            wandb.summary["best_trigger_str"] = result.best_string
+
+            wandb.finish()
 
 
 if __name__ == "__main__":
