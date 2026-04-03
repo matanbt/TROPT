@@ -1,6 +1,8 @@
 # Adding a New Optimizer
 
-This guide walks you through adding a new optimizer to TROPT. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss.
+This guide walks you through implementing a new optimizer. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss. 
+Optimizers can be implemented in a standalone script. For contributing new optimizers to to TROPT also see  [Adding to TROPT](#adding-to-tropt) section.
+
 
 > For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 4: Optimizers). For the full API reference, see the [optimizer API docs](../api/optimizer.html).
 
@@ -52,9 +54,14 @@ Call `super().__init__(model, loss, tracker, seed)` and store your hyperparamete
 
 Set up model inputs, run your optimization loop, clean up model state, return an `OptimizerResult`. See the [skeleton](#skeleton) below.
 
-### 4. Register
 
-Export from [`tropt/optimizer/__init__.py`](../../tropt/optimizer/__init__.py).
+
+**Now your optimizer is ready to run:**
+
+```python
+optimizer = MyOptimizer(model=model, loss=loss)
+result = optimizer.optimize_trigger(templates=..., targets=...)
+```
 
 ---
 
@@ -196,6 +203,14 @@ Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start o
 
 1. **`model_requirements`** — Declare the exact mixins your optimizer calls.
 2. **Cleanup** — `reset_inputs_from_*`, final logging, and `tracker.finish()` are handled automatically by `BaseOptimizer`; no need to call them in your implementation.
-3. **Register** — Export from `tropt/optimizer/__init__.py`.
-4. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/`.
-5. **Attack zoo entry** (optional) — Add a recipe in `tropt/attack_zoo/` for published attacks.
+3. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/`.
+
+---
+
+## Adding to TROPT
+
+If you want to contribute the optimizer to the package (not just use it in your own script):
+
+1. **Register** — Export from [`tropt/optimizer/__init__.py`](../../tropt/optimizer/__init__.py).
+2. **Test** — Add tests under `tests/optimizer/`.
+3. **Attack zoo entry** (optional) — Add a recipe in `tropt/attack_zoo/` for published attacks.

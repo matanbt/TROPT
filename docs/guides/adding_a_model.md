@@ -1,6 +1,6 @@
 # Adding a New Model
 
-This guide walks you through wrapping a new model backend in TROPT. Pick the section that matches your situation:
+This guide walks you through wrapping a new model backend. Pick the section that matches your situation:
 
 - **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
@@ -150,22 +150,7 @@ class MyLMModel(LMBaseModel, LossTextAccessMixin):
 
 For complete working examples, see [`LiteLLMModel`](../../tropt/model/litellm_proxy/lm.py) (LM) or [`EncoderGeminiModel`](../../tropt/model/google/encoder.py) (encoder).
 
-### File placement
-
-Create a directory under `tropt/model/` for your backend:
-
-```
-tropt/model/
-├── huggingface/
-├── openai/
-├── google/
-├── litellm_proxy/
-└── my_backend/          # your new backend
-    ├── __init__.py
-    └── encoder.py       # or lm.py
-```
-
-Then export your class from [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
+No registration is needed to use a custom model — any subclass of `LMBaseModel` or `EncoderBaseModel` works directly with any optimizer whose `model_requirements` it satisfies.
 
 ---
 
@@ -269,10 +254,6 @@ FLOP counting is handled entirely inside `invoke_from_tokens` / `invoke_from_tex
 2. For **gradient methods**: pass `count_backward=True` to `invoke_from_tokens` so it records the backward FLOPs correctly.
 
 `set_flop_counting("manual")` will raise a `TypeError` if `_model` is not a HuggingFace `PreTrainedModel`.
-
-### File placement
-
-Same as for text-access models — one directory per backend, exported from `tropt/model/__init__.py`.
 
 ---
 
@@ -429,9 +410,16 @@ You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`,
 
 ## Checklist
 
-After implementing your model:
+1. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
+2. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.
+3. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
 
-1. **Export** — Add your class to [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
-2. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
-3. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
-4. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.
+---
+
+## Adding to TROPT
+
+If you want to contribute the model to the package (not just use it in your own script):
+
+1. **File placement** — Create a directory under `tropt/model/` for your backend (e.g., `tropt/model/my_backend/`).
+2. **Export** — Add your class to [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
+3. **Test** — Add tests under `tests/models/`.

@@ -1,6 +1,6 @@
 # Adding a New Loss
 
-This guide walks you through adding a new loss function to TROPT.
+This guide walks you through implementing a new loss function, whether you create it in your own separate script, or you intend to contibute to the package (for the latter, also see [Adding to TROPT](#adding-to-tropt) section).
 
 > For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 3: Losses). For the full API reference, see the [loss API docs](../api/loss.html).
 
@@ -82,17 +82,15 @@ Pick the base class matching the model output your loss operates on. Browse [`tr
 
 See the [skeleton](#skeleton) below. The critical rule: **name your `__call__` parameters to match fields in `ModelOutput`, `ModelInput`, or `MessageTargets`**.
 
-### 3. Register
-
-Export from [`tropt/loss/__init__.py`](../../tropt/loss/__init__.py).
-
-### 4. Use it
+### 3. Use it
 
 ```python
 loss = MyLoss()
 optimizer = SomeOptimizer(model=model, loss=loss)
 result = optimizer.optimize_trigger(templates=..., targets=...)
 ```
+
+No registration is needed — the [loss resolution system](../../tropt/loss/resolution.py) discovers parameters via introspection, so any `BaseLoss` subclass works out of the box regardless of where it's defined.
 
 ---
 
@@ -106,13 +104,19 @@ from dataclasses import dataclass
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.loss import EmbeddingBasedLoss  # or another base class; see tropt/loss/losses.py
+from tropt.loss import BaseLoss
 
 
 @dataclass
-class MyLoss(EmbeddingBasedLoss):
+class MyLoss(BaseLoss):
     # Hyperparameters as dataclass fields with defaults
     # my_param: float = 1.0
+
+    # Override require_* flags as needed (all False by default):
+    #   require_target_prefill  — model appends target tokens, returns prefill_response_logits
+    #   require_generation      — model runs autoregressive generation
+    #   require_hidden_states   — model returns full_hidden_states
+    #   require_attentions      — model returns full_attentions
 
     def __call__(
         self,
@@ -125,6 +129,8 @@ class MyLoss(EmbeddingBasedLoss):
         # Losses are minimized — negate if you want to maximize something.
         ...
 ```
+
+> **Note:** The existing abstract base classes (e.g., `PrefillBasedLoss`, `EmbeddingBasedLoss`) are provided as a **convention for readability** — they set the right `require_*` flags and define a typed `__call__` signature. Inheriting directly from `BaseLoss` and setting the flags yourself is equally valid.
 
 As a concrete example, [`SimilarityLoss`](../../tropt/loss/losses.py) is a good reference — it takes `output_embeddings` and `target_vectors` as `__call__` parameters (matching `ModelOutput` and `MessageTargets` fields), and returns negated cosine similarity as shape `(bsz,)`.
 
@@ -158,5 +164,13 @@ If no existing base class fits, create one inheriting from `BaseLoss` with an ab
 1. **Naming** — `__call__` parameter names match fields in `ModelOutput`, `ModelInput`, or `MessageTargets`.
 2. **Return shape** — `(bsz,)`.
 3. **Sign convention** — Losses are *minimized*. Negate if maximizing.
-4. **Register** — Export from `tropt/loss/__init__.py`.
-5. **Test** — Output shape, known input/output pairs, edge cases. See `tests/loss/`.
+4. **Test** — Output shape, known input/output pairs, edge cases. See `tests/loss/`.
+
+---
+
+## Adding to TROPT
+
+If you want to contribute the loss to the package (not just use it in your own script):
+
+1. **Register** — Export from [`tropt/loss/__init__.py`](../../tropt/loss/__init__.py).
+2. **Test** — Add tests under `tests/loss/`.
