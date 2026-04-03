@@ -9,4 +9,4 @@ API Reference
    optimizer
    optimizer_utils
    loss
-   attack_zoo
+   recipe_hub

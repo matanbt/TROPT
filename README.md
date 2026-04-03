@@ -78,14 +78,14 @@ uv run ruff check .
 
 ## Usage
 
-TROPT offers multiple usage levels: (1) pre-configured attacks from the Attack Zoo, (2) manual composition of attack components for granular control, and (3) custom components (write your own optimizer, and, optionally, also loss, or model wrapper).
+TROPT offers multiple usage levels: (1) pre-configured attacks from the Recipe Hub, (2) manual composition of attack components for granular control, and (3) custom components (write your own optimizer, and, optionally, also loss, or model wrapper).
 
-### 🦁 [Quick Start] Via the Attack Zoo
+### 🦁 [Quick Start] Via the Recipe Hub
 
 The simplest way to start is by using a predefined attack. These include, though not limited to, common optimizers for LLM jailbreak. Here is an example using the **GCG (Greedy Coordinate Gradient)** attack to optimize a trigger for a specific target behavior.
 
 ```python
-from tropt.attack_zoo.GCG import run_gcg
+from tropt.recipe_hub.GCG import run_gcg
 
 # Define the instruction and the desired target output.
 # The `{{OPTIMIZED_TRIGGER}}` placeholder marks where the optimized tokens will be inserted.
@@ -113,9 +113,9 @@ For advanced research, you can construct the optimization pipeline manually. Thi
 
 ### 🫴 Via Manual Composition
 
-While the Attack Zoo provides predefined attacks for convenience, you can also manually compose the optimization pipelines for greater flexibility.
+While the Recipe Hub provides predefined attacks for convenience, you can also manually compose the optimization pipelines for greater flexibility.
 This allows you to choose what _model_ you would like to target, what _loss_ function to optimize against, and what specific existing _optimization strategy_ to use (along its hyperparameters), etc. 
-Notably, this programmatic composition also underlies the Attack Zoo implementations.
+Notably, this programmatic composition also underlies the Recipe Hub implementations.
 
 See [quickstart.ipynb](quickstart.ipynb) for concrete examples covering the key features, including running LM jaibreak, embedding attacks, brewing new trigger objectives, and targeting black-box models.
 

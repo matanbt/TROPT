@@ -1,6 +1,6 @@
-# Attack Zoo
+# Recipe Hub
 
-This directory contains self-contained recipes for various adversarial attacks on text models. These scripts are meant to serve as reproduction and "hacking" entry points.
+This directory contains self-contained recipes for various optimization methods on text models. These scripts are meant to serve as reproduction and "hacking" entry points.
 
 ## Usage
 

@@ -1,7 +1,7 @@
-Attack Zoo
+Recipe Hub
 ==============
 
-.. automodule:: tropt.attack_zoo
+.. automodule:: tropt.recipe_hub
    :members:
    :undoc-members:
    :show-inheritance:

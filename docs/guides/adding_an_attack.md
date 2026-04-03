@@ -1,6 +1,6 @@
 # Adding an Attack
 
-An attack script glues together a **Model**, **Loss**, and **Optimizer** into a runnable function. This works in any standalone script — no registration required. See `tropt/attack_zoo/` for examples.
+An attack script glues together a **Model**, **Loss**, and **Optimizer** into a runnable function. This works in any standalone script — no registration required. See `tropt/recipe_hub/` for examples.
 
 ## Minimal Example
 
@@ -61,12 +61,12 @@ def run_myattack(
 
 ## Adding to TROPT
 
-If you want to contribute the attack to the package's Attack Zoo (not just use it in your own script), add your function to `tropt/attack_zoo/__init__.py`:
+If you want to contribute the attack to the package's Recipe Hub (not just use it in your own script), add your function to `tropt/recipe_hub/__init__.py`:
 
 ```python
-from tropt.attack_zoo.myattack import run_myattack
+from tropt.recipe_hub.myattack import run_myattack
 
-ATTACK_RECIPES = {
+RECIPES = {
     ...
     "myattack": run_myattack,
 }

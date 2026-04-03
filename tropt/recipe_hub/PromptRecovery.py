@@ -25,6 +25,7 @@ from tropt.tracker import BaseTracker
 # Paper uses 8-20 free tokens; 8 is the default
 _DEFAULT_INITIAL_TRIGGER = "! ! ! ! ! ! ! !"
 
+# TODO still testing!
 
 def run_prompt_recovery(
     image=None,

@@ -213,4 +213,4 @@ If you want to contribute the optimizer to the package (not just use it in your 
 
 1. **Register** — Export from [`tropt/optimizer/__init__.py`](../../tropt/optimizer/__init__.py).
 2. **Test** — Add tests under `tests/optimizer/`.
-3. **Attack zoo entry** (optional) — Add a recipe in `tropt/attack_zoo/` for published attacks.
+3. **Recipe hub entry** (optional) — Add a recipe in `tropt/recipe_hub/` for published attacks.

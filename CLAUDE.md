@@ -189,11 +189,11 @@ class GCGOptimizer(BaseOptimizer):
 
 **Philosophy**: Optimizers are self-contained and explicit — don't share logic across them (HuggingFace "Repeat Yourself" principle). The repo already decoupled everything unrelated to the search algorithm.
 
-## The Glue: Attack Zoo and Config Runner
+## The Glue: Recipe Hub and Config Runner
 
-### Attack Zoo (`tropt/attack_zoo/`)
+### Recipe Hub (`tropt/recipe_hub/`)
 
-Pre-configured recipes that glue Model + Loss + Optimizer together. See `tropt/attack_zoo/__init__.py` for the full `ATTACK_RECIPES` dict; use `list_attacks()` to enumerate programmatically.
+Pre-configured recipes that glue Model + Loss + Optimizer together. See `tropt/recipe_hub/__init__.py` for the full `RECIPES` dict; use `list_recipes()` to enumerate programmatically.
 
 Useful for: quickly running existing attacks, benchmarks, or small modifications. See `docs/guides/adding_an_attack.md`.
 
@@ -289,7 +289,7 @@ tropt/
 ├── model/           # Target models with mixin-based capabilities
 ├── loss/            # Loss functions (objectives)
 ├── optimizer/       # Trigger search algorithms
-├── attack_zoo/      # Pre-configured attack recipes
+├── recipe_hub/      # Pre-configured attack recipes
 ├── tracker/         # Experiment logging (WandB, JSON, etc.)
 └── utils/           # Shared utilities
 

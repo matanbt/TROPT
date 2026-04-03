@@ -22,7 +22,7 @@ from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 from .SoftGCG import run_soft_gcg
 from .SoftPrompt import run_soft_prompt, run_soft_prompt_encoder_attack
 
-ATTACK_RECIPES = {
+RECIPES = {
     "advdecoding_jailbreak": run_advdecoding_jailbreak,
     "advdecoding_retrieval": run_advdecoding_retrieval,
     "arca": run_arca,
@@ -58,5 +58,5 @@ ATTACK_RECIPES = {
     "prompt_recovery": run_prompt_recovery,
 }
 
-def list_attacks():
-    return list(ATTACK_RECIPES.keys())
+def list_recipes():
+    return list(RECIPES.keys())

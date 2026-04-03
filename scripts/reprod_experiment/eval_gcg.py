@@ -8,15 +8,15 @@ from typing import List
 
 import pandas as pd
 import torch
-from tropt.attack_zoo.AdvDecoding import run_advdecoding_jailbreak
-from tropt.attack_zoo.BEAST import run_beast
-from tropt.attack_zoo.GASLITEPlus import run_gaslite_plus_llm
-from tropt.attack_zoo.GCG import run_gcg, run_gcg_perplexity
-from tropt.attack_zoo.GCGHij import run_gcghij
-from tropt.attack_zoo.GBDA import run_gbda
-from tropt.attack_zoo.IRIS import run_iris, run_iris2
-from tropt.attack_zoo.RASLITEPlus import run_rasliteplus_llm
-from tropt.attack_zoo.SoftGCG import run_soft_gcg
+from tropt.recipe_hub.AdvDecoding import run_advdecoding_jailbreak
+from tropt.recipe_hub.BEAST import run_beast
+from tropt.recipe_hub.GASLITEPlus import run_gaslite_plus_llm
+from tropt.recipe_hub.GCG import run_gcg, run_gcg_perplexity
+from tropt.recipe_hub.GCGHij import run_gcghij
+from tropt.recipe_hub.GBDA import run_gbda
+from tropt.recipe_hub.IRIS import run_iris, run_iris2
+from tropt.recipe_hub.RASLITEPlus import run_rasliteplus_llm
+from tropt.recipe_hub.SoftGCG import run_soft_gcg
 import typer
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer

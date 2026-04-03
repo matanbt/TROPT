@@ -225,12 +225,12 @@ This allows the optimizer to call the methods corresponding to these mixins (e.g
 * **Optimization parameters.** Omitted from the last snippet, but included in the implementation, are the parameters of the optimizer. For instance, the number of steps to run it.
 * **Calling `optimize_trigger`.** The method `optimize_trigger` is the main entry point of the user to our repo and to the optimizers. It defines the list of user template, initial trigger, and the targets artifacts for the loss. These are mostly the parameters required by optimizers, and that change across runs.
 
-## The Glue: Zoo and Config Runner
+## The Glue: Recipe Hub and Config Runner
 
 If we combine *Model + User text-templates + Loss + Optimizer* we can run an attack. If we replace the optimizer, loss, or modify their parameters, we could create a new attack. To maximize the utility and flexibility of this repository we introduce the two following ways to run attacks.
 
 
-* **Model Zoo [`tropt/attack_zoo`].** Python modules that glue together the different pillars to reproduce existing attacks. E.g., the `GCG.py` module in `tropt/attack_zoo` glues together the `LMHFModel`, CrossEntropyLoss, and `GCGOptimizer` to reproduce the GCG attack [GCG].
+* **Recipe Hub [`tropt/recipe_hub`].** Python modules that glue together the different pillars to reproduce existing attacks. E.g., the `GCG.py` module in `tropt/recipe_hub` glues together the `LMHFModel`, CrossEntropyLoss, and `GCGOptimizer` to reproduce the GCG attack [GCG].
 * These modules are useful for researchers who want to quickly run existing attacks, use them for benchmarks, or modify them slightly.
 
 
