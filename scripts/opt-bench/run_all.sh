@@ -13,17 +13,17 @@ set -euo pipefail
 #   Smoke test:  MSG_IDS="0"
 #   Medium:      MSG_IDS="0 1 2 3 4"
 #   Full:        MSG_IDS="0 1 2 3 4 5 6 7 8 9"
-MSG_IDS="${MSG_IDS:-0}"
+MSG_IDS="0"
+SEEDS="42"
 
 WHITEBOX_MODELS=(
-    ${WHITEBOX_MODELS:-
-        "meta-llama/Llama-3.1-8B-Instruct"
-        "google/gemma-3-12b-it"
-        "Qwen/Qwen3-8B"
-        "mistralai/Mistral-7B-Instruct-v0.3"
-    }
+    # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
+    # "meta-llama/Llama-3.1-8B-Instruct"
+    "google/gemma-3-12b-it"
+    # "Qwen/Qwen3-8B"
+    # "mistralai/Mistral-7B-Instruct-v0.3"
 )
-BLACKBOX_MODEL="${BLACKBOX_MODEL:-openai/gpt-4o-mini}"
+BLACKBOX_MODEL="openai/gpt-4o-mini"
 
 WANDB_PROJECT="tropt-optbench"
 RESULTS_DIR="scripts/opt-bench/results"
@@ -41,24 +41,27 @@ echo "Message IDs: $MSG_IDS"
 echo "=== Exp1: White-box optimizer sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp1 whitebox --model-name "$model" $MSG_ID_FLAGS
+    python -m scripts.opt-bench.exp1 whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
 
+
 echo "=== Exp1: Black-box optimizer sweep ==="
-python -m scripts.opt-bench.exp1 blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS
+python -m scripts.opt-bench.exp1 blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
 
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
 echo "=== Exp2: Single-instruction tweak sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp2 single --model-name "$model" $MSG_ID_FLAGS
+    python -m scripts.opt-bench.exp2 single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
+exit 0
 
 echo "=== Exp2: Multi-instruction tweak sweep ==="
 for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
-    python -m scripts.opt-bench.exp2 multi --model-name "$model" $MSG_ID_FLAGS
+    python -m scripts.opt-bench.exp2 multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
+
 
 # ─── Evaluations ────────────────────────────────────────────────────────────
 # Each (experiment, run_type) gets its own CSV set to avoid collisions.
