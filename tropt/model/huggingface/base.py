@@ -34,6 +34,17 @@ logger = logging.getLogger(__name__)
 
 
 class HuggingFaceTokenInputManager(TokenInputManager):
+    """
+    HuggingFace implementation of the TokenInputManager.
+
+    Implementation Notes:
+        - The inputs templates is split into *before* and *after* the trigger parts, and then maintained separately by the input manager. Then, given trigger candidates, we craft multiple inputs from the templates.
+        - HuggingFaceBackend ensures that the `OPTIMIZED_TRIGGER_PLACEHOLDER` token is registered 
+        in the tokenizer (as a _single_ token), so we can reliably split the templates into 
+        before/after trigger parts by this input manager.
+        - Each input template is handled separately, as it they may vary in length, have their own targets, etc.
+    """
+
     before_ids: Annotated[List[Float[Tensor, "bef_len"]], "n_templates"]
     after_ids: Annotated[List[Float[Tensor, "aft_len"]], "n_templates"]
     embed_func: torch.nn.Module
@@ -72,13 +83,6 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             model: The HuggingFace model, required if `use_prefix_cache` is True, to compute the prefix cache.
             targets: The Targets object containing the optimization targets for the input templates.
 
-
-        Notes:
-        - The inputs templates is split into *before* and *after* the trigger parts, and then maintained separately by the input manager. Then, given trigger candidates, we craft multiple inputs from the templates.
-        - HuggingFaceBackend ensures that the `OPTIMIZED_TRIGGER_PLACEHOLDER` token is registered 
-        in the tokenizer (as a _single_ token), so we can reliably split the templates into 
-        before/after trigger parts by this input manager.
-        - Each input template is handled separately, as it they may vary in length, have their own targets, etc.
         """
         self.padding_side = tokenizer.padding_side
         self.pad_token_id = tokenizer.pad_token_id
@@ -91,7 +95,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         before_texts, after_texts = [], []
         for ids in templates_ids:  # iterate on each template
             # extract trigger position:
-            ids = torch.tensor(ids, device=model.device, dtype=torch.int64)
+            ids = torch.tensor(ids, device=device, dtype=torch.int64)
             trig_positions = (ids == placeholder_id).nonzero(as_tuple=True)[0]
             assert len(trig_positions) == 1, (
                 f"Expected exactly 1 '{OPTIMIZED_TRIGGER_PLACEHOLDER}' token in the template "
@@ -112,7 +116,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         self.tokenizer = tokenizer
 
         # Prepare targets
-        self.targets: Targets = targets.to_device(model.device)
+        self.targets: Targets = targets.to_device(device)
 
         # Compute the KV Cache for tokens that appear before the optimized tokens
         prefix_cache: List[ # per message
@@ -126,11 +130,12 @@ class HuggingFaceTokenInputManager(TokenInputManager):
 
         if use_prefix_cache:
             assert model is not None, "Model must be provided to compute prefix cache."
+            assert model.device == device, f"Model device {model.device} does not match input manager device {device}."  # sanity check
             for i in range(self.n_templates):
                 # (seq, emb) -> (1, seq, emb)
                 curr_embeds = self.before_embeds[i].unsqueeze(0)
                 curr_attn_mask = torch.ones(
-                    curr_embeds.shape[:2], device=model.device, dtype=torch.int64
+                    curr_embeds.shape[:2], device=device, dtype=torch.int64
                 )
                 output = model(
                     inputs_embeds=curr_embeds,
@@ -391,6 +396,12 @@ class HuggingFaceBackendModel:
     - This class wraps the __init__ method of subclasses to handle common bookkeeping tasks, done before and after initialization.
     These include storing common fields (e.g., batch sizes), optionally setting eval mode and freezing weights, registering special tokens, etc.
     - Subclasses are expected to initialize the model object in `self._model`, the tokenizer in `self._tokenizer`, and the _embedding_layer property (used for token embedding) in their __init__ method.
+    - We currently only support models that allow using inputs_embeds in their forward pass (instead 
+    of input_ids), which is the most common case. This is conveniant for grad computation and some optimziers
+    (e.g., SoftPrompt, GBDA) require such access.
+    - In the rare models where there is not such access we currenly need to be a bit hacky; see
+    CLIPEncoderHFModel. In the future we might consider to a separate backend for these; currently, 
+    the demand it is not high enough to justify the engineering effort. 
     """
 
     _model: transformers.PreTrainedModel
@@ -455,6 +466,32 @@ class HuggingFaceBackendModel:
             
             if self._model.device == torch.device("cpu"):
                 logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
+
+            ## additional check that the model have input_embeds for forward pass 
+            # [TODO: have this run optionally in debug mode for efficiency]
+
+            @torch.no_grad()
+            def _requires_input_embeds() -> bool:
+                """Returns True if the model requires input_ids even when inputs_embeds are provided."""
+                dummy_len = 4
+                dummy_embeds = torch.zeros(
+                    1, dummy_len, self.embedding_matrix.shape[1],
+                    device=self.device, dtype=self._model.dtype,
+                )
+                dummy_mask = torch.ones(1, dummy_len, device=self.device, dtype=torch.int64)
+                try:
+                    self._model(dict(inputs_embeds=dummy_embeds, attention_mask=dummy_mask))
+                    return False
+                except TypeError:
+                    return True
+
+            if _requires_input_embeds():
+                logger.warning(
+                    f"Model `{self._model_name}` seems to not support `inputs_embeds` as forward pass input."
+                    "Gradient-based optimization (GradientTokenAccessMixin / invoke_from_tokens) will not work with this model. Only text-level access (invoke_from_texts) is supported."
+                )
+
+
 
         # Replace the subclass __init__ with the wrapped version
         setattr(cls, "__init__", _wrapped_init)

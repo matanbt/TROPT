@@ -86,7 +86,7 @@ class LMHFModel(
         model_name: str,
         device: Optional[str] = None,
         dtype: Optional[str] = None,
-        forward_pass_batch_size: int = 512,
+        forward_pass_batch_size: int = 1024,
         backward_pass_batch_size: int = 32,
         # more args:
         use_prefix_cache: bool = True,

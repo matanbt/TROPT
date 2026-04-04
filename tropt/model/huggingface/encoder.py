@@ -89,15 +89,6 @@ class EncoderHFModel(
         self._tokenizer = self._model.tokenizer
         self._embedding_layer = self._get_input_embeddings()
 
-        ## warning and checks:
-        if run_additional_checks:
-            if self._requires_input_ids_with_embeds():
-                logger.warning(
-                    f"Model `{self._model_name}` requires `input_ids` even when `inputs_embeds` are provided. "
-                    "Gradient-based optimization (GradientTokenAccessMixin / invoke_from_tokens) will not work with this model. "
-                    "Only text-level access (invoke_from_texts) is supported."
-                )
-
         logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
 
     @property
@@ -136,21 +127,6 @@ class EncoderHFModel(
         raise ValueError(
             f"Could not extract embedding layer from Sentence Transformer model `{self._model_name}`. This model might need special care. Please report this issue."
         )
-
-    @torch.no_grad()
-    def _requires_input_ids_with_embeds(self) -> bool:
-        """Returns True if the model requires input_ids even when inputs_embeds are provided."""
-        dummy_len = 4
-        dummy_embeds = torch.zeros(
-            1, dummy_len, self.d_model,
-            device=self.device, dtype=self._model.dtype,
-        )
-        dummy_mask = torch.ones(1, dummy_len, device=self.device, dtype=torch.int64)
-        try:
-            self._model(dict(inputs_embeds=dummy_embeds, attention_mask=dummy_mask))
-            return False
-        except TypeError:
-            return True
 
     # ----------------------- set_inputs_from_tokens -----------------------
 
