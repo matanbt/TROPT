@@ -9,12 +9,12 @@ Evaluation follows the paper's protocol: CLIP similarity (text vs. image)
 and Text Embedding Similarity (inverted prompt vs. ground-truth prompt).
 """
 
-# TODO: Target flux: https://huggingface.co/black-forest-labs/FLUX.1-dev [openai/clip-vit-large-patch14]
-
 from dataclasses import dataclass
 from typing import Optional
 
 import torch
+from jaxtyping import Float
+from torch import Tensor
 
 from tropt.common import Targets
 from tropt.loss import SimilarityLoss
@@ -23,47 +23,75 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
-from jaxtyping import Float
 
 # Paper uses 8-20 free tokens; 8 is the default
 _DEFAULT_INITIAL_TRIGGER = "! ! ! ! ! ! ! !"
 
-# TODO still testing!
-def get_image_embedding_for_clip_model(
-    image_path: str,
-    model_name: str = "openai/clip-vit-large-patch14",  # TODO pick the smallest CLIP option
-):
-    from PIL import Image
-    image = Image.open(image_path).convert("RGB")
-    # TODO load only the vision encoder, preprocess the image and delete it
-    
-    return 
 
-def run_prompt_recovery_on_clip(
+def get_image_embedding_for_clip_model(
+    image_path: Optional[str] = None,
     image=None,
-    model_name: str = "openai/clip-vit-large-patch14", # TODO pick the same CLIP option as above
+    model_name: str = "openai/clip-vit-large-patch14",
+) -> Float[Tensor, "1 d_model"]:
+    """Encode an image into CLIP's shared embedding space using the vision encoder.
+
+    Loads only the vision side of the full CLIP model, encodes the image,
+    and returns the projected image embedding.
+
+    Args:
+        image_path: Path to an image file (used if `image` is None).
+        image: A PIL Image. If None, loads from `image_path`.
+        model_name: CLIP model whose vision encoder to use.
+
+    Returns:
+        Image embedding tensor of shape (1, d_model).
+    """
+    from PIL import Image as PILImage
+    from transformers import CLIPModel, CLIPProcessor
+
+    if image is None:
+        if image_path is None:
+            raise ValueError("Either `image` or `image_path` must be provided.")
+        image = PILImage.open(image_path).convert("RGB")
+
+    processor = CLIPProcessor.from_pretrained(model_name)
+    clip_model = CLIPModel.from_pretrained(model_name)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    clip_model = clip_model.to(device)
+
+    inputs = processor(images=image, return_tensors="pt").to(device)
+    with torch.no_grad():
+        image_emb = clip_model.get_image_features(**inputs)  # (1, d_model)
+
+    # Clean up: we only needed the vision encoder
+    del clip_model, processor
+
+    return image_emb.pooler_output
+
+
+def run_prompt_recovery(
+    image=None,
+    model_name: str = "openai/clip-vit-large-patch14",
     template: str = "{{OPTIMIZED_TRIGGER}}",
     initial_trigger: str = _DEFAULT_INITIAL_TRIGGER,
     num_steps: int = 3000,
     n_candidates: int = 512,
     tracker: Optional[BaseTracker] = None,
-    
-    # Target:
     target_image_path: Optional[str] = None,
-    target_image_emb: Float[Tensor, "d_model"] = None,
+    target_image_emb: Optional[Float[Tensor, "d_model"]] = None,
 ) -> OptimizerResult:
     """Recover the prompt that generated a given image using GCG + CLIP.
 
     Args:
-        image: A PIL Image to invert. If None, loads from `image_path`.
-        image_path: Path to an image file (used if `image` is None).
+        image: A PIL Image to invert. If None, loads from `target_image_path`.
         model_name: CLIP-like model to use as proxy.
         template: Text template with trigger placeholder.
         initial_trigger: Starting trigger tokens.
         num_steps: Number of GCG optimization steps (paper uses 3000).
         n_candidates: Candidate batch size per step (paper uses 512).
-        model_obj: Pre-loaded CLIPTextEncoderHFModel.
         tracker: Optional experiment tracker.
+        target_image_path: Path to an image file (used if `image` is None).
+        target_image_emb: Pre-computed image embedding (skips encoding).
 
     Returns:
         OptimizerResult with `best_trigger_str` as the recovered prompt.
@@ -72,10 +100,12 @@ def run_prompt_recovery_on_clip(
         model_name=model_name,
     )
 
-    # Optionally fetch the vision emb vector
     if target_image_emb is None:
-        # TODO use the function above
-
+        target_image_emb = get_image_embedding_for_clip_model(
+            image_path=target_image_path,
+            image=image,
+            model_name=model_name,
+        )
 
     optimizer = GCGOptimizer(
         model=model_obj,
@@ -117,7 +147,7 @@ def evaluate_prompt_recovery(
     original_prompt: Optional[str] = None,
     clip_model_name: str = "openai/clip-vit-large-patch14",
     text_sim_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-    clip_model_obj: Optional[CLIPEncoderHFModel] = None,
+    clip_text_model_obj: Optional[CLIPTextEncoderHFModel] = None,
 ) -> PromptRecoveryEvaluation:
     """Evaluate a recovered prompt following the paper's protocol.
 
@@ -130,18 +160,6 @@ def evaluate_prompt_recovery(
 
     Note: The paper also uses FID/KID (image-to-image), which requires a
     text-to-image generation pipeline and is not included here.
-
-    Args:
-        inverted_prompt: The recovered/inverted prompt text.
-        image: Target PIL Image (or provide `image_path`).
-        image_path: Path to the target image.
-        original_prompt: Ground-truth prompt (if available) for text similarity.
-        clip_model_name: CLIP model for computing CLIP similarity.
-        text_sim_model_name: Sentence encoder for text embedding similarity.
-        clip_model_obj: Pre-loaded CLIPEncoderHFModel (reuse from optimization).
-
-    Returns:
-        PromptRecoveryEvaluation with computed metrics.
     """
     if image is None:
         if image_path is None:
@@ -150,17 +168,21 @@ def evaluate_prompt_recovery(
         image = Image.open(image_path).convert("RGB")
 
     # --- Metric 1: CLIP Similarity (text vs. image) ---
-    if clip_model_obj is None:
-        clip_model_obj = CLIPEncoderHFModel(
+    if clip_text_model_obj is None:
+        clip_text_model_obj = CLIPTextEncoderHFModel(
             model_name=clip_model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu",
         )
 
-    with torch.no_grad():
-        text_emb = clip_model_obj.invoke_from_texts([inverted_prompt]).output_embeddings  # (1, d)
-        image_emb = clip_model_obj.encode_images(image)  # (1, d)  # Todo use the function above, we don't really have this API anymore
+    image_emb = get_image_embedding_for_clip_model(
+        image=image,
+        model_name=clip_model_name,
+    )
 
-        # Cosine similarity
+    with torch.no_grad():
+        text_emb = clip_text_model_obj.invoke_from_texts(
+            [inverted_prompt]
+        ).output_embeddings  # (1, d)
+
         text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
         image_emb = image_emb / image_emb.norm(dim=-1, keepdim=True)
         clip_sim = (text_emb * image_emb).sum(dim=-1).item()
@@ -186,5 +208,47 @@ def evaluate_prompt_recovery(
     )
 
 
-# TODO implement a function that loads diffusers on FLUX, so we get re-generate the image from the caption! add this generation piplien as a cell in the smoke test, so i'll test it -- this cell should have a variable of the prompt, and will print the generated image. 
-#   Then i want you to add the flow running the prompt recovery on an arbitrarty imag of your choice on the smoketest, as a standalone subsection there. I'll run this subsection on the compute-able server.
+# ======================= Image Generation =======================
+
+
+def generate_image_from_prompt(
+    prompt: str,
+    model_name: str = "black-forest-labs/FLUX.1-dev",
+    num_inference_steps: int = 28,
+    height: int = 512,
+    width: int = 512,
+    seed: Optional[int] = None,
+):
+    """Generate an image from a text prompt using a diffusers pipeline.
+
+    Args:
+        prompt: Text prompt to generate from.
+        model_name: Diffusers model to use.
+        num_inference_steps: Number of denoising steps.
+        height: Output image height.
+        width: Output image width.
+        seed: Random seed for reproducibility.
+
+    Returns:
+        PIL Image.
+    """
+    from diffusers import FluxPipeline
+
+    pipe = FluxPipeline.from_pretrained(
+        model_name,
+        torch_dtype=torch.bfloat16,
+    )
+    pipe.enable_model_cpu_offload()
+
+    generator = torch.Generator(device="cpu").manual_seed(seed) if seed is not None else None
+
+    image = pipe(
+        prompt,
+        num_inference_steps=num_inference_steps,
+        height=height,
+        width=width,
+        generator=generator,
+    ).images[0]
+
+    del pipe
+    return image
