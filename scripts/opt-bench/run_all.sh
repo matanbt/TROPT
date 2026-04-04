@@ -16,12 +16,14 @@ set -euo pipefail
 MSG_IDS="0"
 SEEDS="42"
 
+
 WHITEBOX_MODELS=(
-    # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "meta-llama/Llama-3.1-8B-Instruct"
-    "google/gemma-3-12b-it"
-    # "Qwen/Qwen3-8B"
-    # "mistralai/Mistral-7B-Instruct-v0.3"
+    # "google/gemma-3-12b-it"
+    "Qwen/Qwen3-8B"
+    # -----
+    # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
+    # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
 )
 BLACKBOX_MODEL="openai/gpt-4o-mini"
 
@@ -64,6 +66,13 @@ for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
     python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
+
+echo "=== Exp2: Multi-instruction tweak sweep ==="
+for model in "${WHITEBOX_MODELS[@]}"; do
+    echo "--- Model: $model ---"
+    python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+done
+
 # ─── Exp3: Corpus Poisoning ────────────────────────────────────────────────
 echo "=== Exp3: Corpus poisoning (GASLITE on E5) ==="
 python scripts/opt-bench/exp3-corpois.py gaslite-e5
@@ -73,13 +82,8 @@ python scripts/opt-bench/exp3-corpois.py rs-openai
 
 echo ">> After running Exp3, we need to now send Abed the 10 adv passages, inject MSMARCO, and test the results on all the held-{in,out} queries for measures. <<"
 
-exit 0
 
-echo "=== Exp2: Multi-instruction tweak sweep ==="
-for model in "${WHITEBOX_MODELS[@]}"; do
-    echo "--- Model: $model ---"
-    python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-done
+exit 0
 
 
 # ─── Evaluations ────────────────────────────────────────────────────────────

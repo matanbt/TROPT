@@ -1,8 +1,8 @@
 """
-Jailbreak Tweaks Benchmark — fixes GCG optimizer, sweeps attack tricks.
+Jailbreak Enhancements Benchmark — fixes GCG optimizer, sweeps attack tricks.
 
 Evaluates loss variants, template tricks, and activation steering on a
-fixed GCG optimizer to isolate the effect of each tweak.
+fixed GCG optimizer to isolate the effect of each enhancement.
 
 Usage
 -----
@@ -45,14 +45,14 @@ from tropt.utils.refusal_dir import (
 
 # ─── Constants (shared with exp1) ───────────────────────────────────────────
 WANDB_ENTITY = "matanbt"
-WANDB_PROJECT = "tropt-tweakbench"
+WANDB_PROJECT = "tropt-enhancebench"
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))
 TRIGGER_LEN = 20
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 
-_RUN_TYPE_SINGLE = "tweakbench_single"
-_RUN_TYPE_MULTI = "tweakbench_multi"
+_RUN_TYPE_SINGLE = "enhancebench_single"
+_RUN_TYPE_MULTI = "enhancebench_multi"
 
 # ─── Fixed GCG hyperparameters (from attack zoo GCG.py defaults) ────────────
 _TC = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
@@ -315,11 +315,11 @@ def _model_short(model_name: str) -> str:
 
 
 def _run_name_single(variant: str, model_name: str, msg_id: int, seed: int) -> str:
-    return f"tweakbench[{variant},{_model_short(model_name)},m={msg_id},s={seed}]"
+    return f"enhancebench[{variant},{_model_short(model_name)},m={msg_id},s={seed}]"
 
 
 def _run_name_multi(variant: str, model_name: str, seed: int) -> str:
-    return f"tweakbench_multi[{variant},{_model_short(model_name)},s={seed}]"
+    return f"enhancebench_multi[{variant},{_model_short(model_name)},s={seed}]"
 
 
 def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
@@ -435,7 +435,7 @@ def single(
     sweep_weights: bool = typer.Option(False, help="Include weight-sweep sub-variants"),
     skip_existing: bool = typer.Option(True),
 ):
-    """Run single-instruction tweak variants with fixed GCG."""
+    """Run single-instruction enhancement variants with fixed GCG."""
     df = pd.read_csv(CLEARHARM_PATH)
 
     # Check if any variant needs eager attention
@@ -513,7 +513,7 @@ def multi(
     sweep_weights: bool = typer.Option(False, help="Include weight-sweep sub-variants"),
     skip_existing: bool = typer.Option(True),
 ):
-    """Run multi-instruction tweak variants (universal trigger) with fixed GCG."""
+    """Run multi-instruction enhancement variants (universal trigger) with fixed GCG."""
     df = pd.read_csv(CLEARHARM_PATH)
 
     all_variants = _build_variants(n_layers=0, sweep_weights=sweep_weights)
