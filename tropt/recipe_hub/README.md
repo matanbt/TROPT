@@ -53,7 +53,6 @@ All recipes in this section use HuggingFace models.
 | **Soft-GCG** | Improved GBDA with 3-phase temperature schedule, CW loss, and gradient clipping. | LM | Gradient + Loss (Token) | [Cakar (ImprovingGCG)](https://github.com/Ege-Cakar/ImprovingGCG) | [`SoftGCG.py`](SoftGCG.py) |
 | **PGD** | Projected Gradient Descent with simplex + Tsallis entropy projections. | LM | Gradient + Loss (Token) | [Geisler et al., 2024](https://arxiv.org/abs/2402.09154) | [`PGD.py`](PGD.py) |
 | **PEZ** | Continuous embedding optimization projected back to nearest tokens. | LM | Gradient (Embed) + Loss (Token) | [Wen et al., 2023](https://arxiv.org/abs/2302.03668) | [`PEZ.py`](PEZ.py) |
-| **Soft Prompt** | Direct embedding-level optimization via SignSGD. Also has an Encoder variant (see Corpus Poisoning). | LM | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
 
 #### Attention-Enhancing Jailbreaks (White-Box)
 
@@ -107,9 +106,19 @@ Optimizing triggers for embedding-model corpus poisoning (retrieval attacks).
 | **GASLITE** | Gradient + multi-coordinate ascent for corpus poisoning of embedding models. | Encoder (HF) | Gradient + Loss (Token) | [Ben-Tov et al., 2024](https://arxiv.org/abs/2412.20953) | [`GASLITE.py`](GASLITE.py) |
 | **GASLITE+** | Extension of GASLITE with buffer and adaptive parameters. | Encoder (HF) | Gradient + Loss (Token) | — | [`GASLITEPlus.py`](GASLITEPlus.py) |
 | **GCG-Emb** | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCGEmb.py`](GCGEmb.py) |
-| **Soft Prompt (Encoder)** | Embedding-level optimization via SignSGD on encoder models. | Encoder (HF) | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
 | **AdvDecoding** | Beam search with util-LM logits for retrieval poisoning. Also has a jailbreak variant. | Encoder (HF) / LM (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding.py`](AdvDecoding.py) |
 | **RASLITE+** | Black-box variant of GASLITE+ (random logits instead of gradients). | Encoder (HF / OpenAI) | Loss (Text) | — | [`RASLITEPlus.py`](RASLITEPlus.py) |
+
+---
+
+### Soft Prompt Attacks (Embedding-Space Only)
+
+> **Note:** These recipes optimize directly in embedding space and do **not** return a realizable discrete string trigger. The result is a continuous embedding, not decodable to concrete tokens.
+
+| Recipe | Description | Target Model | Required Access | Paper | File(s) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Soft Prompt** | Direct embedding-level optimization via SignSGD for jailbreaking LMs. | LM | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
+| **Soft Prompt (Encoder)** | Embedding-level optimization via SignSGD for corpus poisoning of encoder models. | Encoder (HF) | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
 
 ---
 
