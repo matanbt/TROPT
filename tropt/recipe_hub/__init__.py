@@ -14,7 +14,12 @@ from .HotFlip import run_hotflip
 from .IRIS import run_iris, run_iris2
 from .PAL import run_gcgp_pal, run_pal, run_ral
 from .PEZ import run_pez
-from .PromptRecovery import run_prompt_recovery, evaluate_prompt_recovery
+from .PromptRecovery import (
+    run_prompt_recovery,
+    evaluate_prompt_recovery,
+    generate_image_from_prompt,
+    get_image_embedding_for_clip_model,
+)
 from .PGD import run_pgd
 from .PRS import run_prs
 from .QCG import run_gcgp_blackbox, run_gcgp_whitebox, run_qcg

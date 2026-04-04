@@ -480,9 +480,9 @@ class HuggingFaceBackendModel:
                 )
                 dummy_mask = torch.ones(1, dummy_len, device=self.device, dtype=torch.int64)
                 try:
-                    self._model(dict(inputs_embeds=dummy_embeds, attention_mask=dummy_mask))
+                    self._model(inputs_embeds=dummy_embeds, attention_mask=dummy_mask)
                     return False
-                except TypeError:
+                except Exception:
                     return True
 
             if _requires_input_embeds():

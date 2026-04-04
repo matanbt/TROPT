@@ -14,13 +14,21 @@ def get_printable_random_trigger(
     return_ids: bool = False,
     blacklist_ids: Optional[List[int]] = None,
     tokenizer: Optional[BaseTokenizer] = None,
+    token_constraints: Optional["TokenConstraints"] = None,  # ty:ignore[unresolved-reference] (to avoid circular imports)
 ) -> str | Float[Tensor, "trigger_seq_len"]:
     """
     Generates a random initial trigger consisting of printable ASCII english letters.
     - If the tokenizer is provided, the trigger is tokenized and truncated to ensure it fits within the specified length. Otherwise, the length stands for the number of characters.
     - Tokens whose IDs appear in `blacklist_ids` are resampled until a clean sequence is found.
     - `return_ids`: If True, returns a 1-D LongTensor of token IDs (requires `tokenizer`), instead of the string.
+    - `token_constraints`: If provided (and tokenizer is set), extracts blacklist_ids automatically. Overrides `blacklist_ids`.
     """
+    assert not (token_constraints is not None and blacklist_ids is not None), (
+        "Pass either `token_constraints` or `blacklist_ids`, not both."
+    )
+    if token_constraints is not None and tokenizer is not None:
+        blacklist_ids = token_constraints.get_blacklist_ids(tokenizer)
+
     _chars = string.ascii_letters + string.digits + ' '  # + string.punctuation
     _chars += ' ' * 10  # adding more spaces to increase their appearance
 

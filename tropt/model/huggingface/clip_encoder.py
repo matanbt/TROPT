@@ -6,7 +6,7 @@ from typing import Annotated, List, Optional, Union
 import torch
 from jaxtyping import Float
 from torch import Tensor
-from transformers import AutoModel, AutoProcessor, AutoTokenizer, CLIPTextModel, SiglipTextModel
+from transformers import AutoTokenizer, CLIPTextModel, SiglipTextModel
 from transformers.models.clip.modeling_clip import CLIPTextTransformer
 from transformers.models.siglip.modeling_siglip import SiglipTextTransformer
 from transformers.models.siglip2.modeling_siglip2 import Siglip2TextTransformer
@@ -104,9 +104,21 @@ class CLIPTextEncoderHFModel(
         self._text_projection = getattr(self._model, "text_projection", None)
 
     @property
+    def model_family(self) -> str:
+        """Family of the loaded text encoder: ``"siglip"`` or ``"clip"``."""
+        if isinstance(self._model, (SiglipTextModel, Siglip2TextModel)):
+            return "siglip"
+        if isinstance(self._model, CLIPTextModel):
+            return "clip"
+        raise ValueError(f"Unrecognised model type: {type(self._model)}")
+
+    @property
     def d_model(self) -> int:
-        # TODO cache by forward pass
-        raise NotImplementedError
+        if self.model_family == "clip":
+            return self._model.out_features  # TODO fix me
+        if self.model_family == "siglip":
+            return self._model.config.hidden_size
+        raise ValueError(f"Unrecognised model_family: {self.model_family}")
 
     # ----------------------- set_inputs_from_tokens -----------------------
 
@@ -142,7 +154,7 @@ class CLIPTextEncoderHFModel(
         Repeats the forward pass logic from SigLIP's text encoder with input_embeds.
         https://github.com/huggingface/transformers/blob/e1b80de84d3c5da35669b2834ef017eeaf620f93/src/transformers/models/clip/modeling_clip.py#L531-L589
         """
-        text_model = self._model
+        text_model = self._model.text_model  # Todo rellay .text?
         assert isinstance(text_model, CLIPTextTransformer), f"Expected CLIPTextTransformer, got {type(text_model)}"
         hidden_states = text_model.embeddings(inputs_embeds=input_embeds)
         mask = create_causal_mask(
@@ -154,10 +166,10 @@ class CLIPTextEncoderHFModel(
         last_hidden_state = text_model.final_layer_norm(
             text_model.encoder(inputs_embeds=hidden_states, attention_mask=mask, is_causal=True).last_hidden_state
         )
+        # EOS token is always the last attended position in CLIP sequences
         eos_pos = input_attention_mask.sum(dim=-1) - 1
         bsz = last_hidden_state.shape[0]
-        # TODO assert all close to CLIP in tests
-        return last_hidden_state[torch.arange(bsz, device=last_hidden_state.device), eos_pos]  # TODO REMOVE [mote: thsi is also what flux recieves]
+        return last_hidden_state[torch.arange(bsz, device=last_hidden_state.device), eos_pos]
 
     def _encode_text_from_embeds_siglip(
         self,
@@ -171,8 +183,8 @@ class CLIPTextEncoderHFModel(
         https://github.com/huggingface/transformers/blob/e1b80de84d3c5da35669b2834ef017eeaf620f93/src/transformers/models/siglip/modeling_siglip.py#L4890-L527
         https://github.com/huggingface/transformers/blob/e1b80de84d3c5da35669b2834ef017eeaf620f93/src/transformers/models/siglip2/modeling_siglip2.py#L571-L612
         """
-        text_model = self._model
-        assert isinstance(text_model, (SiglipTextTransformer, Siglip2TextTransformer)), f"Expected Siglip2TextTransformer, got {type(text_model)}"
+        text_model = self._model.text_model  # TODO really .text_model ??
+        assert isinstance(text_model, (SiglipTextTransformer, Siglip2TextTransformer)), f"Expected SiglipTextTransformer, got {type(text_model)}"
         hidden_states = text_model.embeddings(inputs_embeds=input_embeds)
         mask = create_bidirectional_mask(
             config=text_model.config,
@@ -201,9 +213,9 @@ class CLIPTextEncoderHFModel(
                 input_embeds.shape[:-1], device=input_embeds.device, dtype=torch.int64
             )
 
-        if self._model.config.model_type == "siglip":
+        if self.model_family == "siglip":
             pooled_output = self._encode_text_from_embeds_siglip(input_embeds, input_attention_mask)
-        else:
+        else:  # "clip"
             pooled_output = self._encode_text_from_embeds_clip(input_embeds, input_attention_mask)
 
         text_embeds = self._text_projection(pooled_output) if self._text_projection is not None else pooled_output
@@ -233,8 +245,8 @@ class CLIPTextEncoderHFModel(
 
         # Use text_model + text_projection directly (mirrors invoke_from_tokens),
         # since get_text_features() return type varies across model variants.
-        text_outputs = self._model.text_model(**inputs)
-        pooled_output = text_outputs[1]  # pooler_output
+        text_outputs = self._model(**inputs)
+        pooled_output = text_outputs.pooler_output
         text_embeds = self._text_projection(pooled_output) if self._text_projection is not None else pooled_output
 
         attn_mask = inputs.get("attention_mask")
