@@ -64,6 +64,15 @@ for model in "${WHITEBOX_MODELS[@]}"; do
     echo "--- Model: $model ---"
     python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
+# ─── Exp3: Corpus Poisoning ────────────────────────────────────────────────
+echo "=== Exp3: Corpus poisoning (GASLITE on E5) ==="
+python scripts/opt-bench/exp3-corpois.py gaslite-e5
+
+echo "=== Exp3: Corpus poisoning (RandomSearch on OpenAI) ==="
+python scripts/opt-bench/exp3-corpois.py rs-openai
+
+echo ">> After running Exp3, we need to now send Abed the 10 adv passages, inject MSMARCO, and test the results on all the held-{in,out} queries for measures. <<"
+
 exit 0
 
 echo "=== Exp2: Multi-instruction tweak sweep ==="

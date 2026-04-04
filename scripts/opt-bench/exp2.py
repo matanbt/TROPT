@@ -49,7 +49,7 @@ WANDB_PROJECT = "tropt-tweakbench"
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))
 TRIGGER_LEN = 20
-CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 
 _RUN_TYPE_SINGLE = "tweakbench_single"
 _RUN_TYPE_MULTI = "tweakbench_multi"

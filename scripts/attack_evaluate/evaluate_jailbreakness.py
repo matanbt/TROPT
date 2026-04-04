@@ -67,7 +67,7 @@ def evaluate_jailbreakness_of_responses(
     # }
 
 ADVBENCH_PLUS_PATH = "scripts/attack_evaluate/advbench_plus.csv"
-CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffle.csv"
 
 def _generate_responses_litellm(
     messages_list: List[List[dict]], model_name: str, max_new_tokens: int,

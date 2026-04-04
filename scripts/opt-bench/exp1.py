@@ -52,7 +52,7 @@ WANDB_PROJECT_BB = "tropt-optbench-bb"  # black-box runs go to a separate projec
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))          # first 10 ClearHarm messages
 TRIGGER_LEN = 20
-CLEARHARM_PATH = "scripts/attack_evaluate/clearharm.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 # UTIL_MODEL = "HuggingFaceTB/SmolLM2-1.7B-Instruct"   # utility LM for AdvDecoding / proxy
 UTIL_MODEL = "google/gemma-2-2b-it"
 

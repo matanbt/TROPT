@@ -9,6 +9,8 @@ Evaluation follows the paper's protocol: CLIP similarity (text vs. image)
 and Text Embedding Similarity (inverted prompt vs. ground-truth prompt).
 """
 
+# TODO: Target flux: https://huggingface.co/black-forest-labs/FLUX.1-dev [openai/clip-vit-large-patch14]
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -16,27 +18,39 @@ import torch
 
 from tropt.common import Targets
 from tropt.loss import SimilarityLoss
-from tropt.model.huggingface.clip_encoder import CLIPEncoderHFModel
+from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
+from jaxtyping import Float
 
 # Paper uses 8-20 free tokens; 8 is the default
 _DEFAULT_INITIAL_TRIGGER = "! ! ! ! ! ! ! !"
 
 # TODO still testing!
+def get_image_embedding_for_clip_model(
+    image_path: str,
+    model_name: str = "openai/clip-vit-large-patch14",  # TODO pick the smallest CLIP option
+):
+    from PIL import Image
+    image = Image.open(image_path).convert("RGB")
+    # TODO load only the vision encoder, preprocess the image and delete it
+    
+    return 
 
-def run_prompt_recovery(
+def run_prompt_recovery_on_clip(
     image=None,
-    image_path: Optional[str] = None,
-    model_name: str = "openai/clip-vit-large-patch14",
+    model_name: str = "openai/clip-vit-large-patch14", # TODO pick the same CLIP option as above
     template: str = "{{OPTIMIZED_TRIGGER}}",
     initial_trigger: str = _DEFAULT_INITIAL_TRIGGER,
     num_steps: int = 3000,
     n_candidates: int = 512,
-    model_obj: Optional[CLIPEncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
+    
+    # Target:
+    target_image_path: Optional[str] = None,
+    target_image_emb: Float[Tensor, "d_model"] = None,
 ) -> OptimizerResult:
     """Recover the prompt that generated a given image using GCG + CLIP.
 
@@ -48,26 +62,20 @@ def run_prompt_recovery(
         initial_trigger: Starting trigger tokens.
         num_steps: Number of GCG optimization steps (paper uses 3000).
         n_candidates: Candidate batch size per step (paper uses 512).
-        model_obj: Pre-loaded CLIPEncoderHFModel.
+        model_obj: Pre-loaded CLIPTextEncoderHFModel.
         tracker: Optional experiment tracker.
 
     Returns:
         OptimizerResult with `best_trigger_str` as the recovered prompt.
     """
-    if image is None:
-        if image_path is None:
-            raise ValueError("Either `image` or `image_path` must be provided.")
-        from PIL import Image
-        image = Image.open(image_path).convert("RGB")
+    model_obj = CLIPTextEncoderHFModel(
+        model_name=model_name,
+    )
 
-    if model_obj is None:
-        model_obj = CLIPEncoderHFModel(
-            model_name=model_name,
-            device="cuda" if torch.cuda.is_available() else "cpu",
-        )
+    # Optionally fetch the vision emb vector
+    if target_image_emb is None:
+        # TODO use the function above
 
-    # Encode the target image into CLIP space
-    image_embedding = model_obj.encode_images(image)  # (1, d_model)
 
     optimizer = GCGOptimizer(
         model=model_obj,
@@ -85,7 +93,7 @@ def run_prompt_recovery(
 
     result = optimizer.optimize_trigger(
         templates=[template],
-        targets=Targets(target_vectors=image_embedding),
+        targets=Targets(target_vectors=target_image_emb),
         initial_trigger=initial_trigger,
     )
 
@@ -150,7 +158,7 @@ def evaluate_prompt_recovery(
 
     with torch.no_grad():
         text_emb = clip_model_obj.invoke_from_texts([inverted_prompt]).output_embeddings  # (1, d)
-        image_emb = clip_model_obj.encode_images(image)  # (1, d)
+        image_emb = clip_model_obj.encode_images(image)  # (1, d)  # Todo use the function above, we don't really have this API anymore
 
         # Cosine similarity
         text_emb = text_emb / text_emb.norm(dim=-1, keepdim=True)
@@ -176,3 +184,7 @@ def evaluate_prompt_recovery(
         clip_similarity=clip_sim,
         text_embedding_similarity=text_sim,
     )
+
+
+# TODO implement a function that loads diffusers on FLUX, so we get re-generate the image from the caption! add this generation piplien as a cell in the smoke test, so i'll test it -- this cell should have a variable of the prompt, and will print the generated image. 
+#   Then i want you to add the flow running the prompt recovery on an arbitrarty imag of your choice on the smoketest, as a standalone subsection there. I'll run this subsection on the compute-able server.
