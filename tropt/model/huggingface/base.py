@@ -485,7 +485,7 @@ class HuggingFaceBackendModel:
                 except Exception:
                     return True
 
-            if _requires_input_embeds():
+            if not getattr(self, "_handles_input_embeds_manually", False) and _requires_input_embeds():
                 logger.warning(
                     f"Model `{self._model_name}` seems to not support `inputs_embeds` as forward pass input."
                     "Gradient-based optimization (GradientTokenAccessMixin / invoke_from_tokens) will not work with this model. Only text-level access (invoke_from_texts) is supported."
