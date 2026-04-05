@@ -151,11 +151,6 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         self._prefix_cache_kwargs_mem: dict = {}
 
     @property
-    def vocab_size(self):
-        # We use the effective vocab size, which is the size of the emb matrix (this may differ from tokenize vocab size)
-        return self._embedding_layer.num_embeddings
-
-    @property
     def n_templates(self):
         """Number of strored templates/messages."""
         return len(self.before_ids)
@@ -516,6 +511,13 @@ class HuggingFaceBackendModel:
     def embedding_layer(self) -> torch.nn.Module:
         """The input embedding layer of the model (torch module), used for embedding token ids into vectors."""
         return self._embedding_layer
+
+    @property
+    def vocab_size(self) -> int:
+        # The effective vocab size, as determined by the emb matrix
+        vocab_size = self._embedding_layer.num_embeddings
+        assert isinstance(vocab_size, int)
+        return vocab_size 
 
     @cached_property
     def embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:

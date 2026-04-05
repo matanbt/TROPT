@@ -55,7 +55,7 @@ class TokenAccessMixin(ABC):
 
     @property
     def vocab_size(self) -> int:
-        return self.tokenizer.vocab_size
+        raise NotImplementedError
 
     @property
     @abstractmethod
