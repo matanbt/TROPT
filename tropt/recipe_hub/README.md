@@ -108,6 +108,7 @@ Optimizing triggers for embedding-model corpus poisoning (retrieval attacks).
 | **GCG-Emb** | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCGEmb.py`](GCGEmb.py) |
 | **AdvDecoding** | Beam search with util-LM logits for retrieval poisoning. Also has a jailbreak variant. | Encoder (HF) / LM (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding.py`](AdvDecoding.py) |
 | **RASLITE+** | Black-box variant of GASLITE+ (random logits instead of gradients). | Encoder (HF / OpenAI) | Loss (Text) | — | [`RASLITEPlus.py`](RASLITEPlus.py) |
+| **RS Encoder** | Black-box Random Search with coarse-to-fine block mutations toward a target vector. Supports HF and OpenAI encoders. | Encoder (HF / OpenAI) | Loss (Text) | — | [`RSEncoder.py`](RSEncoder.py) |
 
 ---
 
