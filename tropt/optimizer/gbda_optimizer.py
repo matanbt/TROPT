@@ -165,9 +165,7 @@ class GBDAOptimizer(BaseOptimizer):
         best = RunningBest()
 
         # --- Optimization of `trigger_probs` ---
-        pbar = self.register_tqdm(range(self.num_steps), desc="GBDA Optimization")
-
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="GBDA Optimization"):
             temperature = self._get_temperature(step)
             optimizer.zero_grad()
 

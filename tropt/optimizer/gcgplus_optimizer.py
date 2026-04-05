@@ -173,10 +173,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = self.register_tqdm(range(self.num_steps))
         n_replace_start, n_replace_end = self.sample_n_replace
 
-        for step_i in pbar:
+        for step_i in self.track_steps(range(self.num_steps)):
             # Linearly interpolate sample_n_replace over steps
             cur_n_replace = round(
                 n_replace_start + (n_replace_end - n_replace_start) * step_i / max(self.num_steps - 1, 1)

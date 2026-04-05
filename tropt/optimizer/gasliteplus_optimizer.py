@@ -196,8 +196,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         current_loss = float("inf")
 
         start_time = time.time()
-        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
-
         # Form buffer_size initial triggers
         triggers_for_buffer = [trigger_ids]
         for _ in range(self.buffer_size - 1):
@@ -221,7 +219,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_str = tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
         self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE..."):
             n_flip = self.n_flip_scheduler.get_n_flip(step)
 
 

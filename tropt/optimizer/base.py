@@ -150,6 +150,9 @@ class BaseOptimizer(ABC):
 
         self._pbar = None
 
+        # Single active budget (limit, metric, scope), or None. See set_budget().
+        self._budget: Optional[tuple[int, str, str]] = None
+
         if seed is not None:
             from transformers import set_seed
             set_seed(seed)
@@ -177,7 +180,10 @@ class BaseOptimizer(ABC):
 
 
         Note:
-            this method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading `log_config(...)``, model state resets (``model.reset_inputs_from_*()``), logging the final result, and calling tracker's `finish()`.
+            This method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading logging the config at start, and reseting the model input state, logging the final result, and calling tracker's `finish()` at the end.
+
+            The optimization loop should iterate via :meth:`track_steps`, which
+            handles `tqdm` progress bar and enforces any budget upper-bound configured via :meth:`set_budget`.
         """
         ...
 
@@ -285,16 +291,77 @@ class BaseOptimizer(ABC):
                 desc += f" {trigger_str=}"
             self._pbar.set_description(desc)
 
-    def register_tqdm(self, *args, **kwargs) -> tqdm:
-        """Create, register, and return a tqdm progress bar.
+    #### -- Budget tracking and step iteration utilities -- ####
+    def reset_budget(self):
+        """Clears any budget set by :meth:`set_budget`."""
+        self._budget = None
 
-        Accepts the same arguments as ``tqdm()``.
-        ``self.log()`` calls will automatically update its description with the current
-        loss (and trigger string if available) on every step, so not need to set that manually in the loop.
+    def set_budget(self, limit: int, metric: str = "total_tokens", scope: str = "all") -> None:
+        """Registers an upper-bound resource budget enforced by :meth:`track_steps`.
+
+        The budget is a ceiling, not a quota: if the optimizer terminates naturally before reaching it, the budget has no effect.
+
+        Common metrics (keys of :meth:`BaseModel.get_usage_stats`):
+        - ``"total_flops"``: Estimated FLOPs consumed. Requires ``model.set_flop_counting("manual")`` on any model whose FLOPs should count. Best choice for white-box compute-equalised comparisons.
+        - ``"total_tokens"``: Total tokens processed (prompt + generation). Best for black-box models where FLOPs aren't observable but token usage is.
+
+        Args:
+            limit: Integer upper bound on the ``metric``.
+            metric: The metric the budget is set by. Defaults to the token usage count.
+            scope: What models to take the metric against. 
+                In optimizers that accomodate multiple models (e.g., proxy models), this may be critical choice.
+                ``"all"``, sums the metric across all models found on ``self``. 
+                ``"target"`` only considers the primary target model (``self.model``), which is useful if we only care about the target model API token usage.
+        """
+        assert scope in ("all", "target"), "scope must be 'all' or 'target'"
+        assert metric in ("total_flops", "total_tokens"), "currently only 'total_flops' and 'total_tokens' metrics are supported"
+        self._budget = (int(limit), metric, scope)
+
+    def _budget_usage(self) -> float:
+        if self._budget is None:
+            return 0.0
+        _, metric, scope = self._budget
+
+        # Budget on target model only:
+        if scope == "target":
+            return float(self.model.get_usage_stats().get(metric, 0))
+
+        # Budget across all available models:
+        seen: set[int] = set()
+        total = 0.0
+        for val in self.__dict__.values():
+            if isinstance(val, BaseModel) and id(val) not in seen:
+                seen.add(id(val))
+                total += val.get_usage_stats().get(metric, 0)
+        return total
+
+    def _budget_exhausted(self) -> bool:
+        return self._budget is not None and self._budget_usage() >= self._budget[0]
+
+    def track_steps(self, *args, **kwargs):
+        """Iterator for the optimization loop that handles progress bar and budget enforcement.
+        
+        This supplement the optimziation loop with:
+        - a ``tqdm`` progress bar (args/kwargs forwarded) that :meth:`log`
+          calls auto-updates with the current loss and trigger string, and
+        - early termination when the budget set via :meth:`set_budget` is hit.
+
+        The budget is checked at the top of each step, so overshoot is bounded
+        by one step's work. Without a budget set, behaves like plain ``tqdm``.
 
         Usage::
-            for _ in self.register_tqdm(range(self.num_steps)):
+
+            for _ in self.track_steps(range(self.num_steps), desc="MyOpt"):
                 ...
         """
         self._pbar = tqdm(*args, **kwargs)
-        return self._pbar
+        for item in self._pbar:
+            if self._budget_exhausted():
+                limit, metric, scope = self._budget  # type: ignore[misc]
+                logger.info(
+                    f"[{type(self).__name__}] budget reached "
+                    f"({metric}[{scope}]={self._budget_usage():.3g} >= {limit:.3g}); stopping early."
+                )
+                self._pbar.close()
+                return
+            yield item

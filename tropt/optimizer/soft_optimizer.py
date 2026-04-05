@@ -77,9 +77,7 @@ class SoftPromptOptimizer(BaseOptimizer):
 
         best = RunningBest()
 
-        pbar = self.register_tqdm(range(self.num_steps), desc="Soft Prompt Optimization")
-
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="Soft Prompt Optimization"):
             optimizer.zero_grad()
 
             # Compute gradients w.r.t. trigger embeddings

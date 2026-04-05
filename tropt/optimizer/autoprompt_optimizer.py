@@ -78,9 +78,7 @@ class AutoPromptOptimizer(BaseOptimizer):
         ).item()
         self.log(loss=current_loss, trigger_str=initial_trigger)
 
-        pbar = self.register_tqdm(range(self.num_steps))
-
-        for step_idx in pbar:
+        for step_idx in self.track_steps(range(self.num_steps)):
             trigger_seq_len = trigger_ids.shape[0]
 
             # Pick one random position for this step

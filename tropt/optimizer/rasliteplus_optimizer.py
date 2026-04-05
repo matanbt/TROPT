@@ -162,8 +162,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         best = RunningBest()
         current_loss = float("inf")
 
-        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with RASLITEPlus...")
-
         # Form buffer_size initial triggers
         triggers_for_buffer = [util_trigger_ids]
         for _ in range(self.buffer_size - 1):
@@ -188,7 +186,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         trigger_str = util_tokenizer.decode_trigger(buffer.get_best_trigger())
         self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="Optimizing with RASLITEPlus..."):
 
             # Get the best trigger from the buffer
             util_trigger_ids = buffer.get_best_trigger()

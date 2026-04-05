@@ -107,9 +107,7 @@ class GASLITEOptimizer(BaseOptimizer):
         ).item()
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = self.register_tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
-
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE..."):
 
             # --- (I) Gradient and candidate selection step ---
             if self.use_random_gradient:

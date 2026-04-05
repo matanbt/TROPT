@@ -88,10 +88,9 @@ class PEZOptimizer(BaseOptimizer):
             [trigger_embeds], lr=self.learning_rate, weight_decay=self.weight_decay
         )
 
-        pbar = self.register_tqdm(range(self.num_steps), desc="PEZ Optimization")
         best = RunningBest()
 
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="PEZ Optimization"):
             optimizer.zero_grad()
 
             # Forward projection: project continuous embeddings to nearest vocab tokens

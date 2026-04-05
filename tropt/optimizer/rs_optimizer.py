@@ -165,8 +165,7 @@ class RandomSearchOptimizer(BaseOptimizer):
         restart_count = 0  # number of restarts (for logging purposes)
 
         # --- Optimization loop ---
-        pbar = self.register_tqdm(range(self.num_steps))
-        for step_i in pbar:
+        for step_i in self.track_steps(range(self.num_steps)):
             # Check patience — restart if stuck
             if self.patience > 0 and steps_without_improvement >= self.patience:
                 restart_count += 1

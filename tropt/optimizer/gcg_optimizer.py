@@ -92,9 +92,7 @@ class GCGOptimizer(BaseOptimizer):
         ).item()
         self.log(loss=current_loss, trigger_str=initial_trigger)
 
-        pbar = self.register_tqdm(range(self.num_steps))
-
-        for _ in pbar:
+        for _ in self.track_steps(range(self.num_steps)):
             # Compute the trigger gradient
             trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
                 self.model.compute_grad_from_tokens(

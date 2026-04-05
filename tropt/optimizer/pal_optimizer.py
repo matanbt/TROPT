@@ -155,9 +155,7 @@ class PALOptimizer(BaseOptimizer):
         visited.add(trigger_str)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = self.register_tqdm(range(self.num_steps))
-
-        for _ in pbar:
+        for _ in self.track_steps(range(self.num_steps)):
             # === Stage 1: Candidate Selection (on proxy) ===
 
             if self.candidate_selection == "gradient":

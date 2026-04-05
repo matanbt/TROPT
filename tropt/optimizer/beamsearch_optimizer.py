@@ -154,9 +154,7 @@ class BeamSearchOptimizer(BaseOptimizer):
 
         # Iterate for num_steps steps (BEAST: Algorithm 1 in paper; lines 8-23)
         # We already have 1 token, so iterate num_steps - 1 times
-        pbar = self.register_tqdm(range(self.num_steps - 1), desc="Beam Search optimization")
-
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps - 1), desc="Beam Search optimization"):
             # 1. Get logits for the next trigger token  (adv[-1]'s)
             next_token_logits = self.util_lm.compute_logits_from_tokens(
                 beam_trigger_ids, return_after_trigger_logits_only=True

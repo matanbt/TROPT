@@ -272,9 +272,7 @@ class PGDOptimizer(BaseOptimizer):
         steps_since_improvement = 0
         relaxation_gap = 1.0  # starts at 1 (no weakening)
 
-        pbar = self.register_tqdm(range(self.num_steps), desc="PGD Optimization")
-
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="PGD Optimization"):
             optimizer.zero_grad()
 
             # --- Compute gradient (Algorithm 1, line 5) ---

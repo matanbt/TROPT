@@ -126,9 +126,7 @@ class QCGOptimizer(BaseOptimizer):
         trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
 
-        pbar = self.register_tqdm(range(self.num_steps))
-
-        for _ in pbar:
+        for _ in self.track_steps(range(self.num_steps)):
             # Work on the best trigger in the buffer
             trigger_ids = buffer.get_best_trigger()
 
