@@ -260,9 +260,9 @@ def run_rs_openai():
             mutation_mode = "block_random",
             # Block parameters
             schedule = "fixed",
-            initial_block_len = 4,
-            # patience before restart:
-            patience=25,
+            initial_block_len = 8,  # TODO also update the recipe hub
+            # disable restarts:
+            patience=0,  
         )
 
         result = optimizer.optimize_trigger(

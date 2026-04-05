@@ -14,14 +14,14 @@ set -euo pipefail
 #   Medium:      MSG_IDS="0 1 2 3 4"
 #   Full:        MSG_IDS="0 1 2 3 4 5 6 7 8 9"
 MSG_IDS="0"
-SEEDS="42"
+SEEDS="42 123 777"
 
 
 WHITEBOX_MODELS=(
-    # "meta-llama/Llama-3.1-8B-Instruct"
-    # "google/gemma-3-12b-it"
+    "meta-llama/Llama-3.1-8B-Instruct"
+    "google/gemma-3-12b-it"
     "Qwen/Qwen3-8B"
-    # -----
+    # ----- other models -----
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
 )
@@ -73,9 +73,11 @@ for model in "${WHITEBOX_MODELS[@]}"; do
     python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
 done
 
+
 # ─── Exp3: Corpus Poisoning ────────────────────────────────────────────────
 echo "=== Exp3: Corpus poisoning (GASLITE on E5) ==="
 python scripts/opt-bench/exp3-corpois.py gaslite-e5
+
 
 echo "=== Exp3: Corpus poisoning (RandomSearch on OpenAI) ==="
 python scripts/opt-bench/exp3-corpois.py rs-openai
@@ -83,7 +85,7 @@ python scripts/opt-bench/exp3-corpois.py rs-openai
 echo ">> After running Exp3, we need to now send Abed the 10 adv passages, inject MSMARCO, and test the results on all the held-{in,out} queries for measures. <<"
 
 
-exit 0
+
 
 
 # ─── Evaluations ────────────────────────────────────────────────────────────
@@ -135,15 +137,16 @@ short_bb=$(echo "$BLACKBOX_MODEL" | sed 's|.*/||')
 evaluate "optbench_blackbox" "exp1_bb_${short_bb}" "$BLACKBOX_MODEL" "true"
 
 # Exp2 single: evaluate with each white-box model
+# TODO the wandb project here is different! we should fix it!!
 for model in "${WHITEBOX_MODELS[@]}"; do
     short=$(echo "$model" | sed 's|.*/||')
-    evaluate "tweakbench_single" "exp2_single_${short}" "$model"
+    evaluate "enhancebench_single" "exp2_single_${short}" "$model"
 done
 
 # Exp2 multi: evaluate with each white-box model
 for model in "${WHITEBOX_MODELS[@]}"; do
     short=$(echo "$model" | sed 's|.*/||')
-    evaluate "tweakbench_multi" "exp2_multi_${short}" "$model"
+    evaluate "enhancebench_multi" "exp2_multi_${short}" "$model"
 done
 
 echo "=== All done. Results in $RESULTS_DIR/ ==="
