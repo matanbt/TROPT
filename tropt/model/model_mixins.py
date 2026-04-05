@@ -1,9 +1,13 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
 import torch
+from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from torch import Tensor
+
+logger = logging.getLogger(__name__)
 
 from tropt.common import (
     MessageTargets,
@@ -189,36 +193,60 @@ class LossTextAccessMixin(TextAccessMixin):
         n_templates: int = input_manager.n_templates
         n_candidates: int = len(candidate_trigger_strs)  # noqa
 
-        # Main Loop: for each template, we compute the loss for all candidates
+        # Main Loop: for each template, we compute the loss for all candidates.
+        # Candidates are chunked up to `self._forward_pass_batch_size` (defined
+        # on BaseModel, overridable per subclass); on CUDA OOM we halve the
+        # batch size and retry (via accelerate's find_executable_batch_size).
         losses = []
         for template_idx in range(n_templates):
-            curr_model_input = input_manager.get_triggered_inputs(
-                chosen_template_idx=template_idx, trigger_strs=candidate_trigger_strs
-            )
-            curr_texts, curr_targets = (
-                curr_model_input.input_texts,
-                curr_model_input.message_targets,
-            )
 
-            # Forward pass once per template bulk
-            model_output = self.invoke_from_texts(
-                input_texts=curr_texts,
-                message_targets=curr_targets,
-                require_target_prefill=loss_func.require_target_prefill,
-                require_generation=loss_func.require_generation,
-                require_first_token_logprobs=loss_func.require_first_token_logprobs,
-            )  # Returns ModelOutput with available data
+            @find_executable_batch_size(starting_batch_size=self._forward_pass_batch_size)
+            def _compute_loss_batched(batch_size, template_idx=template_idx):
+                # --- Update forward batch size ---
+                # Automatically lower the default for future calls if this run required a downgrade
+                if batch_size < self._forward_pass_batch_size:
+                    logger.info(f"OOM detected. Reducing _forward_pass_batch_size from {self._forward_pass_batch_size} to {batch_size}")
+                    self._forward_pass_batch_size = batch_size
+                # --------------------
 
-            # Create ModelInput wrapper
-            model_input = ModelInput(
-                input_texts=curr_texts,
-                input_trigger_strs=candidate_trigger_strs,
-                message_targets=curr_targets,
-            )
+                chunk_losses = []
+                for start in range(0, n_candidates, batch_size):
+                    end = min(start + batch_size, n_candidates)
+                    chunk_strs = candidate_trigger_strs[start:end]
 
-            # Use unified loss resolution
-            loss = resolve_and_compute_loss(model_output, model_input, loss_func)  # shape: (n_candidates,)
-            losses.append(loss)
+                    curr_model_input = input_manager.get_triggered_inputs(
+                        chosen_template_idx=template_idx, trigger_strs=chunk_strs,
+                    )
+                    curr_texts, curr_targets = (
+                        curr_model_input.input_texts,
+                        curr_model_input.message_targets,
+                    )
+
+                    # Forward pass for this candidate chunk
+                    model_output = self.invoke_from_texts(
+                        input_texts=curr_texts,
+                        message_targets=curr_targets,
+                        require_target_prefill=loss_func.require_target_prefill,
+                        require_generation=loss_func.require_generation,
+                        require_first_token_logprobs=loss_func.require_first_token_logprobs,
+                    )  # Returns ModelOutput with available data
+
+                    # Create ModelInput wrapper
+                    model_input = ModelInput(
+                        input_texts=curr_texts,
+                        input_trigger_strs=chunk_strs,
+                        message_targets=curr_targets,
+                    )
+
+                    # Use unified loss resolution
+                    chunk_loss = resolve_and_compute_loss(
+                        model_output, model_input, loss_func
+                    )  # shape: (chunk_size,)
+                    chunk_losses.append(chunk_loss)
+
+                return torch.cat(chunk_losses, dim=0)  # shape: (n_candidates,)
+
+            losses.append(_compute_loss_batched())
 
         losses = torch.stack(losses, dim=0)  # shape: (n_templates, n_candidates)
 

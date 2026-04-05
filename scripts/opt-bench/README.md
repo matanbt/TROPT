@@ -50,3 +50,17 @@ WHITEBOX_MODELS="model/a model/b" BLACKBOX_MODEL="openai/gpt-5-nano" bash script
 ```
 
 Constants (seeds, message IDs, trigger length, wandb entity) are defined at the top of `exp1.py` and `exp2.py`.
+
+## Slurm orchestration (`check_slurm.sh`)
+
+`run_all.sh` is too large for a single slurm job, so it's split per `(exp, model, seed)` via the env-var filters `EXP_FILTER` / `MODEL_FILTER` / `SEED_FILTER`. Job names follow `exp{N}{l|g|q}{1|2|3}` (e.g. `exp1g1` = exp1, Gemma, seed 42) plus `exp1chat` for the standalone OpenAI blackbox sweep.
+
+```bash
+# List expected jobs vs. what's currently in `squeue --me`
+bash scripts/opt-bench/check_slurm.sh
+
+# Same, but also sbatch any missing ones via scripts/opt-bench/eval.slurm
+bash scripts/opt-bench/check_slurm.sh --run-missing
+```
+
+Track progress (done/total per job + remaining-hours estimate) in `progress.ipynb`.

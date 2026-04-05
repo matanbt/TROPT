@@ -51,6 +51,26 @@ class BaseModel(ABC):
     models it may be ``None``.
     """
 
+    _forward_pass_batch_size: int = 4096
+    """Starting batch size for forward-pass compute methods (loss / logits / ... ).
+
+    Used as ``starting_batch_size`` for ``find_executable_batch_size`` in
+    ``compute_loss_from_*`` methods. 
+    Intentionally set high -- on GPU backends
+    it is automatically halved on OOM, and for API backends
+    it simply caps the chunk size sent to ``invoke_from_texts`` per step.
+    Any subclass may override (at the class level or in ``__init__``).
+    """
+
+    _backward_pass_batch_size: int = 512
+    """Starting batch size for backward-pass compute methods (gradients).
+
+    Used as ``starting_batch_size`` for ``find_executable_batch_size`` in
+    ``compute_grad_from_*`` methods. 
+    Intentionally set high -- automatically
+    halved on OOM. Any subclass may override.
+    """
+
     _flop_counter: Optional[FlopCounterBase] = None
     """Active counter object (set by :meth:`set_flop_counting`).
 
