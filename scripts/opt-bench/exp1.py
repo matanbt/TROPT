@@ -444,7 +444,7 @@ def whitebox(
                 )
                 optimizer = cfg.optimizer_factory(model, tracker, seed, util_lm=util_lm)
                 # Cap all of flop usage, including util lm
-                optimizer.set_budget("total_flops", FLOP_BUDGET)
+                optimizer.set_budget(FLOP_BUDGET, metric="total_flops")
                 optimizer.optimize_trigger(
                     templates=[instruction],
                     targets=Targets(target_response_strs=[target]),
@@ -531,7 +531,7 @@ def blackbox(
                     target_model, tracker, seed, util_lm=util_lm,
                 )
                 # We only want to cap the token usage here
-                optimizer.set_budget("total_tokens", TARGET_TOKEN_BUDGET, scope="target")
+                optimizer.set_budget(TARGET_TOKEN_BUDGET, metric="total_tokens", scope="target")
                 optimizer.optimize_trigger(
                     templates=[instruction],
                     targets=Targets(target_response_strs=[target]),

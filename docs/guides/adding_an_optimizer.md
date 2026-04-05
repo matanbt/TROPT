@@ -198,7 +198,7 @@ Callers opt in per run:
 
 ```python
 optimizer = MyOptimizer(model=model, loss=loss)
-optimizer.set_budget("total_flops", 1e15)   # optional; omit to run unbudgeted
+optimizer.set_budget(1e15, metric="total_flops")   # optional; omit to run unbudgeted
 optimizer.optimize_trigger(...)
 ```
 

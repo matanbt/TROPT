@@ -73,10 +73,10 @@ Usage:
 ```python
 # Whitebox — cap compute by FLOPs (across target + any proxy LM)
 optimizer = GCGOptimizer(model=model_obj, loss=PrefillCELoss(), num_steps=10_000)
-optimizer.set_budget("total_flops", 1e17)
+optimizer.set_budget(1e17, metric="total_flops")
 
 # Blackbox — cap by target-model tokens (FLOPs aren't observable on API models)
-optimizer.set_budget("total_tokens", 1_000_000, scope="target")
+optimizer.set_budget(1_000_000, metric="total_tokens", scope="target")
 ```
 
 Set `num_steps` generously when budgeting — the budget becomes the real stopping criterion; `num_steps` is a safety ceiling.
