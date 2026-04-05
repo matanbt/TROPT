@@ -80,7 +80,7 @@ class BaseLoss(ABC):
         """
         if self._last_loss_vals is None:
             return {}
-        return {f"loss/{type(self).__name__}": self._last_loss_vals.min().item()}
+        return {f"{type(self).__name__}": self._last_loss_vals.min().item()}
 
     def contains_loss_type(self, loss_type: type) -> bool:
         """

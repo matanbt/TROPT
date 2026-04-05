@@ -50,7 +50,7 @@ All recipes in this section use HuggingFace models.
 | Recipe | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **GBDA** | Gumbel-Softmax continuous relaxation of discrete tokens. | LM | Gradient + Loss (Token) | [Guo et al., 2021](https://arxiv.org/abs/2104.13733) | [`GBDA.py`](GBDA.py) |
-| **Soft-GCG** | Improved GBDA with 3-phase temperature schedule, CW loss, and gradient clipping. | LM | Gradient + Loss (Token) | [Cakar (ImprovingGCG)](https://github.com/Ege-Cakar/ImprovingGCG) | [`SoftGCG.py`](SoftGCG.py) |
+| **Soft-GCG** | Improved GBDA with 3-phase temperature schedule, CW loss, and gradient clipping. | LM | Gradient + Loss (Token) | [ImprovingGCG](https://github.com/Ege-Cakar/ImprovingGCG) | [`SoftGCG.py`](SoftGCG.py) |
 | **PGD** | Projected Gradient Descent with simplex + Tsallis entropy projections. | LM | Gradient + Loss (Token) | [Geisler et al., 2024](https://arxiv.org/abs/2402.09154) | [`PGD.py`](PGD.py) |
 | **PEZ** | Continuous embedding optimization projected back to nearest tokens. | LM | Gradient (Embed) + Loss (Token) | [Wen et al., 2023](https://arxiv.org/abs/2302.03668) | [`PEZ.py`](PEZ.py) |
 
@@ -69,7 +69,7 @@ All recipes in this section use HuggingFace models.
 | Recipe | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | **IRIS** | GCG + activation steering away from refusal directions (combined CE + steering loss). | LM | Gradient + Loss (Token) | [Huang et al., 2025](https://aclanthology.org/2025.naacl-long.302/) | [`IRIS.py`](IRIS.py) |
-| **IRIS v2** | IRIS variant with single-layer targeting, following 'ImprovingGCG' report. | LM | Gradient + Loss (Token) | [Cakar (ImprovingGCG)](https://github.com/Ege-Cakar/ImprovingGCG/tree/main/Soft-GCG) | [`IRIS.py`](IRIS.py) |
+| **IRIS v2** | IRIS variant with single-layer targeting, following 'ImprovingGCG' report. | LM | Gradient + Loss (Token) | [ImprovingGCG](https://github.com/Ege-Cakar/ImprovingGCG/tree/main/Soft-GCG) | [`IRIS.py`](IRIS.py) |
 
 #### Proxy-Guided Jailbreaks (Grey-Box)
 

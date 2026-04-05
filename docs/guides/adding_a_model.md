@@ -2,7 +2,7 @@
 
 This guide walks you through wrapping a new model backend. Pick the section that matches your situation:
 
-- **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
+- **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case we expect for model backend addition, and it is also the most straightfotward easiest. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
 - **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `HuggingFaceBackendModel` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
 

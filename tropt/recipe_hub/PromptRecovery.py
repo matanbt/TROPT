@@ -232,12 +232,24 @@ def generate_image_from_prompt(
     Returns:
         PIL Image.
     """
-    from diffusers import FluxPipeline
+    is_flux = "flux" in model_name.lower()
 
-    pipe = FluxPipeline.from_pretrained(
-        model_name,
-        torch_dtype=torch.bfloat16,
-    )
+    if is_flux:
+        from diffusers import FluxPipeline
+
+        pipe = FluxPipeline.from_pretrained(
+            model_name,
+            torch_dtype=torch.bfloat16,
+        )
+    else:
+        # Stable Diffusion (e.g. sd2-community/stable-diffusion-2-1)
+        from diffusers import StableDiffusionPipeline
+
+        pipe = StableDiffusionPipeline.from_pretrained(
+            model_name,
+            torch_dtype=torch.float16,
+        )
+
     pipe.enable_model_cpu_offload()
 
     generator = torch.Generator(device="cpu").manual_seed(seed) if seed is not None else None
