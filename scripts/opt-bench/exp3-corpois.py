@@ -260,7 +260,7 @@ def run_rs_openai():
             mutation_mode = "block_random",
             # Block parameters
             schedule = "fixed",
-            initial_block_len = 8,  # TODO also update the recipe hub
+            initial_block_len = 8,
             # disable restarts:
             patience=0,  
         )

@@ -46,7 +46,7 @@ python -m scripts.opt-bench.eval build-csv-iii --csv-i-path results/csv_i.csv --
 
 Override models via environment variables:
 ```bash
-WHITEBOX_MODELS="model/a model/b" BLACKBOX_MODEL="openai/gpt-4o-mini" bash scripts/opt-bench/run_all.sh
+WHITEBOX_MODELS="model/a model/b" BLACKBOX_MODEL="openai/gpt-5-nano" bash scripts/opt-bench/run_all.sh
 ```
 
 Constants (seeds, message IDs, trigger length, wandb entity) are defined at the top of `exp1.py` and `exp2.py`.

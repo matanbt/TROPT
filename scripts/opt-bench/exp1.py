@@ -138,14 +138,14 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
         lambda model, tracker, seed, **_: AutoPromptOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
             num_steps=500, n_candidates=512, sample_topk=256,
-            token_constraints=_TC, 
+            token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=True, disallow_unused_tokens=False), # only filters special tokens 
             use_retokenize=False,  # no retok in the paper
         )),
     OptimizerConfig("arca",
         lambda model, tracker, seed, **_: ARCAOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
             num_steps=500, n_candidates=512, sample_topk=256, n_grad_avg=32,
-            token_constraints=_TC, 
+            token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=False, disallow_unused_tokens=False),  # ARCA applies no token filtering by default
             use_retokenize=False,  # no retok in the paper
         )),
     OptimizerConfig("gbda",
@@ -419,7 +419,7 @@ def whitebox(
 
 @app.command()
 def blackbox(
-    model_name: str = typer.Option("openai/gpt-4o-mini", help="LiteLLM model identifier"),
+    model_name: str = typer.Option("openai/gpt-5-nano", help="LiteLLM model identifier"),
     msg_ids: List[int] = typer.Option(MSG_IDS, help="ClearHarm message IDs"),
     seeds: List[int] = typer.Option(SEEDS, help="Random seeds"),
     optimizers: List[str] = typer.Option(

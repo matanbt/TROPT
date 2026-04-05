@@ -10,7 +10,7 @@ Usage
 -----
   python -m scripts.opt-bench.eval build-csv-i --wandb-project tropt-optbench
   python -m scripts.opt-bench.eval build-csv-ii --model-name google/gemma-2-2b-it
-  python -m scripts.opt-bench.eval build-csv-ii --model-name openai/gpt-4o-mini --use-litellm
+  python -m scripts.opt-bench.eval build-csv-ii --model-name openai/gpt-5-nano --use-litellm
   python -m scripts.opt-bench.eval build-csv-iii --model-name google/gemma-2-2b-it
 """
 import os
@@ -168,7 +168,7 @@ def build_csv_iii(
         model_name=model_name,
         trigger_strs=df["best_trigger_str"].tolist(),
         trigger_ids=df["trigger_id"].tolist(),
-        harmful_dataset="clearharm",
+        harmful_dataset="clearharm[:50]",
         batch_size=batch_size,
         model_backend="litellm" if use_litellm else "hf_pipeline",
     )

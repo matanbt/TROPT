@@ -13,7 +13,7 @@ set -euo pipefail
 #   Smoke test:  MSG_IDS="0"
 #   Medium:      MSG_IDS="0 1 2 3 4"
 #   Full:        MSG_IDS="0 1 2 3 4 5 6 7 8 9"
-MSG_IDS="0"
+MSG_IDS="0"  # 1 2 3 4 5
 SEEDS="42 123 777"
 
 
@@ -25,12 +25,36 @@ WHITEBOX_MODELS=(
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
 )
-BLACKBOX_MODEL="openai/gpt-4o-mini"
+BLACKBOX_MODEL="openai/gpt-5-nano"
 
 WANDB_PROJECT="tropt-optbench"
+WANDB_PROJECT_EXP2="tropt-enhancebench"  # exp2.py uses a separate project
 RESULTS_DIR="scripts/opt-bench/results"
 
 mkdir -p "$RESULTS_DIR"
+
+# ─── Slurm-filter support ───────────────────────────────────────────────────
+# When launched per-job by check_slurm.sh, these env vars narrow the sweep to a
+# single (exp, model, seed) tuple. Empty means "run everything" (legacy behavior).
+EXP_FILTER="${EXP_FILTER:-}"      # "" | "1" | "2" | "1bb" (exp1 OpenAI blackbox only)
+MODEL_FILTER="${MODEL_FILTER:-}"  # "" | substring of a WHITEBOX_MODELS entry
+SEED_FILTER="${SEED_FILTER:-}"    # "" | single seed, e.g. "42"
+
+if [[ -n "$MODEL_FILTER" ]]; then
+    _filtered=()
+    for _m in "${WHITEBOX_MODELS[@]}"; do
+        if [[ "$_m" == *"$MODEL_FILTER"* ]]; then _filtered+=("$_m"); fi
+    done
+    WHITEBOX_MODELS=("${_filtered[@]}")
+    echo "[filter] WHITEBOX_MODELS -> ${WHITEBOX_MODELS[*]}"
+fi
+if [[ -n "$SEED_FILTER" ]]; then
+    SEEDS="$SEED_FILTER"
+    echo "[filter] SEEDS -> $SEEDS"
+fi
+if [[ -n "$EXP_FILTER" ]]; then
+    echo "[filter] EXP_FILTER -> $EXP_FILTER (exp3 + evals disabled)"
+fi
 
 # Build repeated --msg-ids flags from the space-separated list
 MSG_ID_FLAGS=""
@@ -45,36 +69,47 @@ done
 echo "Message IDs: $MSG_IDS  |  Seeds: $SEEDS"
 
 # ─── Exp1: Optimizer Benchmarks ─────────────────────────────────────────────
-echo "=== Exp1: White-box optimizer sweep ==="
-for model in "${WHITEBOX_MODELS[@]}"; do
-    echo "--- Model: $model ---"
-    python scripts/opt-bench/exp1.py whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-done
+if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "1" ]]; then
+    echo "=== Exp1: White-box optimizer sweep ==="
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        echo "--- Model: $model ---"
+        python scripts/opt-bench/exp1.py whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    done
 
-echo "=== Exp1: External NanoGCG sweep ==="
-for model in "${WHITEBOX_MODELS[@]}"; do
-    echo "--- Model: $model ---"
-    python scripts/opt-bench/exp1.py external-nanogcg --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-done
+    echo "=== Exp1: External NanoGCG sweep ==="
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        echo "--- Model: $model ---"
+        python scripts/opt-bench/exp1.py external-nanogcg --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    done
 
-echo "=== Exp1: Black-box optimizer sweep ==="
-python scripts/opt-bench/exp1.py blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
+fi
+
+# Exp1 black-box (OpenAI) has no whitebox-model/seed axis — it's a single job
+# of its own (slurm name: exp1chat), dispatched via EXP_FILTER=1bb.
+if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "1bb" ]]; then
+    echo "=== Exp1: Black-box optimizer sweep ==="
+    python scripts/opt-bench/exp1.py blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
+fi
 
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
-echo "=== Exp2: Single-instruction tweak sweep ==="
-for model in "${WHITEBOX_MODELS[@]}"; do
-    echo "--- Model: $model ---"
-    python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-done
+if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "2" ]]; then
+    echo "=== Exp2: Single-instruction tweak sweep ==="
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        echo "--- Model: $model ---"
+        python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    done
 
-echo "=== Exp2: Multi-instruction tweak sweep ==="
-for model in "${WHITEBOX_MODELS[@]}"; do
-    echo "--- Model: $model ---"
-    python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-done
+    echo "=== Exp2: Multi-instruction tweak sweep ==="
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        echo "--- Model: $model ---"
+        python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    done
+fi
 
 
 # ─── Exp3: Corpus Poisoning ────────────────────────────────────────────────
+# Exp3 + evals are out of scope for the per-job slurm flow; only run in full mode.
+if [[ -z "$EXP_FILTER" ]]; then
 echo "=== Exp3: Corpus poisoning (GASLITE on E5) ==="
 python scripts/opt-bench/exp3-corpois.py gaslite-e5
 
@@ -83,6 +118,7 @@ echo "=== Exp3: Corpus poisoning (RandomSearch on OpenAI) ==="
 python scripts/opt-bench/exp3-corpois.py rs-openai
 
 echo ">> After running Exp3, we need to now send Abed the 10 adv passages, inject MSMARCO, and test the results on all the held-{in,out} queries for measures. <<"
+fi
 
 
 
@@ -90,21 +126,28 @@ echo ">> After running Exp3, we need to now send Abed the 10 adv passages, injec
 
 # ─── Evaluations ────────────────────────────────────────────────────────────
 # Each (experiment, run_type) gets its own CSV set to avoid collisions.
+# Evals are manual / out of scope for per-job slurm flow.
+if [[ -n "$EXP_FILTER" ]]; then
+    echo "=== Skipping evaluations (EXP_FILTER=$EXP_FILTER) ==="
+    echo "=== Done. ==="
+    exit 0
+fi
 
 evaluate() {
     local run_type="$1"
     local prefix="$2"
     local eval_model="$3"
     local use_litellm="${4:-false}"
+    local wandb_project="${5:-$WANDB_PROJECT}"
 
     local csv_i="$RESULTS_DIR/${prefix}_csv_i.csv"
     local csv_ii="$RESULTS_DIR/${prefix}_csv_ii.csv"
     local csv_iii="$RESULTS_DIR/${prefix}_csv_iii.csv"
 
-    echo "--- Eval: $prefix (run_type=$run_type, model=$eval_model) ---"
+    echo "--- Eval: $prefix (run_type=$run_type, model=$eval_model, project=$wandb_project) ---"
 
     python -m scripts.opt-bench.eval build-csv-i \
-        --wandb-project "$WANDB_PROJECT" \
+        --wandb-project "$wandb_project" \
         --run-type "$run_type" \
         --output-path "$csv_i"
 
@@ -136,17 +179,16 @@ done
 short_bb=$(echo "$BLACKBOX_MODEL" | sed 's|.*/||')
 evaluate "optbench_blackbox" "exp1_bb_${short_bb}" "$BLACKBOX_MODEL" "true"
 
-# Exp2 single: evaluate with each white-box model
-# TODO the wandb project here is different! we should fix it!!
+# Exp2 single: evaluate with each white-box model (separate wandb project)
 for model in "${WHITEBOX_MODELS[@]}"; do
     short=$(echo "$model" | sed 's|.*/||')
-    evaluate "enhancebench_single" "exp2_single_${short}" "$model"
+    evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
 done
 
-# Exp2 multi: evaluate with each white-box model
+# Exp2 multi: evaluate with each white-box model (separate wandb project)
 for model in "${WHITEBOX_MODELS[@]}"; do
     short=$(echo "$model" | sed 's|.*/||')
-    evaluate "enhancebench_multi" "exp2_multi_${short}" "$model"
+    evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
 done
 
 echo "=== All done. Results in $RESULTS_DIR/ ==="

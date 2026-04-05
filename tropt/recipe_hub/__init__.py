@@ -22,7 +22,7 @@ from .PromptRecovery import (
 )
 from .PGD import run_pgd
 from .PRS import run_prs
-from .RSEncoder import run_rs_encoder
+from .RSEmb import run_rs_emb
 from .QCG import run_gcgp_blackbox, run_gcgp_whitebox, run_qcg
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 from .SoftGCG import run_soft_gcg
@@ -52,7 +52,7 @@ RECIPES = {
     "pez": run_pez,
     "pgd": run_pgd,
     "prs": run_prs,
-    "rs_encoder": run_rs_encoder,
+    "rs_emb": run_rs_emb,
     "qcg": run_qcg,
     "gcgp_blackbox": run_gcgp_blackbox,
     "gcgp_whitebox": run_gcgp_whitebox,

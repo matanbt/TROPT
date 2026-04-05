@@ -20,7 +20,12 @@ from tropt.optimizer.arca_optimizer import ARCAOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
 
-_TOKEN_CONSTRAINTS = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
+# ARCA applies no token filtering by default
+_TOKEN_CONSTRAINTS = TokenConstraints(
+    disallow_non_ascii=False,
+    disallow_special_tokens=False,
+    disallow_unused_tokens=False,
+)
 _INITIAL_TRIGGER = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
 
 
@@ -50,7 +55,7 @@ def run_arca(
         n_candidates=512,  # following GCG's convention
         sample_topk=256,
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=False,  # ARCA doesn't use retokenization;
+        use_retokenize=False,  # ARCA doesn't use retokenization
     )
 
     return optimizer.optimize_trigger(

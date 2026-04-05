@@ -1,5 +1,5 @@
 """
-RS Encoder attack recipe — black-box Random Search on embedding models.
+RS-Emb attack recipe — black-box Random Search on embedding models.
 
 Works with both HuggingFace and OpenAI encoder models. Optimizes a discrete
 trigger to align a passage's embedding with a target vector using cosine
@@ -22,7 +22,7 @@ from tropt.optimizer.utils.token_initializers import get_printable_random_trigge
 from tropt.tracker import BaseTracker
 
 
-def run_rs_encoder(
+def run_rs_emb(
     template: str = "Malicious passage. {{OPTIMIZED_TRIGGER}}",
     target_vector: Float[torch.Tensor, "1 d_model"] = torch.randn(1, 768),
     # --- model ---
@@ -67,7 +67,7 @@ def run_rs_encoder(
         token_constraints=tc,
         mutation_mode="block_random",
         schedule="fixed",
-        initial_block_len=4,
+        initial_block_len=8,
         patience=25,
     )
 
