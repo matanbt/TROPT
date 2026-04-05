@@ -152,9 +152,8 @@ class HuggingFaceTokenInputManager(TokenInputManager):
 
     @property
     def vocab_size(self):
-        # TODO some models might have slightly different effecive vocab size in weight (?)
-        #      it's possible that each caller need to receive different vocab size; go over these.
-        return self.tokenizer.vocab_size
+        # We use the effective vocab size, which is the size of the emb matrix (this may differ from tokenize vocab size)
+        return self._embedding_layer.num_embeddings
 
     @property
     def n_templates(self):
