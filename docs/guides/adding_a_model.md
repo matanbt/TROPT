@@ -22,6 +22,8 @@ Every model is composed of methods from three families. Understanding these help
 
 3. **Compute methods** (`compute_loss_from_tokens`, `compute_grad_from_tokens`, etc.) — the methods optimizers actually call. These use the stored inputs (from family 2) and the invoke methods (from family 1) internally. For text-access models, `LossTextAccessMixin` provides `compute_loss_from_texts` for free. For HuggingFace models, `HuggingFaceBackendModel` provides all token-based compute methods. For other token-access backends, you implement these yourself.
 
+> **Batching is the compute method's responsibility, not the invoke method's.** Invoke methods should run a single forward pass over whatever batch they receive and stay free of chunking/OOM-recovery logic. The compute methods are the ones that see `n_candidates` and are expected to split them into sub-batches (and, for GPU backends, retry with a smaller batch on OOM). Both `LossTextAccessMixin.compute_loss_from_texts` and `HuggingFaceBackendModel`'s token compute methods already do this via `accelerate.utils.memory.find_executable_batch_size`, using `self._forward_pass_batch_size` / `self._backward_pass_batch_size` (defined on `BaseModel`, overridable per subclass) as the starting batch size. When you implement a compute method yourself for a non-HF token-access backend, follow the same pattern.
+
 **In practice**: for most new models, you implement `invoke_from_texts` and get everything else for free. Token-access models additionally implement `invoke_from_tokens` and `set_inputs_from_tokens`. The compute methods are only hand-written for non-HF token-access backends.
 
 ### Base Classes
@@ -66,7 +68,7 @@ You implement `tokenizer` and `set_inputs_from_tokens` **once**, regardless of h
 |---|---|---|
 | `LossTextAccessMixin` | black-box | *nothing* — fully implemented; it calls your `__call__` internally |
 
-`LossTextAccessMixin` provides `compute_loss_from_texts` and `set_inputs_from_texts` out of the box. It works by calling `self(input_texts)` and passing the resulting `ModelOutput` through the [unified loss resolution system](../../tropt/loss/resolution.py).
+`LossTextAccessMixin` provides `compute_loss_from_texts` and `set_inputs_from_texts` out of the box. It works by calling `self(input_texts)` and passing the resulting `ModelOutput` through the [unified loss resolution system](../../tropt/loss/resolution.py). It also wraps the per-template forward in `find_executable_batch_size`, so candidate batches are chunked and retried automatically on CUDA OOM — your `invoke_from_texts` only needs to handle a single (already-sized) batch.
 
 A model can include both token-access and text-access mixins — see `LMHFModel` and `EncoderHFModel` for examples.
 
@@ -210,6 +212,8 @@ Only subclass or replace the input manager if your backend needs custom input co
 
 An important convention: **loss is computed per-template, not across templates**. Each template may have its own target, so we never mix templates in a single loss call. The per-template losses are aggregated (averaged) afterward.
 
+Another convention: **the compute method owns candidate batching**, not `invoke_from_tokens`. Your `invoke_from_tokens` should assume the caller has already sized the batch appropriately; the loop below is what splits `candidate_trigger_ids` into sub-batches and (for GPU backends) retries on CUDA OOM — see `HuggingFaceBackendModel` for the reference implementation using `accelerate.utils.memory.find_executable_batch_size`.
+
 `compute_loss_from_tokens` (required by `LossTokenAccessMixin`) is the most common:
 
 ```python
@@ -285,11 +289,11 @@ The mixin also handles the template loop, batching, and loss resolution via `res
 self._model                    # transformers.PreTrainedModel (or SentenceTransformer)
 self._embedding_layer          # nn.Module — model.get_input_embeddings()
 self._tokenizer                # HF tokenizer
-self._forward_pass_batch_size  # int — starting batch size for loss computation
-self._backward_pass_batch_size # int — starting batch size for gradient computation
+self._forward_pass_batch_size  # int — starting batch size for loss computation  (inherited from BaseModel; override if needed)
+self._backward_pass_batch_size # int — starting batch size for gradient computation (inherited from BaseModel; override if needed)
 ```
 
-Both batch sizes are automatically reduced on OOM. Set them high and let the handler dial them down.
+`_forward_pass_batch_size` and `_backward_pass_batch_size` live on `BaseModel` (with sensible defaults), so every model — HF or not — already has them. Override in `__init__` (or at the class level) when your backend needs a different starting point. Both are automatically reduced on CUDA OOM via `find_executable_batch_size`.
 
 Set the model to **eval mode** and disable gradients on its parameters — optimization gradients flow through the one-hot input, not the model weights:
 

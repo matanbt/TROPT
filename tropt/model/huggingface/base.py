@@ -492,8 +492,35 @@ class HuggingFaceBackendModel:
 
     @property
     def n_layers(self) -> int:
-        """Number of hidden layers in the model."""
-        return self._model.config.num_hidden_layers
+        """Number of hidden layers in the model.
+
+        Different model families expose this differently, so we
+        try several known locations and return the first that works.
+        """
+        config = self._model.config
+
+        # Each function below either returns the layer count, or raises.
+        def _n_layers_v1():
+            # Standard HF text models
+            return config.num_hidden_layers
+
+        def _n_layers_v2():
+            # Multimodal configs (e.g. Gemma-3) with nested text config
+            return config.text_config.num_hidden_layers
+
+        def _n_layers_v3():
+            return config.get_text_config().num_hidden_layers
+
+        for _getter in [_n_layers_v1, _n_layers_v2, _n_layers_v3]:
+            try:
+                return _getter()
+            except Exception:
+                continue
+
+        raise ValueError(
+            f"Could not extract `num_hidden_layers` from model config of `{self.get_model_name()}`. "
+            f"This model might need special care. Please report this issue."
+        )
 
     @property
     def dtype(self):
