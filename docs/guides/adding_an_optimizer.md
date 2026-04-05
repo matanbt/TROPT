@@ -150,8 +150,9 @@ class MyOptimizer(BaseOptimizer):
         self.model.set_inputs_from_tokens(templates, targets)
         best = RunningBest()
 
-        # 2. Optimization loop — register_tqdm wires self.log() into the progress bar
-        for _ in self.register_tqdm(range(self.num_steps)):
+        # 2. Optimization loop — track_steps wires the loss into a tqdm progress
+        #    bar AND enforces any resource budget set via self.set_budget(...)
+        for _ in self.track_steps(range(self.num_steps)):
             # Use compute_* methods matching your model_requirements:
             #   compute_{loss|grad|logits}_from_{tokens|texts}(...)
             losses = self.model.compute_loss_from_tokens(
@@ -184,6 +185,22 @@ Optimizers *should* use the utilities in `tropt/optimizer/utils/`:
 - `NFlipScheduler` — controls how many positions to flip over optimization steps
 - `get_printable_random_trigger` — random printable ASCII trigger initialization
 
+
+### Iterate with `track_steps`, not a bare `range`
+
+Your main loop should iterate via `self.track_steps(range(self.num_steps))` rather than iterating `range(...)` directly. `track_steps` is the single chokepoint `BaseOptimizer` uses to provide cross-cutting features to every optimizer without adding per-optimizer boilerplate:
+
+- **Progress bar.** Creates and registers a `tqdm` bar so that `self.log()` automatically updates its description with the current loss and trigger string — no manual `set_description` calls needed. All `tqdm` kwargs (e.g. `desc=...`) are forwarded.
+- **Resource budget (upper bound).** If the caller has configured a budget via `optimizer.set_budget(metric, limit)`, `track_steps` stops iteration early as soon as cumulative usage reaches `limit`. `metric` is any key from `BaseModel.get_usage_stats()` — e.g. `"total_flops"`, `"forward_calls"`, `"total_tokens"` — and is summed across every `BaseModel` attribute on the optimizer (some optimizers may have multiple models, for instance proxy models).
+Note that budget is a **ceiling, not a quota**: optimizers that terminate naturally before the limit, and we allow it.
+
+Callers opt in per run:
+
+```python
+optimizer = MyOptimizer(model=model, loss=loss)
+optimizer.set_budget("total_flops", 1e15)   # optional; omit to run unbudgeted
+optimizer.optimize_trigger(...)
+```
 
 ### The `set_inputs_from_tokens` / `reset_inputs_from_tokens` contract
 

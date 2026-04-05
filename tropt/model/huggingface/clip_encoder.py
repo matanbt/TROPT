@@ -133,10 +133,12 @@ class CLIPTextEncoderHFModel(
         assert isinstance(text_model, CLIPTextTransformer), f"Expected CLIPTextTransformer, got {type(text_model)}"
 
         hidden_states = text_model.embeddings(inputs_embeds=input_embeds)
+        cache_position = torch.arange(hidden_states.shape[1], device=hidden_states.device)
         mask = create_causal_mask(
             config=text_model.config,
             inputs_embeds=hidden_states,
             attention_mask=input_attention_mask,
+            cache_position=cache_position,
             past_key_values=None,
         )
         last_hidden_state = text_model.final_layer_norm(

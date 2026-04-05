@@ -51,6 +51,36 @@ def run_myattack(
 4. **Optimizer** -- choose from `tropt/optimizer/`. Pass `tracker` through for logging.
 5. **Return type** -- always `OptimizerResult`, returned by `optimizer.optimize_trigger(...)`.
 
+## Tracking compute and capping runs
+
+For benchmark-style scripts you often want to compare optimizers at equal compute, or stop a run once it spends a given amount of resources. To this end, the package support the follwing features:
+
+**Enable FLOP counting** on the model: The package enable the automatic track on the optimzier work. The flops will appear in `model.get_usage_stats()` as `total_flops` alongside `forward_calls`, `forward_samples`, `total_tokens`, etc. Technically, they are auto-logged on every `self.log()` call inside optimizers.
+Note: FLOPs are counted at the model `invoke_from_tokens` / `invoke_from_texts` level only — the cost of optimizer-internal and loss-internal computation (e.g. candidate sampling, sorting, Gumbel draws) is knowingly excluded. For implementation details see the [FLOP counting](adding_a_model.md#flop-counting) section of the model guide and [`tropt/model/flop_counter.py`](../../tropt/model/flop_counter.py).
+
+Usage in the recipe:
+
+```python
+model = LMHFModel(model_name="google/gemma-3-270m-it")
+model.set_flop_counting("manual")  # adds "total_flops" to get_usage_stats()
+```
+
+**Cap a run by resource usage** via `optimizer.set_budget(limit, metric=..., scope=...)`: It is possible to pick a metric (e.g., `total_tokens`, or--when enabled--`total_flops`), that you want to cap. The optimizer will that stop when surpassing the defined resource budget. It's an upper bound, not a quota: if the optimizer terminates naturally under the limit, it's unaffected. `scope="all"` (default) sums across every `BaseModel` on the optimizer (target + any proxies); `scope="target"` uses only `self.model`.
+
+This is useful when we would like to cap the token budget for API calls, or to match the compute used by compared recipes.
+
+Usage:
+```python
+# Whitebox — cap compute by FLOPs (across target + any proxy LM)
+optimizer = GCGOptimizer(model=model_obj, loss=PrefillCELoss(), num_steps=10_000)
+optimizer.set_budget("total_flops", 1e17)
+
+# Blackbox — cap by target-model tokens (FLOPs aren't observable on API models)
+optimizer.set_budget("total_tokens", 1_000_000, scope="target")
+```
+
+Set `num_steps` generously when budgeting — the budget becomes the real stopping criterion; `num_steps` is a safety ceiling.
+
 ## Output
 
 `OptimizerResult` (see `tropt/optimizer/base.py`) contains:

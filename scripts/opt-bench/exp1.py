@@ -52,6 +52,9 @@ WANDB_PROJECT_BB = "tropt-optbench-bb"  # black-box runs go to a separate projec
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))          # first 10 ClearHarm messages
 TRIGGER_LEN = 20
+FLOP_BUDGET = 1e17                # whitebox: per-run upper bound on total FLOPs (target + any proxy/util LM)
+TARGET_TOKEN_BUDGET = 1_000_000   # blackbox: per-run upper bound on target-model tokens (FLOPs not observable on API models)
+LARGE_NUM_STEPS = 20_000  # we rely on the budget to stop them
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 # UTIL_MODEL = "HuggingFaceTB/SmolLM2-1.7B-Instruct"   # utility LM for AdvDecoding / proxy
 UTIL_MODEL = "google/gemma-2-2b-it"
@@ -132,7 +135,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("hotflip",
         lambda model, tracker, seed, **_: HotFlipOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, token_constraints=_TC, use_retokenize=True,
+            # num_steps=500,  # <-- original paper 
+            num_steps=LARGE_NUM_STEPS, 
+            token_constraints=_TC, use_retokenize=True,
         )),
     OptimizerConfig("autoprompt",
         lambda model, tracker, seed, **_: AutoPromptOptimizer(
@@ -151,7 +156,8 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("gbda",
         lambda model, tracker, seed, **_: GBDAOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500,
+            # num_steps=500,  # <-- original steps
+            num_steps=LARGE_NUM_STEPS,
             n_grad_samples=10,
             learning_rate=0.3,
             initial_coeff=15.0,
@@ -161,24 +167,27 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
             gd_optimizer=torch.optim.Adam,
             use_lr_schedule=False,  # No LR decay in original paper
         )),
-    OptimizerConfig("gbda+",   # GBDA with SoftGCG hyperparameters (gradual schedule, random init, grad clip)
-        lambda model, tracker, seed, **_: GBDAOptimizer(
-            model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=2000,
-            n_grad_samples=1,
-            learning_rate=0.1,
-            temp_schedule="gradual",
-            n_final_gumbel_samples=0,
-            gd_optimizer=torch.optim.Adam,
-            use_lr_schedule=False,
-            grad_clip_norm=1.0,
-            init_mode="random",
-            init_noise_scale=2.0,
-        )),
+    # OptimizerConfig("gbda+",   # GBDA with SoftGCG hyperparameters (gradual schedule, random init, grad clip)
+    #     lambda model, tracker, seed, **_: GBDAOptimizer(
+    #         model=model, loss=_LOSS, tracker=tracker, seed=seed,
+    #         # num_steps=2000,  # <-- original num steps
+    #         num_steps=LARGE_NUM_STEPS,
+    #         n_grad_samples=1,
+    #         learning_rate=0.1,
+    #         temp_schedule="gradual",
+    #         n_final_gumbel_samples=0,
+    #         gd_optimizer=torch.optim.Adam,
+    #         use_lr_schedule=False,
+    #         grad_clip_norm=1.0,
+    #         init_mode="random",
+    #         init_noise_scale=2.0,
+    #     )),
     OptimizerConfig("pal",   # PAL: proxy-guided with gradient candidate selection
         lambda model, tracker, seed, **_: PALOptimizer(
             model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
-            candidate_selection="gradient", num_steps=500,
+            candidate_selection="gradient", 
+            # num_steps=500,  # <-- original
+            num_steps=LARGE_NUM_STEPS,
             n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,
             sample_n_replace=1,
             candidate_oversample_factor=1.1, 
@@ -187,7 +196,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("ral",   # RAL variant: random candidates, no proxy filtering
         lambda model, tracker, seed, **_: PALOptimizer(
             model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
-            candidate_selection="random", num_steps=500,
+            candidate_selection="random", 
+            # num_steps=500,  # <-- original paper
+            num_steps=LARGE_NUM_STEPS,
             n_candidates=32, sample_topk=256, n_candidates_after_proxy_filter=None,
             sample_n_replace=1,
             candidate_oversample_factor=1.1, 
@@ -196,14 +207,25 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("qcg",        # buffer-based query attack; proxy=self (whitebox)
         lambda model, tracker, seed, **_: QCGOptimizer(
             model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
-            num_steps=500, n_proxy_candidates=8192, n_target_candidates=32,
+            # num_steps=500,  # <-- original paper
+            num_steps=LARGE_NUM_STEPS, 
+            # n_proxy_candidates=8192,  # <-- original paper
+            n_proxy_candidates=1024,  # <-- reduce for fair eval under budget limit
+            n_target_candidates=32,
             buffer_size=128, candidate_oversample_factor=1.1,
             token_constraints=_TC,
         )),
     OptimizerConfig("random_search",
         lambda model, tracker, seed, **_: RandomSearchOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, n_candidates=128, token_constraints=_TC,
+            num_steps=LARGE_NUM_STEPS, 
+            # mutation parameters (from paper)
+            mutation_mode="block_random",
+            schedule="fixed",
+            initial_block_len=4,
+            # patience = 25,  # <-- original paper
+            patience=50,  # increase paitence a bit
+            n_candidates=128, token_constraints=_TC,
         )),
     # ── Beam-search / decoding-based optimizers ──────────────────────────────
     OptimizerConfig("beast",    # BeamSearchOptimizer; util_lm=None → uses target model
@@ -229,13 +251,17 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("pez",       # optimizes continuous embeddings, projects to discrete each step
         lambda model, tracker, seed, **_: PEZOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=3000, learning_rate=0.1, weight_decay=0.1,
+            # num_steps=3000,  # <-- original paper
+            num_steps=LARGE_NUM_STEPS, 
+            learning_rate=0.1, weight_decay=0.1,
         )),
     # ── Soft/continuous optimizers — lower-bound references ─────────────────
     OptimizerConfig("soft_prompt",
         lambda model, tracker, seed, **_: SoftPromptOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=100, learning_rate=0.001,
+            # num_steps=100,  # <-- original paper
+            num_steps=LARGE_NUM_STEPS, 
+            learning_rate=0.001,
         ),
         is_soft=True),
 ]
@@ -247,14 +273,19 @@ BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("random_search",
         lambda model, tracker, seed, **_: RandomSearchOptimizer(
             model=model, loss=_BB_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, n_candidates=128,
+            num_steps=LARGE_NUM_STEPS,
+            mutation_mode="block_random",
+            schedule="fixed",
+            initial_block_len=4,
+            patience=50,
+            n_candidates=128,
             token_constraints=_TC,
         )),
     # ── Proxy-based optimizers (util_lm provides gradients / token-level proxy) ─
     OptimizerConfig("gcgplus_rand",
         lambda model, tracker, seed, util_lm=None, **_: GCGPlusOptimizer(
             model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
-            num_steps=500, candidate_selection="random",
+            num_steps=LARGE_NUM_STEPS, candidate_selection="random",
             n_candidates=512, sample_topk=256, sample_n_replace=(1, 1),
             candidate_oversample_factor=1.1,
             token_constraints=_TC, use_retokenize=True,
@@ -263,7 +294,8 @@ BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("pal",
         lambda model, tracker, seed, util_lm=None, **_: PALOptimizer(
             model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
-            candidate_selection="gradient", num_steps=500,
+            candidate_selection="gradient", 
+            num_steps=LARGE_NUM_STEPS,
             n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,
             sample_n_replace=1,
             candidate_oversample_factor=1.1,
@@ -273,7 +305,7 @@ BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("ral",
         lambda model, tracker, seed, util_lm=None, **_: PALOptimizer(
             model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
-            candidate_selection="random", num_steps=500,
+            candidate_selection="random", num_steps=LARGE_NUM_STEPS,
             n_candidates=32, sample_topk=256, n_candidates_after_proxy_filter=None,
             sample_n_replace=1,
             candidate_oversample_factor=1.1,
@@ -283,7 +315,9 @@ BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("qcg",
         lambda model, tracker, seed, util_lm=None, **_: QCGOptimizer(
             model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
-            num_steps=500, n_proxy_candidates=8192, n_target_candidates=32,
+            num_steps=LARGE_NUM_STEPS, 
+            n_proxy_candidates=1024, 
+            n_target_candidates=32,
             buffer_size=128, candidate_oversample_factor=1.1,
             token_constraints=_TC,
         ),
@@ -369,6 +403,7 @@ def whitebox(
         print(f"Loading utility LM: {UTIL_MODEL}")
         util_lm = LMHFModel(model_name=UTIL_MODEL, device=device,
                              use_prefix_cache=False, dtype="bfloat16")
+        util_lm.set_flop_counting("manual")
 
     for msg_id in msg_ids:
         row = df.iloc[msg_id]
@@ -408,6 +443,8 @@ def whitebox(
                     blacklist_ids=_TC.get_blacklist_ids(model.tokenizer)
                 )
                 optimizer = cfg.optimizer_factory(model, tracker, seed, util_lm=util_lm)
+                # Cap all of flop usage, including util lm
+                optimizer.set_budget("total_flops", FLOP_BUDGET)
                 optimizer.optimize_trigger(
                     templates=[instruction],
                     targets=Targets(target_response_strs=[target]),
@@ -447,6 +484,7 @@ def blackbox(
             model_name=UTIL_MODEL, device=device,
             use_prefix_cache=False, dtype="bfloat16",
         )
+        util_lm.set_flop_counting("manual")
 
     for msg_id in msg_ids:
         row = df.iloc[msg_id]
@@ -492,6 +530,8 @@ def blackbox(
                 optimizer = cfg.optimizer_factory(
                     target_model, tracker, seed, util_lm=util_lm,
                 )
+                # We only want to cap the token usage here
+                optimizer.set_budget("total_tokens", TARGET_TOKEN_BUDGET, scope="target")
                 optimizer.optimize_trigger(
                     templates=[instruction],
                     targets=Targets(target_response_strs=[target]),
