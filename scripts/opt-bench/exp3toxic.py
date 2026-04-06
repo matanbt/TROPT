@@ -52,7 +52,7 @@ def _greedy_generate(model: LMHFModel, prompt: str, max_new_tokens: int = 20) ->
         input_texts=[prompt],
         max_new_tokens=max_new_tokens,
     )
-    return out
+    return out[0]
 
 
 def _save_results(results: dict, filename: str):
