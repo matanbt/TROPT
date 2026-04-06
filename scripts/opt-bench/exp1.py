@@ -148,7 +148,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("autoprompt",
         lambda model, tracker, seed, **_: AutoPromptOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, n_candidates=512, sample_topk=256,
+            num_steps=LARGE_NUM_STEPS, 
+            n_candidates=512, 
+            sample_topk=256,
             token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=True, disallow_unused_tokens=False), # only filters special tokens 
             use_retokenize=False,  # no retok in the paper
         )),
@@ -302,7 +304,8 @@ BLACKBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("pal",
         lambda model, tracker, seed, util_lm=None, **_: PALOptimizer(
             model=model, loss=_BB_LOSS, proxy_model=util_lm, tracker=tracker, seed=seed,
-            candidate_selection="gradient", 
+            proxy_loss=PrefillCELoss(),
+            candidate_selection="gradient",
             num_steps=LARGE_NUM_STEPS,
             n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,
             sample_n_replace=1,

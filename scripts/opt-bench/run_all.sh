@@ -25,7 +25,7 @@ WHITEBOX_MODELS=(
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
 )
-BLACKBOX_MODEL="openai/gpt-5-nano"
+BLACKBOX_MODEL="openai/gpt-4o-mini"
 
 WANDB_PROJECT="tropt-optbench"
 WANDB_PROJECT_EXP2="tropt-enhancebench"  # exp2.py uses a separate project

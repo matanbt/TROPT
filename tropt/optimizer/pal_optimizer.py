@@ -54,6 +54,8 @@ class PALOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # Proxy model for candidate selection (defaults to model):
         proxy_model: Optional[BaseModel] = None,
+        # Differentiable loss for proxy gradient/loss computation (defaults to loss):
+        proxy_loss: Optional[BaseLoss] = None,
         # Candidate selection strategy:
         candidate_selection: Literal["gradient", "random"] = "gradient",
         # Core GCG params:
@@ -73,6 +75,9 @@ class PALOptimizer(BaseOptimizer):
             loss: Loss function to optimize.
             proxy_model: Model used for candidate selection (gradients/tokenizer).
                 If None, defaults to `model` (self-proxy / white-box).
+            proxy_loss: Loss function for proxy gradient/loss computation. Required
+                when the main loss is non-differentiable (e.g. text-based) and
+                candidate_selection="gradient". Defaults to `loss`.
             candidate_selection: "gradient" uses gradient-ranked top-k sampling,
                 "random" uses uniform random token sampling.
             sample_topk: Number of top tokens to consider for each position when sampling candidates based on gradients.
@@ -90,10 +95,17 @@ class PALOptimizer(BaseOptimizer):
         assert isinstance(self.proxy_model, LossTokenAccessMixin), (
             "proxy_model must support LossTokenAccessMixin for candidate selection"
         )
+        self.proxy_loss = proxy_loss if proxy_loss is not None else self.loss_func
         if candidate_selection == "gradient":
             assert isinstance(self.proxy_model, GradientTokenAccessMixin), (
                 f"{candidate_selection=} requires proxy_model with GradientTokenAccessMixin"
             )
+            if not self.proxy_loss.is_differentiable:
+                raise ValueError(
+                    f"candidate_selection='gradient' requires a differentiable proxy_loss, "
+                    f"but {type(self.proxy_loss).__name__}.is_differentiable=False. "
+                    f"Pass a differentiable proxy_loss (e.g. PrefillCELoss())."
+                )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
         # [TODO more informative name to use_token_eval; it should also reflect the its compute-loss and on the target model]
@@ -161,7 +173,7 @@ class PALOptimizer(BaseOptimizer):
             if self.candidate_selection == "gradient":
                 trigger_grad = proxy_model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_ids.unsqueeze(0),
-                    loss_func=self.loss_func,
+                    loss_func=self.proxy_loss,
                     normalize_grads=True,
                 ).squeeze(0)
 
@@ -197,7 +209,7 @@ class PALOptimizer(BaseOptimizer):
             # PAL adds another step to further narrow the candidate list
             if self.n_candidates_after_proxy_filter is not None:
                 proxy_losses = proxy_model.compute_loss_from_tokens(
-                    candidate_trigger_ids, loss_func=self.loss_func
+                    candidate_trigger_ids, loss_func=self.proxy_loss
                 )  # shape: (n_candidates,)
                 topk_indices = proxy_losses.topk(
                     self.n_candidates_after_proxy_filter, largest=False
