@@ -53,6 +53,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # Proxy model for candidate selection (defaults to model):
         proxy_model: Optional[BaseModel] = None,
+        # Differentiable loss for proxy gradient computation (defaults to loss):
+        proxy_loss: Optional[BaseLoss] = None,
         # Candidate selection strategy:
         candidate_selection: Literal["gradient", "random", "focused"] = "gradient",
         # Core GCG params:
@@ -73,6 +75,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         Args:
             proxy_model: Model used for candidate selection (gradients/tokenizer).
                 If None, defaults to `model` (self-proxy / white-box).
+            proxy_loss: Loss function for proxy gradient computation. Required
+                when the main loss is non-differentiable and
+                candidate_selection="gradient". Defaults to `loss`.
             candidate_selection: "gradient" uses gradient-ranked top-k sampling;
                 "random" uses uniform random token sampling; "focused" probes
                 all positions with target model loss then focuses on the best one (from QCG paper).
@@ -100,10 +105,17 @@ class GCGPlusOptimizer(BaseOptimizer):
         assert isinstance(self.proxy_model, TokenAccessMixin), (
             "proxy_model must support TokenAccessMixin (tokenizer access)"
         )
+        self.proxy_loss = proxy_loss if proxy_loss is not None else self.loss_func
         if candidate_selection == "gradient":
             assert isinstance(self.proxy_model, GradientTokenAccessMixin), (
                 "candidate_selection='gradient' requires proxy_model with GradientTokenAccessMixin"
             )
+            if not self.proxy_loss.is_differentiable:
+                raise ValueError(
+                    f"candidate_selection='gradient' requires a differentiable proxy_loss, "
+                    f"but {type(self.proxy_loss).__name__}.is_differentiable=False. "
+                    f"Pass a differentiable proxy_loss (e.g. PrefillCELoss())."
+                )
         assert candidate_oversample_factor >= 1.0, "candidate_oversample_factor must be >= 1.0"
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
@@ -193,7 +205,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 )
                 trigger_grad = proxy_model.compute_grad_from_tokens(
                     candidate_trigger_ids=grad_triggers,
-                    loss_func=self.loss_func,
+                    loss_func=self.proxy_loss,
                     normalize_grads=True,
                 ).mean(dim=0)  # average over n_grad_avg variations
 

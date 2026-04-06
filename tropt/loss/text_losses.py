@@ -311,6 +311,8 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
 
     def __post_init__(self):
         super().__post_init__()
+
+        # load perplexity model:
         logger.info(f"Loading external LM for perplexity loss: {self.model_name_or_path}")
         self._model = AutoModelForCausalLM.from_pretrained(
             self.model_name_or_path,

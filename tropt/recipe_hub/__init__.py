@@ -1,5 +1,6 @@
 from .AdvDecoding import run_advdecoding_jailbreak, run_advdecoding_retrieval
 from .ARCA import run_arca
+from .ARCAToxicReverse import run_arca_toxic_reverse
 from .AutoPrompt import run_autoprompt
 from .BEAST import run_beast
 from .ClassifierGCG import run_classifier_gcg
@@ -32,6 +33,7 @@ RECIPES = {
     "advdecoding_jailbreak": run_advdecoding_jailbreak,
     "advdecoding_retrieval": run_advdecoding_retrieval,
     "arca": run_arca,
+    "arca_toxic_reverse": run_arca_toxic_reverse,
     "autoprompt": run_autoprompt,
     "beast": run_beast,
     "classifier_gcg": run_classifier_gcg,
