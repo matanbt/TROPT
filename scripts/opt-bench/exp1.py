@@ -52,7 +52,7 @@ WANDB_PROJECT_BB = "tropt-optbench-bb"  # black-box runs go to a separate projec
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))          # first 10 ClearHarm messages
 TRIGGER_LEN = 20
-FLOP_BUDGET = 1e18                # whitebox: per-run upper bound on total FLOPs (target + any proxy/util LM)
+FLOP_BUDGET = 3e17                # whitebox: per-run upper bound on total FLOPs (target + any proxy/util LM)
 TARGET_TOKEN_BUDGET = 1_000_000   # blackbox: per-run upper bound on target-model tokens (FLOPs not observable on API models)
 LARGE_NUM_STEPS = 20_000  # we rely on the budget to stop them
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
@@ -84,7 +84,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("gcg",
         lambda model, tracker, seed, **_: GCGOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, n_candidates=512, sample_topk=256, sample_n_replace=1,
+            num_steps=LARGE_NUM_STEPS,
+            # num_steps=500,  # <-- original paper
+            n_candidates=512, sample_topk=256, sample_n_replace=1,
             token_constraints=_TC, use_retokenize=True,
         )),
     # OptimizerConfig("gcgplus_grad",   # gradient-based candidate selection
@@ -107,7 +109,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("gcgplus_rand",   # random candidate selection (ablation vs gcgplus_grad)
         lambda model, tracker, seed, **_: GCGPlusOptimizer(
             model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
-            num_steps=500, candidate_selection="random",
+            num_steps=LARGE_NUM_STEPS, 
+            # num_steps=500,  # <-- original paper
+            candidate_selection="random",
             n_candidates=512, sample_topk=256, sample_n_replace=(1, 1),
             candidate_oversample_factor=1.1,
             token_constraints=_TC, use_retokenize=True,
@@ -115,7 +119,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("gaslite",
         lambda model, tracker, seed, **_: GASLITEOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=100, n_grad=10, n_flip=7, n_candidates=256,
+            num_steps=LARGE_NUM_STEPS, 
+            # num_steps=100,  # <-- original paper
+            n_grad=10, n_flip=7, n_candidates=256,
             token_constraints=_TC, use_retokenize=True,
         )),
     # OptimizerConfig("gasliteplus",
@@ -136,7 +142,7 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
         lambda model, tracker, seed, **_: HotFlipOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
             # num_steps=500,  # <-- original paper 
-            num_steps=1500,  # converge to suboptimum 
+            num_steps=1500,  # mostly converges to (mostly bad) local minima 
             token_constraints=_TC, use_retokenize=True,
         )),
     OptimizerConfig("autoprompt",
@@ -149,7 +155,9 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("arca",
         lambda model, tracker, seed, **_: ARCAOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
-            num_steps=500, n_candidates=512, sample_topk=256, n_grad_avg=32,
+            # num_steps=500,  # <-- original paper
+            num_steps=LARGE_NUM_STEPS, 
+            n_candidates=512, sample_topk=256, n_grad_avg=32,
             token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=False, disallow_unused_tokens=False),  # ARCA applies no token filtering by default
             use_retokenize=False,  # no retok in the paper
         )),
