@@ -52,7 +52,7 @@ WANDB_PROJECT_BB = "tropt-optbench-bb"  # black-box runs go to a separate projec
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(10))          # first 10 ClearHarm messages
 TRIGGER_LEN = 20
-FLOP_BUDGET = 1e17                # whitebox: per-run upper bound on total FLOPs (target + any proxy/util LM)
+FLOP_BUDGET = 1e18                # whitebox: per-run upper bound on total FLOPs (target + any proxy/util LM)
 TARGET_TOKEN_BUDGET = 1_000_000   # blackbox: per-run upper bound on target-model tokens (FLOPs not observable on API models)
 LARGE_NUM_STEPS = 20_000  # we rely on the budget to stop them
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
@@ -136,7 +136,7 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
         lambda model, tracker, seed, **_: HotFlipOptimizer(
             model=model, loss=_LOSS, tracker=tracker, seed=seed,
             # num_steps=500,  # <-- original paper 
-            num_steps=LARGE_NUM_STEPS, 
+            num_steps=1500,  # converge to suboptimum 
             token_constraints=_TC, use_retokenize=True,
         )),
     OptimizerConfig("autoprompt",
@@ -456,7 +456,7 @@ def whitebox(
 
 @app.command()
 def blackbox(
-    model_name: str = typer.Option("openai/gpt-5-nano", help="LiteLLM model identifier"),
+    model_name: str = typer.Option("openai/gpt-4o-mini", help="LiteLLM model identifier"),
     msg_ids: List[int] = typer.Option(MSG_IDS, help="ClearHarm message IDs"),
     seeds: List[int] = typer.Option(SEEDS, help="Random seeds"),
     optimizers: List[str] = typer.Option(
