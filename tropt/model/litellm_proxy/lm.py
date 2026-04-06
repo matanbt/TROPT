@@ -134,23 +134,21 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
             generation_kwargs["logprobs"] = True
             generation_kwargs["top_logprobs"] = _MAX_TOP_LOGPROBS
 
-        try:
-            outputs = litellm.batch_completion(
-                model=self.model_name,
-                messages=prompts,
-                num_retries=self._N_RETRIES,
-                retry_strategy=self._RETRY_STRATEGY,
-                **self._client_kwargs,
-                **generation_kwargs,
-                **kwargs,
-            )
-            responses: list[str] = _parse_responses_from_outputs(outputs)
-        except Exception as e:
-            logger.error(f"LiteLLM batch completion failed: {e}")
-            raise e
+        outputs = litellm.batch_completion(
+            model=self.model_name,
+            messages=prompts,
+            num_retries=self._N_RETRIES,
+            retry_strategy=self._RETRY_STRATEGY,
+            **self._client_kwargs,
+            **generation_kwargs,
+            **kwargs,
+        )
 
-            responses = ["" for _ in input_texts]
-            outputs = []
+        errors = [o for o in outputs if isinstance(o, Exception)]
+        if errors:
+            raise errors[0]
+
+        responses: list[str] = _parse_responses_from_outputs(outputs)
 
         # Parse first-token logprobs when requested.
         first_token_logprobs: Optional[List[Dict[str, float]]] = None
