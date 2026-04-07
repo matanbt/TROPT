@@ -202,7 +202,7 @@ class GBDAOptimizer(BaseOptimizer):
 
             best.update(loss=current_loss, trigger_ids=current_trigger_ids, trigger_str=current_trigger_str)
 
-            self.log(loss=current_loss, trigger_str=current_trigger_str, curr_best_loss=best.loss, temperature=temperature, lr=scheduler.get_last_lr()[0])
+            self.log(loss=current_loss, trigger_str=current_trigger_str, temperature=temperature, lr=scheduler.get_last_lr()[0])
 
 
         # --- Final sampling ---

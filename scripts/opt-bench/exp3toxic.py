@@ -78,7 +78,7 @@ def run():
             run_name = f"toxic-reverse[gcg,t={tid}]"
             print(f"\n{'='*60}\n  {run_name}  target={target_output!r}\n{'='*60}")
 
-            config_dump = {
+            experiment_config = {
                 "attack": "gcg",
                 "task": "toxic_reverse",
                 "model_name": MODEL_NAME,
@@ -94,7 +94,7 @@ def run():
                 tags=["toxic-reverse", "gcg", MODEL_NAME.split("/")[-1]],
                 project_name=WANDB_PROJECT,
                 entity=WANDB_ENTITY,
-                config_dump=config_dump,
+                experiment_config=experiment_config,
             )
 
             result = run_arca_toxic_reverse(
@@ -119,7 +119,7 @@ def run():
                 "exact_match": exact_match,
                 "final_loss": result.best_loss,
                 "usage_stats": model.get_usage_stats(),
-                "config": config_dump,
+                "config": experiment_config,
             }
 
             all_results.append(entry)

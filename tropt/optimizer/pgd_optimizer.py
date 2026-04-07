@@ -362,7 +362,7 @@ class PGDOptimizer(BaseOptimizer):
                     steps_since_improvement = 0
                     logger.debug(f"Patience reset at step {step}")
 
-            self.log(loss=current_loss, trigger_str=current_trigger_str, best_loss=best.loss, entropy_target=current_entropy_target, lr=scheduler.get_last_lr()[0])
+            self.log(loss=current_loss, trigger_str=current_trigger_str, entropy_target=current_entropy_target, lr=scheduler.get_last_lr()[0])
 
 
         # --- Use the best trigger found during optimization ---
