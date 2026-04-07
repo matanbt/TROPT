@@ -98,7 +98,7 @@ def build_csv_i(
             "best_loss": s.get("best_loss"),
             "best_trigger_str": s.get("best_trigger_str"),
             "total_flops": s.get("total_models_stats/total_flops"),
-            "total_tokens": s.get("total_models_stats/total_input_tokens"),
+            "total_tokens": s.get("total_models_stats/total_tokens"),
         })
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

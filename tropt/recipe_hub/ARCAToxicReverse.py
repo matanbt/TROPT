@@ -123,7 +123,7 @@ def run_arca_toxic_reverse(
     if use_perplexity_loss:
         eval_loss = CombinedLoss(
             [PrefillCELoss(), ExternalTriggerPerplexityLoss()],
-            weights=[1.0, 0.5],
+            weights=[1.0, 0.01],
         )
 
     optimizer = GCGPlusOptimizer(
