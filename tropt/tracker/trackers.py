@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from collections import defaultdict
 from typing import Any, Dict, Optional
@@ -8,24 +9,20 @@ import wandb
 
 from .base import DEFAULT_EXPERIMENT_NAME, BaseTracker
 
+logger = logging.getLogger(__name__)
+
 
 class DummyTracker(BaseTracker):
     """No-op tracker. Discards all logged data."""
 
-    def __init__(
-        self,
-        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
-    ):
-        super().__init__(experiment_name, config_dump)
-
-    def log(self, data: dict):
+    def _init(self, config: Optional[dict] = None):
         pass
 
-    def finish(self):
+    def _log(self, data: dict):
         pass
 
-# TODO decouple the tracker to separate modules
+    def _finish(self, summary: Optional[dict] = None):
+        pass
 
 
 class JSONTracker(BaseTracker):
@@ -34,59 +31,65 @@ class JSONTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
+        experiment_config: Optional[dict] = None,
         log_file_path: str = "./logs/{experiment_name}.json",
     ):
-        super().__init__(experiment_name, config_dump)
+        super().__init__(experiment_name, experiment_config)
         self.log_file_path = log_file_path.format(experiment_name=experiment_name)
         os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
-        self.log_data = defaultdict(list)
-        if config_dump:
-            self.log_data["config"] = config_dump
+        self._log_data: dict = {}
 
-    def log(self, data: dict):
+    def _init(self, config: Optional[dict] = None):
+        self._log_data = defaultdict(list)
+        if config:
+            self._log_data["config"] = config
+
+    def _log(self, data: dict):
         for key, value in data.items():
-            self.log_data[key].append(value)
+            self._log_data[key].append(value)
 
-    def log_metadata(self, metadata: dict):
-        self.log_data["run_metadata"] = metadata
-
-    def finish(self):
+    def _finish(self, summary: Optional[dict] = None):
+        if summary:
+            self._log_data["run_summary"] = summary
         with open(self.log_file_path, "w") as f:
-            json.dump(self.log_data, f, indent=4)
+            json.dump(self._log_data, f, indent=4)
 
 
 class WandbTracker(BaseTracker):
-    """Logs to Weights & Biases. Extra kwargs are forwarded to ``wandb.init``."""
+    """Logs to Weights & Biases.
+
+    Construction stores backend parameters (project, entity, etc.)
+    without starting a run. The run is opened on ``init()`` and closed
+    on ``finish()``.
+    """
 
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+        experiment_config: Optional[dict] = None,
         project_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
-        **wandb_kwargs
+        **wandb_kwargs,
     ):
         """
-        Initializes the WandbTracker.
-
         Args:
-            experiment_name (str): The name of the experiment (preferably unique and informative).
-            project_name (str): The name of the WandB project.
-            config_dump (dict, optional): Configuration dictionary used for the experiment. Defaults to None.
-            **wandb_kwargs: Additional keyword arguments for wandb.init().
+            experiment_name: Run name in WandB.
+            project_name: WandB project name.
+            experiment_config: User-provided config merged with optimizer config on every run.
+            **wandb_kwargs: Extra kwargs forwarded to ``wandb.init()``.
         """
-        super().__init__(experiment_name, config_dump)
+        super().__init__(experiment_name, experiment_config)
         self.project_name = project_name
+        self._wandb_kwargs = wandb_kwargs
 
-        import wandb
+    def _init(self, config: Optional[dict] = None):
         wandb.init(
             project=self.project_name,
             name=self.experiment_name,
-            config=self.config_dump,
-            **wandb_kwargs
+            config=config,
+            **self._wandb_kwargs,
         )
 
-    def log(self, data: Dict[str, Any]):
+    def _log(self, data: Dict[str, Any]):
         import torch
         sanitized = {}
         for k, v in data.items():
@@ -98,11 +101,11 @@ class WandbTracker(BaseTracker):
             sanitized[k] = v
         wandb.log(sanitized)
 
-    def log_metadata(self, metadata: dict):
-        wandb.config.update(metadata, allow_val_change=True)
-
-    def finish(self):
+    def _finish(self, summary: Optional[dict] = None):
+        if summary:
+            wandb.run.summary.update(summary)
         wandb.finish()
+
 
 class DictTracker(BaseTracker):
     """Accumulates logged values in plain Python dicts.
@@ -112,29 +115,23 @@ class DictTracker(BaseTracker):
         history (dict[str, list]): Per-key view — ``history[key]`` contains only values
             from records that included *key*. Convenient but records from different keys
             may not be index-aligned; use ``records`` when you need to join across keys.
-        metadata (dict): Run metadata, if logged.
+        config (dict): Run config, if logged.
+        summary (dict): Run summary, if logged.
     """
 
-    def __init__(
-        self,
-        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
-    ):
-        super().__init__(experiment_name, config_dump)
+    def _init(self, config: Optional[dict] = None):
         self.records: list[dict] = []
         self.history: Dict[str, list] = defaultdict(list)
-        self.metadata: dict = {}
+        self.config: dict = config or {}
+        self.summary: dict = {}
 
-    def log(self, data: dict):
+    def _log(self, data: dict):
         self.records.append(data)
         for key, value in data.items():
             self.history[key].append(value)
 
-    def log_metadata(self, metadata: dict):
-        self.metadata = metadata
-
-    def finish(self):
-        pass
+    def _finish(self, summary: Optional[dict] = None):
+        self.summary = summary or {}
 
 
 # TODO Add HF's trackio integration
@@ -152,15 +149,19 @@ class PrintTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
         print_keys: tuple = ("loss", "best_trigger_str"),
     ):
-        super().__init__(experiment_name, config_dump)
-        self.history = defaultdict(list)
-        self._step = 0
+        super().__init__(experiment_name)
         self.print_keys = print_keys
+        self.history: dict = defaultdict(list)
+        self._step = 0
 
-    def log(self, data: dict):
+    def _init(self, config: Optional[dict] = None):
+        self._step = 0
+        if config:
+            print(f"=== Run config: {config} ===", flush=True)
+
+    def _log(self, data: dict):
         self._step += 1
         for key, val in data.items():
             self.history[key].append(val)
@@ -173,11 +174,10 @@ class PrintTracker(BaseTracker):
                 )
         print(" | ".join(parts), flush=True)
 
-    def log_metadata(self, metadata: dict):
-        print(f"=== Run metadata: {metadata} ===", flush=True)
-
-    def finish(self):
-        pass
+    def _finish(self, summary: Optional[dict] = None):
+        if summary:
+            parts = [f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v!r}" for k, v in summary.items()]
+            print(f"=== Run summary: {' | '.join(parts)} ===", flush=True)
 
 
 class LiveLossPlotTracker(BaseTracker):
@@ -186,15 +186,16 @@ class LiveLossPlotTracker(BaseTracker):
     def __init__(
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
-        config_dump: Optional[dict] = None,
         focus_on_metrics: tuple = ("loss",),
-        **llp_kwargs
     ):
         super().__init__(experiment_name)
-        self._plotlosses = livelossplot.PlotLosses()
         self.focus_on_metrics = focus_on_metrics
+        self._plotlosses: Optional[livelossplot.PlotLosses] = None
 
-    def log(self, data: Dict[str, Any]):
+    def _init(self, config: Optional[dict] = None):
+        self._plotlosses = livelossplot.PlotLosses()
+
+    def _log(self, data: Dict[str, Any]):
         self._plotlosses.update({
             k: v for k, v in data.items()
             if (isinstance(v, (int, float))
@@ -202,5 +203,5 @@ class LiveLossPlotTracker(BaseTracker):
         })
         self._plotlosses.send()
 
-    def finish(self):
+    def _finish(self, summary: Optional[dict] = None):
         pass

@@ -435,7 +435,7 @@ def whitebox(
                     tags=[_RUN_TYPE, cfg.name],
                     project_name=WANDB_PROJECT,
                     entity=WANDB_ENTITY,
-                    config_dump={
+                    experiment_config={
                         "run_type": _RUN_TYPE,
                         "model_name": model_name,
                         "optimizer_name": cfg.name,
@@ -516,7 +516,7 @@ def blackbox(
                     tags=[_RUN_TYPE_BB, cfg.name],
                     project_name=WANDB_PROJECT_BB,
                     entity=WANDB_ENTITY,
-                    config_dump={
+                    experiment_config={
                         "run_type": _RUN_TYPE_BB,
                         "model_name": model_name,
                         "optimizer_name": cfg.name,
@@ -633,11 +633,6 @@ def external_nanogcg(
 
             gcg = NanoGCG(model, tokenizer, config)
             result = gcg.run(messages, target, wandb_metadata={})
-
-            # Ensure summary fields match TROPT convention
-            wandb.summary["best_loss"] = result.best_loss
-            wandb.summary["best_trigger_str"] = result.best_string
-
             wandb.finish()
 
 

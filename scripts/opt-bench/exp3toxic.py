@@ -82,7 +82,7 @@ def run():
             tags=["toxic-reverse", "gcg", MODEL_NAME.split("/")[-1]],
             project_name=WANDB_PROJECT,
             entity=WANDB_ENTITY,
-            config_dump={
+            experiment_config={
                 "attack": "gcg",
                 "task": "toxic_reverse",
                 "model_name": MODEL_NAME,

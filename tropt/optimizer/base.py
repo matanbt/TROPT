@@ -71,6 +71,9 @@ class BaseOptimizer(ABC):
     """
 
     def __init_subclass__(cls, **kwargs):
+        """
+        Wraps the ``optimize_trigger`` method to handle the full tracker lifecycle, model state resets, and other logging-related / bookeeping logic.
+        """
         super().__init_subclass__(**kwargs)
 
         # Inject a wrapper around optimize_trigger
@@ -79,7 +82,7 @@ class BaseOptimizer(ABC):
             original = cls.optimize_trigger
             # Capture once at class-definition time (not per call).
             # _sig is needed to resolve subclass-specific defaults (e.g. DEFAULT_INIT_TRIGGER)
-            # so log_config receives the actual values used, not None.
+            # so _log_config receives the actual values used, not None.
             _sig = inspect.signature(original)
             validated = pydantic.validate_call(
                 config=pydantic.ConfigDict(arbitrary_types_allowed=True)
@@ -87,32 +90,40 @@ class BaseOptimizer(ABC):
 
             @functools.wraps(original)
             def _wrapper(self, *args, **kwargs):
-                # Reset usage stats on all models before the run
+                # Pre-run setup
+                self._best_loss = float("inf")
                 for val in self.__dict__.values():
                     if isinstance(val, BaseModel):
                         val.reset_usage_stats()
 
-                # Resolve full arg values (including defaults) for logging
+                # Resolve full arg values (including defaults) for config
                 ba = _sig.bind(self, *args, **kwargs)
                 ba.apply_defaults()
-                self.log_config(ba.arguments.get("templates"), ba.arguments.get("initial_trigger"), ba.arguments.get("targets"))
+                run_config = self._build_run_config(
+                    ba.arguments.get("templates"),
+                    ba.arguments.get("initial_trigger"),
+                    ba.arguments.get("targets"),
+                )
+                # Initialize tracker and log the config:
+                self.tracker.init(run_config)
 
                 # Run the actual optimization method
                 result: OptimizerResult = validated(self, *args, **kwargs)
 
                 # Post-run teardown: log summary, reset all model input state, close tracker
-                self.log(**result.to_dict())
-                # Make sure we reset the model's input state after the optimization
-                # (just to avoid any unexpected, accidental state leakage across runs, although optimizers
-                #  should set the state (`set_inputs_from_*`) and override it anyway)
+                summary = result.to_dict()
+                summary.update(self._collect_model_stats())
+                self.tracker.finish(summary)
+
+                # Reset model input state to avoid accidental state leakage across runs
+                # (we don't reset model usage, as user may want to keep using them after optimization)
                 for val in self.__dict__.values():
                     if isinstance(val, BaseModel):
                         for _reset in ("reset_inputs_from_tokens", "reset_inputs_from_texts"):
                             fn = getattr(val, _reset, None)
                             if fn is not None:
                                 fn()
-                self.tracker.finish()
-                return result
+                return result  # return the result object as usual
 
             setattr(cls, 'optimize_trigger', _wrapper)
 
@@ -149,6 +160,7 @@ class BaseOptimizer(ABC):
         self.tracker = tracker
 
         self._pbar = None
+        self._best_loss = float("inf")
 
         # Single active budget (limit, metric, scope), or None. See set_budget().
         self._budget: Optional[tuple[int, str, str]] = None
@@ -180,23 +192,20 @@ class BaseOptimizer(ABC):
 
 
         Note:
-            This method is wrapped by the baseclass to handle common pre-run setup and post-run teardown (done via ``__init_subclass__``). This includes hading logging the config at start, and reseting the model input state, logging the final result, and calling tracker's `finish()` at the end.
+            This method is wrapped by the baseclass (via ``__init_subclass__``) to handle the full tracker lifecycle: ``tracker.init(config)`` before, ``tracker.finish(summary)`` after, model state resets, and other bookeeping.
 
             The optimization loop should iterate via :meth:`track_steps`, which
             handles `tqdm` progress bar and enforces any budget upper-bound configured via :meth:`set_budget`.
         """
         ...
 
-    def log_config(
+    def _build_run_config(
         self,
         templates: TextTemplates,
         initial_trigger: Optional[str] = None,
         targets: Optional[Targets] = None,
-    ):
-        """
-        Logs run metadata, along the full optimizer config, to the tracker.
-        Ideally called at the start of optimization (the `optimize_trigger` method).
-        """
+    ) -> dict:
+        """Build run config dict from optimizer state and call arguments."""
         _skip = {"model", "loss_func", "tracker"}
         hparams = {
             f"hparam/{k}": v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
@@ -212,7 +221,7 @@ class BaseOptimizer(ABC):
                 if v is not None
             }
 
-        metadata = {
+        config = {
             "optimizer": type(self).__name__,
             "model_name": self.model.get_model_name(),
             "loss": repr(self.loss_func),
@@ -221,47 +230,63 @@ class BaseOptimizer(ABC):
             "targets": targets_repr,
             **hparams,
         }
-        self.tracker.log_metadata(metadata)
 
-        # also log this metadata:
         lines = ["\n=== Optimizer Run Config ==="]
-        for k, v in metadata.items():
+        for k, v in config.items():
             lines.append(f"  {k}: {v}")
         lines.append("===========================")
         logger.info("\n".join(lines))
 
-    def log(self, loss: Optional[float] = None, trigger_str: Optional[str] = None, **extra) -> None:
-        """Log metrics to the tracker.
+        return config
 
-        When ``loss`` is omitted (e.g. ``self.log(**result.to_dict())`` at the end of a run),
-        the kwargs are forwarded directly to the tracker with no per-step enrichment.
+    def log(self, loss: float, trigger_str: Optional[str] = None, **extra) -> None:
+        """Log per-step metrics to the tracker.
 
-        When ``loss`` is provided, automatically enriches with per-step stats:
-          - ``loss/*``: loss function component stats via ``loss_func.get_loss_log_dict()``.
-          - ``target_model_stats/*``: usage stats for ``self.model``.
-          - ``{attr}_stats/*``: usage stats for any other ``BaseModel`` instances found on ``self``
-            (that are _not_ ``self.model``).
-          - ``total_models_stats/*``: element-wise sum across all model stats.
+        Automatically enriches with:
+          - ``best_loss``: running best loss across steps.
+          - ``loss/*``: loss function component stats.
+          - ``target_model_stats/*``, ``total_models_stats/*``: model usage stats (by inspecting all optimizer attributes that subclass BaseModel).
 
         Args:
-            loss: Per-step loss value. Omit for final/summary logging.
+            loss: Per-step loss value.
             trigger_str: Current trigger string (omitted from log dict if None).
             **extra: Any additional key-value pairs to include in the log dict.
         """
-        if loss is None:
-            self.tracker.log(extra)
-            return
 
-        log_dict: dict = {"loss": loss}
+        # Track the best loss for per-step logging:
+        if loss < self._best_loss:
+            self._best_loss = loss
+
+        log_dict: dict = {"loss": loss, "best_loss": self._best_loss}
         if trigger_str is not None:
             log_dict["trigger_str"] = trigger_str
         log_dict.update(extra)
 
-        # Loss function stats
+        # Enrich w/ loss function stats (from the last step):
         for k, v in self.loss_func.get_loss_log_dict().items():
             log_dict[f"loss/{k}"] = v
 
-        # Collect distinct model instances (self.model → "target_model_stats")
+        # Enrich w/ model stats:
+        log_dict.update(self._collect_model_stats())
+
+        # Log to tracker:
+        self.tracker.log(log_dict)
+
+        # Update tqdm progress bar:
+        if self._pbar is not None:
+            desc = f"{loss=:.4f}"
+            if trigger_str is not None:
+                desc += f" {trigger_str=}"
+            self._pbar.set_description(desc)
+
+    def _collect_model_stats(self) -> dict:
+        """Collect usage stats from all distinct model instances (i.e., that subclass BaseModel) on ``self``.
+
+        Returns a flat dict with prefixed keys: ``target_model_stats/``, ``{attr}_stats/``,
+        and ``total_models_stats/`` (sum across all models).
+
+        Used for resource monitoring.
+        """
         seen_ids: set = set()
         model_stats: dict[str, dict] = {}
         for attr, val in self.__dict__.items():
@@ -271,25 +296,20 @@ class BaseOptimizer(ABC):
             model_stats[prefix] = val.get_usage_stats()
             seen_ids.add(id(val))
 
+        result: dict = {}
         for prefix, stats in model_stats.items():
             for k, v in stats.items():
-                log_dict[f"{prefix}/{k}"] = v
+                result[f"{prefix}/{k}"] = v
 
-        # Total across all distinct models (only when more than one)
-        total: dict = {}
+        # Sum across all models:
+        total_model_stats: dict = {}
         for stats in model_stats.values():
             for k, v in stats.items():
-                total[k] = total.get(k, 0) + v
-        for k, v in total.items():
-            log_dict[f"total_models_stats/{k}"] = v
+                total_model_stats[k] = total_model_stats.get(k, 0) + v
+        for k, v in total_model_stats.items():
+            result[f"total_models_stats/{k}"] = v
 
-        self.tracker.log(log_dict)
-
-        if self._pbar is not None:
-            desc = f"{loss=:.4f}"
-            if trigger_str is not None:
-                desc += f" {trigger_str=}"
-            self._pbar.set_description(desc)
+        return result
 
     #### -- Budget tracking and step iteration utilities -- ####
     def reset_budget(self):

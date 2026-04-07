@@ -394,11 +394,11 @@ class GCG:
             strings=optim_strings,
         )
 
-        # Log final results to wandb if enabled
-        if config.wandb_log and WANDB_AVAILABLE:
-            wandb.log({
+        # Log final results to wandb summary (matching TROPT convention)
+        if config.wandb_log and WANDB_AVAILABLE and wandb.run is not None:
+            wandb.run.summary.update({
                 "best_loss": result.best_loss,
-                "best_trigger_str": result.best_string
+                "best_trigger_str": result.best_string,
             })
 
         return result

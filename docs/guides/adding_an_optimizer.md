@@ -204,7 +204,7 @@ optimizer.optimize_trigger(...)
 
 ### The `set_inputs_from_tokens` / `reset_inputs_from_tokens` contract
 
-Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start of `optimize_trigger`. Cleanup (`reset_inputs_from_*`) is called automatically by `BaseOptimizer` after your method returns — you don't need to call it yourself. The same wrapper also calls `log_config`, logs the final result, and calls `tracker.finish()`.
+Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start of `optimize_trigger`. Cleanup (`reset_inputs_from_*`) is called automatically by `BaseOptimizer` after your method returns — you don't need to call it yourself. The same wrapper also logs the config, logs the final result summary, and calls `tracker.finish()`.
 
 ### Multi-template aggregation
 

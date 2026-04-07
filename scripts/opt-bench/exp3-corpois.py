@@ -142,7 +142,7 @@ def run_gaslite_e5():
             tags=["corpois", "gaslite", "e5-base-v2", CONCEPT],
             project_name=WANDB_PROJECT,
             entity=WANDB_ENTITY,
-            config_dump={
+            experiment_config={
                 "attack": "gaslite",
                 "model_name": model_name,
                 "concept": CONCEPT,
@@ -239,7 +239,7 @@ def run_rs_openai():
             tags=["corpois", "random_search", "openai", CONCEPT],
             project_name=WANDB_PROJECT,
             entity=WANDB_ENTITY,
-            config_dump={
+            experiment_config={
                 "attack": "random_search",
                 "model_name": model_name,
                 "concept": CONCEPT,

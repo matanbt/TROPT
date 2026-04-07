@@ -175,7 +175,7 @@ def tropt(
             tags=['tropt', method],
             project_name=WANDB_PROJECT, 
             entity=WANDB_ENTITY,
-            config_dump=wandb_metadata
+            experiment_config=wandb_metadata
         )
         if method == 'gcg':
             optimizer = GCGOptimizer(
@@ -321,7 +321,7 @@ def tropt_zoo(
                 tags=["tropt", method],
                 project_name=WANDB_PROJECT,
                 entity=WANDB_ENTITY,
-                config_dump=dict(
+                experiment_config=dict(
                     optimized_message_id=message_id,
                     name=run_name,
                     model_name=model_name,

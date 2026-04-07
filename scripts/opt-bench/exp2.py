@@ -489,7 +489,7 @@ def single(
                     tags=[_RUN_TYPE_SINGLE, cfg.name],
                     project_name=WANDB_PROJECT,
                     entity=WANDB_ENTITY,
-                    config_dump=_make_wandb_config(
+                    experiment_config=_make_wandb_config(
                         run_type=_RUN_TYPE_SINGLE,
                         variant_name=cfg.name,
                         model_name=model_name,
@@ -574,7 +574,7 @@ def multi(
                 tags=[_RUN_TYPE_MULTI, cfg.name],
                 project_name=WANDB_PROJECT,
                 entity=WANDB_ENTITY,
-                config_dump=_make_wandb_config(
+                experiment_config=_make_wandb_config(
                     run_type=_RUN_TYPE_MULTI,
                     variant_name=cfg.name,
                     model_name=model_name,
