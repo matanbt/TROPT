@@ -151,7 +151,7 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
             num_steps=LARGE_NUM_STEPS, 
             n_candidates=512, 
             sample_topk=256,
-            token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=True, disallow_unused_tokens=False), # only filters special tokens 
+            token_constraints=_TC, # originally only filters special tokens, we set same constraints as other optimizers for fair comparison
             use_retokenize=False,  # no retok in the paper
         )),
     OptimizerConfig("arca",
@@ -160,7 +160,7 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
             # num_steps=500,  # <-- original paper
             num_steps=LARGE_NUM_STEPS, 
             n_candidates=512, sample_topk=256, n_grad_avg=32,
-            token_constraints=TokenConstraints(disallow_non_ascii=False, disallow_special_tokens=False, disallow_unused_tokens=False),  # ARCA applies no token filtering by default
+            token_constraints=_TC,  # ARCA applies no token filtering by default; we set the same constraints as other optimizers for fair comparison
             use_retokenize=False,  # no retok in the paper
         )),
     OptimizerConfig("gbda",
