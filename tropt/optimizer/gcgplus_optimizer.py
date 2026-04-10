@@ -24,6 +24,7 @@ from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -171,7 +172,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         # Buffer initialization
         buffer: Optional[TriggerBuffer] = None
         if self.buffer_size is not None:
-            buffer = self._init_buffer(trigger_ids, valid_token_ids)
+            buffer = self._init_buffer(trigger_ids)
 
         # Number of candidates to generate (oversample if retokenize is on)
         n_candidates_oversampled = self.n_candidates
@@ -285,17 +286,27 @@ class GCGPlusOptimizer(BaseOptimizer):
     def _init_buffer(
         self,
         initial_trigger_ids: Int[Tensor, "trigger_seq_len"],
-        valid_token_ids: Int[Tensor, "n_valid"],
     ) -> TriggerBuffer:
-        """Initialize the buffer with the initial trigger and random variants. Batched."""
+        """Initialize the buffer with the initial trigger and printable-random variants.
+        """
         assert self.buffer_size is not None
         trigger_seq_len = initial_trigger_ids.shape[0]
         device = initial_trigger_ids.device
+        tokenizer = self.proxy_model.tokenizer
+        blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, self.proxy_model.vocab_size)
 
-        rand_triggers = valid_token_ids[
-            torch.randint(0, len(valid_token_ids), (self.buffer_size - 1, trigger_seq_len), device=device)
-        ]
-        all_triggers = torch.cat([initial_trigger_ids.unsqueeze(0), rand_triggers], dim=0)
+        triggers_list: list[Tensor] = [initial_trigger_ids]
+        for _ in range(self.buffer_size - 1):
+            # Oversample length (reencode can drift shorter), then trim to trigger_seq_len.
+            rand_str = get_printable_random_trigger(
+                trigger_len=2 * trigger_seq_len,
+                tokenizer=tokenizer,
+                blacklist_ids=blacklist_ids,
+            )
+            ids = tokenizer.encode_trigger(rand_str).to(device)[:trigger_seq_len]
+            triggers_list.append(ids)
+
+        all_triggers = torch.stack(triggers_list, dim=0)
         all_losses = self._evaluate_candidates(all_triggers)
 
         return TriggerBuffer(
