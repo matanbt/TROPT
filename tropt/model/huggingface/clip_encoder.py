@@ -32,8 +32,9 @@ logger = logging.getLogger(__name__)
 # ======================= Model logic =======================
 
 class CLIPTextEncoderHFModel(
-    EncoderBaseModel,
+    # HF backend first so its `device`/`dtype` win MRO over `BaseModel`'s defaults:
     HuggingFaceBackendModel,
+    EncoderBaseModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,

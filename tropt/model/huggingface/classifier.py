@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 class ClassifierHFModel(
-    ClassifierBaseModel,
-    # adds implementation of common HF model methods:
+    # HF backend first so its `device`/`dtype` win MRO over `BaseModel`'s defaults:
     HuggingFaceBackendModel,
+    ClassifierBaseModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,

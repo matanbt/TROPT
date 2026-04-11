@@ -70,9 +70,9 @@ class LMHFTokenInputManager(HuggingFaceTokenInputManager):
 # ======================= Model logic =======================
 
 class LMHFModel(
-    LMBaseModel,
-    # adds implementation of common HF model methods
+    # HF backend first so its `device`/`dtype` win MRO over `BaseModel`'s defaults:
     HuggingFaceBackendModel,
+    LMBaseModel,
     # token-level access mixins:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,

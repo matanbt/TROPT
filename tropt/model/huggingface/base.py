@@ -444,7 +444,6 @@ class HuggingFaceBackendModel:
         - Precision warning emitted when model dtype is float32/float64.
         """
         super().__init_subclass__(**kwargs)
-
         if "__init__" not in cls.__dict__:
             return
         original_init = cls.__dict__["__init__"]
