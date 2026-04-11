@@ -389,17 +389,40 @@ class HuggingFaceBackendModel:
     Implementation Notes:
     - This class wraps the __init__ method of subclasses to handle common bookkeeping tasks, done before and after initialization.
     These include storing common fields (e.g., batch sizes), optionally setting eval mode and freezing weights, registering special tokens, etc.
-    - Subclasses are expected to initialize the model object in `self._model`, the tokenizer in `self._tokenizer`, and the _embedding_layer property (used for token embedding) in their __init__ method.
-    - We currently only support models that allow using inputs_embeds in their forward pass (instead 
+    - Subclasses are expected to initialize the model object in `self._model` as the runnable nn.Module, the tokenizer in `self._tokenizer`, and the _embedding_layer property (used for token embedding) in their __init__ method.
+    - ``self._hf_model`` is the PreTrainedModel object of the model and can be overridden by subclasses that wrap
+      the inner HF model. While it
+      defaults to ``self._model`` (in most models these are PreTrainedModel objects), some models (e.g., EncoderHFModel) use other backends that wrap it (e.g., SententeTransformer), so for them it's neceessary to separate between the two fields.
+    - We currently only support models that allow using inputs_embeds in their forward pass (instead
     of input_ids), which is the most common case. This is conveniant for grad computation and some optimziers
     (e.g., SoftPrompt, GBDA) require such access.
     - In the rare models where there is not such access we currenly need to be a bit hacky; see
-    CLIPEncoderHFModel. In the future we might consider to a separate backend for these; currently, 
-    the demand it is not high enough to justify the engineering effort. 
+    CLIPEncoderHFModel. In the future we might consider to a separate backend for these; currently,
+    the demand it is not high enough to justify the engineering effort.
     """
 
-    _model: transformers.PreTrainedModel
+    _model: torch.nn.Module
     _embedding_layer: torch.nn.Module
+
+    @property
+    def _hf_model(self) -> transformers.PreTrainedModel:
+        """The inner HF ``PreTrainedModel`` used for config/dtype introspection,
+        the ``inputs_embeds`` probe, and FLOP counting.
+
+        Expected to be the core module of the model that inherits from ``PreTrainedModel``.
+        In some cases it might not contain the full model (e.g., in EncoderHFModel).
+
+        Defaults to ``self._model``. Subclasses whose ``_model`` is a wrapper
+        around an HF model (e.g., :class:`EncoderHFModel` holding a
+        ``SentenceTransformer``) should override this to return the inner
+        ``PreTrainedModel``.
+        """
+        assert isinstance(self._model, transformers.PreTrainedModel), (
+            f"Default `_hf_model` expects `self._model` to be a "
+            f"transformers.PreTrainedModel, got {type(self._model).__name__}. "
+            f"Override `_hf_model` in the subclass to expose the inner HF model."
+        )
+        return self._model
 
     # -- fields extracted from subclass __init__ signatures --
     _PRE_INIT_FIELDS = ("model_name", "forward_pass_batch_size", "backward_pass_batch_size")
@@ -421,6 +444,7 @@ class HuggingFaceBackendModel:
         - Precision warning emitted when model dtype is float32/float64.
         """
         super().__init_subclass__(**kwargs)
+
         if "__init__" not in cls.__dict__:
             return
         original_init = cls.__dict__["__init__"]
@@ -452,16 +476,16 @@ class HuggingFaceBackendModel:
                     {"additional_special_tokens": [OPTIMIZED_TRIGGER_PLACEHOLDER]}
                 )
 
-            if self._model.dtype in (torch.float32, torch.float64):
+            if self.dtype in (torch.float32, torch.float64):
                 logger.warning(
-                    f"Model is in {self._model.dtype}. Use a lower precision data type, "
+                    f"Model is in {self.dtype}. Use a lower precision data type, "
                     "if possible, for much faster optimization."
                 )
-            
-            if self._model.device == torch.device("cpu"):
+
+            if self.device == torch.device("cpu"):
                 logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
-            ## additional check that the model have input_embeds for forward pass 
+            ## additional check that the model have input_embeds for forward pass
             # [TODO: have this run optionally in debug mode for efficiency]
 
             @torch.no_grad()
@@ -470,11 +494,11 @@ class HuggingFaceBackendModel:
                 dummy_len = 4
                 dummy_embeds = torch.zeros(
                     1, dummy_len, self.embedding_matrix.shape[1],
-                    device=self.device, dtype=self._model.dtype,
+                    device=self.device, dtype=self.dtype,
                 )
                 dummy_mask = torch.ones(1, dummy_len, device=self.device, dtype=torch.int64)
                 try:
-                    self._model(inputs_embeds=dummy_embeds, attention_mask=dummy_mask)
+                    self._hf_model(inputs_embeds=dummy_embeds, attention_mask=dummy_mask)
                     return False
                 except Exception:
                     return True
@@ -484,8 +508,8 @@ class HuggingFaceBackendModel:
                     f"Model `{self._model_name}` seems to not support `inputs_embeds` as forward pass input."
                     "Gradient-based optimization (GradientTokenAccessMixin / invoke_from_tokens) will not work with this model. Only text-level access (invoke_from_texts) is supported."
                 )
-
-
+            
+            # TODO have a verbose "model loded" log here with key info (e.g., model name, device, dtype, batch sizes) for easier debugging and user feedback.
 
         # Replace the subclass __init__ with the wrapped version
         setattr(cls, "__init__", _wrapped_init)
@@ -497,7 +521,7 @@ class HuggingFaceBackendModel:
         Different model families expose this differently, so we
         try several known locations and return the first that works.
         """
-        config = self._model.config
+        config = self._hf_model.config
 
         # Each function below either returns the layer count, or raises.
         def _n_layers_v1():
@@ -524,7 +548,7 @@ class HuggingFaceBackendModel:
 
     @property
     def dtype(self):
-        return self._model.dtype
+        return next(self._model.parameters()).dtype
 
     @property
     def tokenizer(self) -> HFTokenizerWrapper:
@@ -532,7 +556,7 @@ class HuggingFaceBackendModel:
 
     @property
     def device(self):
-        return self._model.device
+        return next(self._model.parameters()).device
 
     @property
     def embedding_layer(self) -> torch.nn.Module:

@@ -113,8 +113,6 @@ class LMHFModel(
                 **model_kwargs
             )
 
-        logger.info(f"Loaded model {model_name} on device {self.device}, with dtype {self.dtype}.")
-
         # Set tokenizer:
         _tokenizer = AutoTokenizer.from_pretrained(model_name)
         assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)

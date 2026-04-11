@@ -83,13 +83,14 @@ class BaseModel(ABC):
 
         Args:
             mode: The method to use for counting FLOPs. Options:
-                -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires ``_model`` to be a HuggingFace ``PreTrainedModel``. This is the default.
+                -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires the model to expose an inner HuggingFace ``PreTrainedModel`` (via ``_hf_model`` on HF backends). This option the default.
                 -> "none": Disables FLOP counting.
 
         - FLOP counting will appear in :meth:`get_usage_stats` under ``"usage/total_flops"``.
         """
         if mode == "manual":
-            self._flop_counter = ManualFlopCounter(self._model)
+            hf_model = self._hf_model
+            self._flop_counter = ManualFlopCounter(hf_model)
         else:
             self._flop_counter = None
 

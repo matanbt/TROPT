@@ -1,5 +1,6 @@
 
 import logging
+from functools import cached_property
 from typing import Annotated, List, Optional
 
 import sentence_transformers
@@ -8,6 +9,7 @@ import torch
 from jaxtyping import Float
 from sentence_transformers import SentenceTransformer
 from torch import Tensor
+from transformers import PreTrainedModel
 
 from tropt.common import (
     OPTIMIZED_TRIGGER_PLACEHOLDER,
@@ -91,6 +93,28 @@ class EncoderHFModel(
 
         logger.warning("[General Warning:] Common embedding models often require an instruction prefix (e.g., `query: `). For optimal performance, please make sure a suitable one is applied in the textual input templates.")
 
+    @cached_property
+    def _hf_model(self) -> PreTrainedModel:
+        """Inner HuggingFace ``PreTrainedModel`` extracted from the
+        ``SentenceTransformer`` wrapper, used for HF-specific introspection
+        (``.config``, ``.dtype``, FLOP counting, the ``inputs_embeds`` probe).
+
+        Note that while the _model may have additional modules (e.g., dense pooling) we assume these are negilible and exclude them here.  
+        """
+        try:
+            inner = self._model._first_module().auto_model
+        except AttributeError as e:
+            raise ValueError(
+                f"Could not extract the inner HuggingFace model from the "
+                f"SentenceTransformer wrapper for `{self._model_name}`. The first "
+                f"module is expected to be a `sentence_transformers.models.Transformer` "
+            ) from e
+        assert isinstance(inner, PreTrainedModel), (
+            f"Expected the inner ST module to be a transformers.PreTrainedModel, "
+            f"got {type(inner).__name__}."
+        )
+        return inner
+
     @property
     def d_model(self):
         return self._model.get_sentence_embedding_dimension()
@@ -101,29 +125,19 @@ class EncoderHFModel(
 
         # Each function below either extracts the embedding layer, or raises an exception.
         def _get_input_emb_v1():
-            # Should work for most ST models
-            transformer_module = self._model._first_module()
-            assert isinstance(
-                transformer_module, sentence_transformers.models.Transformer
-            )
-            input_embeddings = transformer_module.auto_model.get_input_embeddings()
-            return input_embeddings
+            # Should work for most HF encoder models.
+            return self._hf_model.get_input_embeddings()
 
         def _get_input_emb_v2():
             # Special case of NomicBertModel which lacks get_input_embeddings
-            transformer_module = self._model._first_module()
-            input_embeddings = transformer_module.auto_model.embeddings.word_embeddings
-            return input_embeddings
+            return self._hf_model.embeddings.word_embeddings
 
-        # Try each method until one works
         for _get_input_emb in [_get_input_emb_v1, _get_input_emb_v2]:
             try:
-                input_embeddings = _get_input_emb()
-                return input_embeddings
+                return _get_input_emb()
             except Exception:
                 continue
 
-        # If none of the methods worked, raise an error
         raise ValueError(
             f"Could not extract embedding layer from Sentence Transformer model `{self._model_name}`. This model might need special care. Please report this issue."
         )
