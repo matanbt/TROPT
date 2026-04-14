@@ -67,7 +67,7 @@ def evaluate_jailbreakness_of_responses(
     # }
 
 ADVBENCH_PLUS_PATH = "scripts/attack_evaluate/advbench_plus.csv"
-CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffle.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 
 def _generate_responses_litellm(
     messages_list: List[List[dict]], model_name: str, max_new_tokens: int,
@@ -96,7 +96,7 @@ def evaluate_triggers(
     max_new_tokens: int = 128,
     model_backend: Literal["hf_pipeline", "litellm"] = "hf_pipeline",
     evaluators: List[str] = None,
-    eval_batch_size: int = 16,
+    eval_batch_size: int = 8,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
@@ -118,7 +118,13 @@ def evaluate_triggers(
             model=model_name,
             dtype=torch.bfloat16,
             device_map="auto",
+            # chat_template_kwargs={"enable_thinking": False},
         )
+        tok = pipe.tokenizer
+        if tok.pad_token_id is None:
+            eos = pipe.model.config.eos_token_id
+            tok.pad_token_id = eos[0] if isinstance(eos, list) else eos
+        tok.padding_side = "left"
 
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
