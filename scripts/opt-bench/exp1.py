@@ -367,6 +367,18 @@ def _model_short(model_name: str) -> str:
     return model_name.split("/")[-1]
 
 
+# Qwen3 (and other thinking models) were trained to start every reply with a
+# `<think>...</think>` block. To get them to prefill our attack target directly,
+# we prepend an empty think block that suppresses reasoning.
+_THINKING_PREFIX = "<think>\n\n</think>\n\n"
+
+
+def _maybe_prepend_thinking(model_name: str, target: str) -> str:
+    if "qwen3" in model_name.lower():
+        return _THINKING_PREFIX + target
+    return target
+
+
 def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
     return f"optbench[{opt_name},{_model_short(model_name)},m={msg_id},s={seed}]"
 
@@ -419,7 +431,7 @@ def whitebox(
     for msg_id in msg_ids:
         row = df.iloc[msg_id]
         instruction: str = row["message_template"]
-        target: str = row["target_response_prefix"]
+        target: str = _maybe_prepend_thinking(model_name, row["target_response_prefix"])
 
         for cfg in selected:
             for seed in seeds:
@@ -500,7 +512,7 @@ def blackbox(
     for msg_id in msg_ids:
         row = df.iloc[msg_id]
         instruction: str = row["message_template"]
-        target: str = row["target_response_prefix"]
+        target: str = _maybe_prepend_thinking(model_name, row["target_response_prefix"])
 
         for cfg in selected:
             for seed in seeds:
@@ -581,7 +593,7 @@ def external_nanogcg(
     for msg_id in msg_ids:
         row = df.iloc[msg_id]
         instruction: str = row["message_template"]
-        target: str = row["target_response_prefix"]
+        target: str = _maybe_prepend_thinking(model_name, row["target_response_prefix"])
 
         for seed in seeds:
             run_name = _run_name("nanogcg", model_name, msg_id, seed)

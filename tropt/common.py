@@ -85,6 +85,12 @@ class Targets(pydantic.BaseModel):
     - Used by: Language models for target matching. Will be tokenized
                internally to produce `target_response_toks` if not provided directly.
     - If used with prefill-based losses, it will automatically run model computations with a the prefilled target response
+    - Note: any special tokens that must precede the actual response for the
+      target model are the caller's responsibility to include here. For example,
+      thinking models (Qwen3, DeepSeek-R1, etc.) that were trained to begin every
+      response with a `<think>...</think>` block typically need an empty block
+      (e.g. ``"<think>\\n\\n</think>\\n\\n"``) prepended to the target string to
+      suppress reasoning before the desired prefix.
     """
 
     target_response_toks: Optional[Int[Tensor, "n_templates target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_templates"]] = None
