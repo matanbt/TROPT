@@ -118,7 +118,6 @@ def evaluate_triggers(
             model=model_name,
             dtype=torch.bfloat16,
             device_map="auto",
-            # chat_template_kwargs={"enable_thinking": False},
         )
         tok = pipe.tokenizer
         if tok.pad_token_id is None:

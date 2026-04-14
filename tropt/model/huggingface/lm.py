@@ -124,11 +124,6 @@ class LMHFModel(
         assert embedding_layer is not None, f"Model {model_name} has no input embeddings"
         self._embedding_layer: torch.nn.Module = embedding_layer
         self._use_prefix_cache = use_prefix_cache
-        # Forwarded into apply_chat_template; unrecognized kwargs are silently ignored by Jinja.
-        # Default disables thinking for Qwen3/SmolLM3/GLM-4.5 (harmless for other templates).
-        self._chat_template_kwargs = (
-            chat_template_kwargs if chat_template_kwargs is not None else {"enable_thinking": False}
-        )
 
 
         if not self._tokenizer.chat_template:
