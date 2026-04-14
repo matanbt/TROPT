@@ -78,11 +78,11 @@ if [[ "${1:-}" == "--run-missing" ]]; then
     echo
     echo "=== Relaunching ${#MISSING[@]} missing jobs via sbatch ==="
     for job in "${MISSING[@]}"; do
-        if [[ "$job" == "exp1chat" ]]; then
-            echo "  sbatch $job  exp1 OpenAI blackbox (EXP_FILTER=1bb)"
-            sbatch -J "$job" --export=ALL,EXP_FILTER=1bb "$SLURM_FILE"
-            continue
-        fi
+        # if [[ "$job" == "exp1chat" ]]; then
+        #     echo "  sbatch $job  exp1 OpenAI blackbox (EXP_FILTER=1bb)"
+        #     sbatch -J "$job" --export=ALL,EXP_FILTER=1bb "$SLURM_FILE"
+        #     continue
+        # fi
         if [[ ! "$job" =~ ^exp([12])([lgq])([123])$ ]]; then
             echo "  [skip] $job — unrecognized format"
             continue
@@ -92,6 +92,31 @@ if [[ "${1:-}" == "--run-missing" ]]; then
         idx="${BASH_REMATCH[3]}"
         model="${LETTER_TO_MODEL[$letter]}"
         seed="${SEEDS[$((idx - 1))]}"
+
+        # skip seed idx != 1
+        # if [[ "$idx" != "1" ]]; then
+        #     echo "  [skip] $job — idx=$idx (only idx=1 is run to save resources)"
+        #     continue
+        # fi
+
+        # skip exp != 1
+        if [[ "$exp_num" != "1" ]]; then
+            echo "  [skip] $job — exp_num=$exp_num (only exp1 is run to save resources)"
+            continue
+        fi
+
+        # skip non gemma model:
+        # if [[ "$model" != "google/gemma-3-12b-it" ]]; then
+        #     echo "  [skip] $job — model=$model (only Gemma is run to save resources)"
+        #     continue
+        # fi
+
+        # skip non llama model:
+        # if [[ "$model" != "meta-llama/Llama-3.1-8B-Instruct" ]]; then
+        #     echo "  [skip] $job — model=$model (only Llama is run to save resources)"
+        #     continue
+        # fi
+
         echo "  sbatch $job  exp=$exp_num model=$model seed=$seed"
         sbatch \
             -J "$job" \

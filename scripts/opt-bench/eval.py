@@ -45,6 +45,11 @@ def _generate_with_hf(triggered_messages: List[str], model_name: str,
         dtype=torch.bfloat16,
         device_map="auto",
     )
+    tok = pipe.tokenizer
+    if tok.pad_token_id is None:
+        eos = pipe.model.config.eos_token_id
+        tok.pad_token_id = eos[0] if isinstance(eos, list) else eos
+    tok.padding_side = "left"
     messages = [[{"role": "user", "content": t}] for t in triggered_messages]
     outputs = pipe(messages, max_new_tokens=max_new_tokens, do_sample=False,
                    batch_size=batch_size, return_full_text=False)
@@ -79,8 +84,8 @@ def build_csv_i(
     filters = {"state": "finished", "config.run_type": run_type}
     if model_name:
         filters["config.model_name"] = model_name
+    filters["config.msg_id"] = 0  # Only include runs with msg_id=0 (initial optimization)
     runs = api.runs(f"{WANDB_ENTITY}/{wandb_project}", filters=filters)
-
     rows = []
     for run in runs:
         c, s = run.config, run.summary
@@ -115,7 +120,7 @@ def build_csv_ii(
     model_name: str = typer.Option("google/gemma-2-2b-it", help="Model for generation"),
     output_path: str = typer.Option("scripts/opt-bench/results/csv_ii.csv"),
     max_new_tokens: int = typer.Option(128),
-    batch_size: int = typer.Option(32),
+    batch_size: int = typer.Option(8),
     use_litellm: bool = typer.Option(False, help="Use LiteLLM for generation (API models)"),
 ):
     """Add triggered-message generation and BLEU score to CSV I -> CSV II."""
@@ -158,7 +163,7 @@ def build_csv_iii(
     csv_i_path: str = typer.Option("scripts/opt-bench/results/csv_i.csv"),
     model_name: str = typer.Option("google/gemma-2-2b-it", help="Model for generation"),
     output_path: str = typer.Option("scripts/opt-bench/results/csv_iii.csv"),
-    batch_size: int = typer.Option(32),
+    batch_size: int = typer.Option(8),
     use_litellm: bool = typer.Option(False, help="Use LiteLLM for generation (API models)"),
 ):
     """Run full universality evaluation on all triggers -> CSV III."""
