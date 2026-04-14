@@ -169,6 +169,7 @@ def build_csv_iii(
     """Run full universality evaluation on all triggers -> CSV III."""
     df = pd.read_csv(csv_i_path)
     df["trigger_id"] = range(len(df))
+    df["best_trigger_str"] = df["best_trigger_str"].fillna("").astype(str)
 
     eval_df = evaluate_triggers(
         model_name=model_name,
