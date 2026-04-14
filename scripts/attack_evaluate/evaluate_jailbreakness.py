@@ -116,7 +116,7 @@ def evaluate_triggers(
         pipe = pipeline(
             "text-generation",
             model=model_name,
-            torch_dtype=torch.bfloat16,
+            dtype=torch.bfloat16,
             device_map="auto",
         )
 

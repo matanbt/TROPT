@@ -574,7 +574,7 @@ def external_nanogcg(
 
     print(f"Loading model {model_name} on {device}...")
     model = AutoModelForCausalLM.from_pretrained(
-        model_name, torch_dtype=torch.bfloat16,
+        model_name, dtype=torch.bfloat16,
     ).to(device)
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 

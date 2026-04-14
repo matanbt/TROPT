@@ -42,7 +42,7 @@ def _generate_with_hf(triggered_messages: List[str], model_name: str,
     pipe = pipeline(
         "text-generation",
         model=model_name,
-        torch_dtype=torch.bfloat16,
+        dtype=torch.bfloat16,
         device_map="auto",
     )
     messages = [[{"role": "user", "content": t}] for t in triggered_messages]
@@ -71,14 +71,15 @@ def _generate_with_litellm(triggered_messages: List[str], model_name: str,
 def build_csv_i(
     wandb_project: str = typer.Option(DEFAULT_WANDB_PROJECT, help="Wandb project name"),
     run_type: str = typer.Option(DEFAULT_RUN_TYPE, help="Filter by run_type config value"),
+    model_name: str = typer.Option(None, help="Filter by config.model_name (optional)"),
     output_path: str = typer.Option("scripts/opt-bench/results/csv_i.csv"),
 ):
     """Pull essential run metadata and results from Wandb -> CSV I."""
     api = wandb.Api()
-    runs = api.runs(
-        f"{WANDB_ENTITY}/{wandb_project}",
-        filters={"state": "finished", "config.run_type": run_type},
-    )
+    filters = {"state": "finished", "config.run_type": run_type}
+    if model_name:
+        filters["config.model_name"] = model_name
+    runs = api.runs(f"{WANDB_ENTITY}/{wandb_project}", filters=filters)
 
     rows = []
     for run in runs:

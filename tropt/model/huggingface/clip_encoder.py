@@ -75,7 +75,7 @@ class CLIPTextEncoderHFModel(
         """
         model_kwargs = {}
         if dtype is not None:
-            model_kwargs["torch_dtype"] = dtype
+            model_kwargs["dtype"] = dtype
 
         # CLIPTextModelWithProjection includes text_projection, needed to match get_text_features()
         self._model = CLIPTextModelWithProjection.from_pretrained(

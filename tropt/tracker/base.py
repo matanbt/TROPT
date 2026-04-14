@@ -57,7 +57,9 @@ class BaseTracker(ABC):
 
     def finish(self, summary: Optional[dict] = None):
         """Close the current run, optionally logging a final summary."""
-        assert self._active, "finish() called on inactive tracker (missing init()?)"
+        if not self._active:
+            logger.warning("finish() called on inactive tracker — ignoring.")
+            return
         self._finish(summary)
         self._active = False
 

@@ -13,7 +13,7 @@ set -euo pipefail
 #   Smoke test:  MSG_IDS="0"
 #   Medium:      MSG_IDS="0 1 2 3 4"
 #   Full:        MSG_IDS="0 1 2 3 4 5 6 7 8 9"
-MSG_IDS="0"  # 1 2 3 4 5
+MSG_IDS="0 1 2 3 4 5 6 7 8 9"
 SEEDS="42 123 777"
 
 
@@ -69,7 +69,7 @@ done
 echo "Message IDs: $MSG_IDS  |  Seeds: $SEEDS"
 
 # ─── Exp1: Optimizer Benchmarks ─────────────────────────────────────────────
-if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "1" ]]; then
+if [[ "$EXP_FILTER" == "1" ]]; then
     echo "=== Exp1: White-box optimizer sweep ==="
     for model in "${WHITEBOX_MODELS[@]}"; do
         echo "--- Model: $model ---"
@@ -86,13 +86,13 @@ fi
 
 # Exp1 black-box (OpenAI) has no whitebox-model/seed axis — it's a single job
 # of its own (slurm name: exp1chat), dispatched via EXP_FILTER=1bb.
-if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "1bb" ]]; then
+if [[ "$EXP_FILTER" == "1bb" ]]; then
     echo "=== Exp1: Black-box optimizer sweep ==="
     python scripts/opt-bench/exp1.py blackbox --model-name "$BLACKBOX_MODEL" $MSG_ID_FLAGS $SEED_FLAGS
 fi
 
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
-if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "2" ]]; then
+if [[ "$EXP_FILTER" == "2" ]]; then
     echo "=== Exp2: Single-instruction tweak sweep ==="
     for model in "${WHITEBOX_MODELS[@]}"; do
         echo "--- Model: $model ---"
@@ -105,23 +105,6 @@ if [[ -z "$EXP_FILTER" || "$EXP_FILTER" == "2" ]]; then
         python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
     done
 fi
-
-
-# ─── Exp3: Corpus Poisoning ────────────────────────────────────────────────
-# Exp3 + evals are out of scope for the per-job slurm flow; only run in full mode.
-if [[ -z "$EXP_FILTER" ]]; then
-echo "=== Exp3: Corpus poisoning (GASLITE on E5) ==="
-python scripts/opt-bench/exp3-corpois.py gaslite-e5
-
-
-echo "=== Exp3: Corpus poisoning (RandomSearch on OpenAI) ==="
-python scripts/opt-bench/exp3-corpois.py rs-openai
-
-echo ">> After running Exp3, we need to now send Abed the 10 adv passages, inject MSMARCO, and test the results on all the held-{in,out} queries for measures. <<"
-fi
-
-
-
 
 
 # ─── Evaluations ────────────────────────────────────────────────────────────
@@ -149,6 +132,7 @@ evaluate() {
     python -m scripts.opt-bench.eval build-csv-i \
         --wandb-project "$wandb_project" \
         --run-type "$run_type" \
+        --model-name "$eval_model" \
         --output-path "$csv_i"
 
     local litellm_flag=""
@@ -169,6 +153,15 @@ evaluate() {
         $litellm_flag
 }
 
+WHITEBOX_MODELS=(
+    # "meta-llama/Llama-3.1-8B-Instruct"
+    "google/gemma-3-12b-it"
+    # "Qwen/Qwen3-8B"
+    # ----- other models -----
+    # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
+    # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
+)
+
 # Exp1 white-box: evaluate with each white-box model
 for model in "${WHITEBOX_MODELS[@]}"; do
     short=$(echo "$model" | sed 's|.*/||')
@@ -176,19 +169,19 @@ for model in "${WHITEBOX_MODELS[@]}"; do
 done
 
 # Exp1 black-box: evaluate with the black-box model via LiteLLM
-short_bb=$(echo "$BLACKBOX_MODEL" | sed 's|.*/||')
-evaluate "optbench_blackbox" "exp1_bb_${short_bb}" "$BLACKBOX_MODEL" "true"
+# short_bb=$(echo "$BLACKBOX_MODEL" | sed 's|.*/||')
+# evaluate "optbench_blackbox" "exp1_bb_${short_bb}" "$BLACKBOX_MODEL" "true"
 
 # Exp2 single: evaluate with each white-box model (separate wandb project)
-for model in "${WHITEBOX_MODELS[@]}"; do
-    short=$(echo "$model" | sed 's|.*/||')
-    evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
-done
+# for model in "${WHITEBOX_MODELS[@]}"; do
+#     short=$(echo "$model" | sed 's|.*/||')
+#     evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
+# done
 
 # Exp2 multi: evaluate with each white-box model (separate wandb project)
-for model in "${WHITEBOX_MODELS[@]}"; do
-    short=$(echo "$model" | sed 's|.*/||')
-    evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
-done
+# for model in "${WHITEBOX_MODELS[@]}"; do
+#     short=$(echo "$model" | sed 's|.*/||')
+#     evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
+# done
 
 echo "=== All done. Results in $RESULTS_DIR/ ==="

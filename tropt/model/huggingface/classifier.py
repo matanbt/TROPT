@@ -59,7 +59,7 @@ class ClassifierHFModel(
         else:
             self._model = AutoModelForSequenceClassification.from_pretrained(
                 model_name,
-                torch_dtype=dtype or "auto",
+                dtype=dtype or "auto",
                 **kwargs,
             ).to(device)
 
