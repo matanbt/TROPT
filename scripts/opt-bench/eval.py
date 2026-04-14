@@ -119,7 +119,7 @@ def build_csv_ii(
     csv_i_path: str = typer.Option("scripts/opt-bench/results/csv_i.csv"),
     model_name: str = typer.Option("google/gemma-2-2b-it", help="Model for generation"),
     output_path: str = typer.Option("scripts/opt-bench/results/csv_ii.csv"),
-    max_new_tokens: int = typer.Option(128),
+    max_new_tokens: int = typer.Option(256),
     batch_size: int = typer.Option(8),
     use_litellm: bool = typer.Option(False, help="Use LiteLLM for generation (API models)"),
 ):
@@ -175,7 +175,7 @@ def build_csv_iii(
         model_name=model_name,
         trigger_strs=df["best_trigger_str"].tolist(),
         trigger_ids=df["trigger_id"].tolist(),
-        harmful_dataset="clearharm[:50]",
+        harmful_dataset="clearharm[:100]",
         batch_size=batch_size,
         model_backend="litellm" if use_litellm else "hf_pipeline",
     )

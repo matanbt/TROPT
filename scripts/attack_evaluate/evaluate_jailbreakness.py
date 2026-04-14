@@ -93,7 +93,7 @@ def evaluate_triggers(
     harmful_dataset: Literal["advbench_plus", "clearharm"] = "clearharm",
     batch_size: int = 128,
     greedy_decode: bool = True,
-    max_new_tokens: int = 128,
+    max_new_tokens: int = 256,
     model_backend: Literal["hf_pipeline", "litellm"] = "hf_pipeline",
     evaluators: List[str] = None,
     eval_batch_size: int = 8,
@@ -133,6 +133,8 @@ def evaluate_triggers(
         base_df = pd.read_csv(CLEARHARM_PATH)
     elif harmful_dataset == "clearharm[:50]":
         base_df = pd.read_csv(CLEARHARM_PATH).head(50)
+    elif harmful_dataset == "clearharm[:100]":
+        base_df = pd.read_csv(CLEARHARM_PATH).head(100)
     else:
         raise ValueError(f"Unsupported harmful_dataset: {harmful_dataset}")
 
