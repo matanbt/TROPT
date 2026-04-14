@@ -124,6 +124,14 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
             n_grad=10, n_flip=7, n_candidates=256,
             token_constraints=_TC, use_retokenize=True,
         )),
+    OptimizerConfig("gaslite2",
+        lambda model, tracker, seed, **_: GASLITEOptimizer(
+            model=model, loss=_LOSS, tracker=tracker, seed=seed,
+            num_steps=LARGE_NUM_STEPS, 
+            # num_steps=100,  # <-- original paper
+            n_grad=5, n_flip=10, n_candidates=128,
+            token_constraints=_TC, use_retokenize=True,
+        )),
     # OptimizerConfig("gasliteplus",
     #     lambda model, tracker, seed, **_: GASLITEPlusOptimizer(
     #         model=model, loss=_LOSS, tracker=tracker, seed=seed,
