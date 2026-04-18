@@ -606,6 +606,7 @@ class HuggingFaceBackendModel:
 
         # Additional config:
         normalize_grads: bool = False,
+        # keep_message_dim: bool = False,  # TODO support this flag!
         return_loss: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
@@ -794,7 +795,7 @@ class HuggingFaceBackendModel:
                 batch_losses = torch.stack(
                     batch_losses, dim=0
                 )  # (n_templates, bsz_triggers)
-                batch_losses = batch_losses.mean(dim=0)  # Shape: (bsz_triggers,)
+                batch_losses = batch_losses.mean(dim=0)  # Reduce template dim; Shape: (bsz_triggers,)
 
                 # Compute the gradient of each trigger's loss w.r.t. its one-hot input
                 candidate_onehot_grad = torch.autograd.grad(

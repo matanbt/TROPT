@@ -11,8 +11,10 @@ from .GCG import run_gcg, run_gcg_perplexity
 from .GCGEmb import run_gcg_embedding_variant
 from .GCGHij import run_gcghij
 from .GCGMult import run_gcg_mutl_instruction
+from .FLRTDistill import run_flrt_distill
 from .HotFlip import run_hotflip
 from .IRIS import run_iris, run_iris2
+from .MAC import run_mac, run_mac_multi
 from .PAL import run_gcgp_pal, run_pal, run_ral
 from .PEZ import run_pez
 from .PromptRecovery import (
@@ -28,6 +30,7 @@ from .QCG import run_gcgp_blackbox, run_gcgp_whitebox, run_qcg
 from .RASLITEPlus import run_rasliteplus, run_rasliteplus_llm
 from .SoftGCG import run_soft_gcg
 from .SoftPrompt import run_soft_prompt, run_soft_prompt_encoder_attack
+from .UAT import run_uat_classifier, run_uat_prompt_injection
 
 RECIPES = {
     "advdecoding_jailbreak": run_advdecoding_jailbreak,
@@ -48,8 +51,11 @@ RECIPES = {
     "gcg_hij": run_gcghij,
     "hotflip": run_hotflip,
     "gcg_mult": run_gcg_mutl_instruction,
+    "flrt_distill": run_flrt_distill,
     "iris": run_iris,
     "iris2": run_iris2,
+    "mac": run_mac,
+    "mac_multi": run_mac_multi,
     "pal": run_pal,
     "pez": run_pez,
     "pgd": run_pgd,
@@ -65,6 +71,8 @@ RECIPES = {
     "soft_prompt": run_soft_prompt,
     "soft_prompt_encoder": run_soft_prompt_encoder_attack,
     "prompt_recovery": run_prompt_recovery,
+    "uat_classifier": run_uat_classifier,
+    "uat_prompt_injection": run_uat_prompt_injection,
 }
 
 def list_recipes():

@@ -109,10 +109,22 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
     OptimizerConfig("gcgplus_rand",   # random candidate selection (ablation vs gcgplus_grad)
         lambda model, tracker, seed, **_: GCGPlusOptimizer(
             model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
-            num_steps=LARGE_NUM_STEPS, 
+            num_steps=LARGE_NUM_STEPS,
             # num_steps=500,  # <-- original paper
             candidate_selection="random",
             n_candidates=512, sample_topk=256, sample_n_replace=(1, 1),
+            candidate_oversample_factor=1.1,
+            token_constraints=_TC, use_retokenize=True,
+        )),
+    OptimizerConfig("mac",   # Momentum Accelerated GCG (https://arxiv.org/abs/2405.01229)
+        lambda model, tracker, seed, **_: GCGPlusOptimizer(
+            model=model, loss=_LOSS, proxy_model=model, tracker=tracker, seed=seed,
+            num_steps=LARGE_NUM_STEPS,
+            # num_steps=20,  # <-- original paper (T=20)
+            candidate_selection="gradient",
+            n_candidates=256, sample_topk=256,  # paper B=k=256
+            sample_n_replace=(1, 1),
+            momentum=0.6,  # paper's optimal mu
             candidate_oversample_factor=1.1,
             token_constraints=_TC, use_retokenize=True,
         )),

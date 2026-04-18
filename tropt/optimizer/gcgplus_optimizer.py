@@ -1,5 +1,6 @@
 import logging
 import math
+import random
 from typing import Literal, Optional, Tuple, Union
 
 import torch
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 class GCGPlusOptimizer(BaseOptimizer):
-    """Flexible GCG implementation, supporting tricks from GCG, QCG, and GASLITE.
+    """Flexible GCG implementation, supporting tricks from GCG, QCG, GASLITE, and UAT.
 
     Two-stage design:
       1. Candidate selection (on proxy model) — gradient-based, random, or focused.
@@ -42,6 +43,7 @@ class GCGPlusOptimizer(BaseOptimizer):
       - QCG: https://arxiv.org/abs/2402.12329
       - PAL: https://arxiv.org/abs/2402.09674
       - GASLITE: https://arxiv.org/abs/2412.20953
+      - UAT: https://arxiv.org/abs/1908.07125
     """
 
     model_requirements = (LossTextAccessMixin,)
@@ -71,6 +73,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         # Trigger buffer size:
         buffer_size: Optional[int] = None,
         n_grad_avg: int = 1,
+        # Per-step batch sampling:
+        template_batch_size: Optional[int] = None,
     ):
         """
         Args:
@@ -89,15 +93,21 @@ class GCGPlusOptimizer(BaseOptimizer):
                 truncate after retokenization filtering, to fill the required number of candidates.
                 From PAL paper.
                 Defaults to 1.1 (10% oversampling).
-            momentum: Gradient momentum coefficient (mu), from PAL paper. When > 0, uses
-                m = mu*m + grad for candidate ranking instead of raw gradient.
+            momentum: Gradient momentum coefficient. When > 0, enables momentum:
+                m = mu*m + (1-mu)*grad for candidate ranking instead of raw gradient.
                 Defaults to 0.0 (no momentum).
+                Reference: https://arxiv.org/abs/2405.01229 . 
             buffer_size: If set, maintain a buffer of the best triggers seen (from QCG paper). Each step
                 starts from the best buffer entry and updates it with improved candidates.
                 Defaults to None (no buffer).
             n_grad_avg: Number of trigger perturbations to average gradients
                 over. When > 1, flips a random position per copy (from ARCA/GASLITE papers).
                 Defaults to 1 (no averaging, like GCG).
+            template_batch_size: If set, sample this many templates (and their
+                targets) per optimization step instead of using all templates
+                simultaneously. 
+                Useful for large template sets.
+                Reference: https://arxiv.org/abs/1908.07125 . Defaults to None (use all templates).
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -140,6 +150,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.use_token_eval = use_token_eval
         self.buffer_size = buffer_size
         self.n_grad_avg = n_grad_avg
+        self.template_batch_size = template_batch_size
 
     def optimize_trigger(
         self,
@@ -152,6 +163,12 @@ class GCGPlusOptimizer(BaseOptimizer):
         proxy_model = self.proxy_model
         proxy_tokenizer = proxy_model.tokenizer
         target_model = self.model
+
+        # Batch sampling setup
+        use_batch_sampling = (
+            self.template_batch_size is not None
+            and self.template_batch_size < len(templates)
+        )
 
         proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
         if not self.use_token_eval:
@@ -179,7 +196,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         if self.use_retokenize and self.candidate_oversample_factor > 1.0:
             n_candidates_oversampled = math.ceil(self.n_candidates * self.candidate_oversample_factor)
 
-        # Initial loss
+        # Initial loss (on full set or first batch)
         current_loss = self._evaluate_candidates(
             trigger_ids.unsqueeze(0)
         ).item()
@@ -189,6 +206,28 @@ class GCGPlusOptimizer(BaseOptimizer):
         n_replace_start, n_replace_end = self.sample_n_replace
 
         for step_i in self.track_steps(range(self.num_steps)):
+            # --- batch sampling: re-set model inputs with a random subset ---
+            if use_batch_sampling:
+                batch_indices = random.sample(
+                    range(len(templates)), self.template_batch_size
+                )
+                batch_templates = [templates[i] for i in batch_indices]
+                batch_targets = (
+                    targets.select_indices(batch_indices)
+                    if targets is not None else None
+                )
+                proxy_model.set_inputs_from_tokens(
+                    templates=batch_templates, targets=batch_targets,
+                )
+                if not self.use_token_eval:
+                    target_model.set_inputs_from_texts(
+                        templates=batch_templates, targets=batch_targets,
+                    )
+                else:
+                    target_model.set_inputs_from_tokens(
+                        templates=batch_templates, targets=batch_targets,
+                    )
+
             # Linearly interpolate sample_n_replace over steps
             cur_n_replace = round(
                 n_replace_start + (n_replace_end - n_replace_start) * step_i / max(self.num_steps - 1, 1)
@@ -215,7 +254,10 @@ class GCGPlusOptimizer(BaseOptimizer):
                     if momentum_buffer is None:
                         momentum_buffer = trigger_grad.clone()
                     else:
-                        momentum_buffer = self.momentum * momentum_buffer + trigger_grad
+                        momentum_buffer = (
+                            self.momentum * momentum_buffer
+                            + (1 - self.momentum) * trigger_grad
+                        )
                     trigger_grad = momentum_buffer
 
                 candidate_trigger_ids = self._sample_ids_from_grad(

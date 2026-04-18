@@ -97,7 +97,7 @@ class LMHFModel(
     ):
         if loaded_model is not None:
             logger.info(f"Using provided loaded model for {model_name}.")
-            assert isinstance(loaded_model, AutoModelForCausalLM)
+            assert isinstance(loaded_model, transformers.PreTrainedModel)
             self._model = loaded_model
         else:
             if use_eager_attention:
