@@ -17,6 +17,7 @@ from .losses import (
     PrefillBasedLoss,
     PrefillCELoss,
     PrefillCWLoss,
+    PrefillDistillationLoss,
     PrefillMellowMaxLoss,
     SimilarityLoss,
     SteeringActivationLoss,

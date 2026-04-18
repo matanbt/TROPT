@@ -32,6 +32,7 @@ from tropt.loss import (
     CombinedLoss,
     PrefillCELoss,
     PrefillCWLoss,
+    PrefillDistillationLoss,
     SteeringActivationLoss,
 )
 from tropt.model.huggingface.lm import LMHFModel
@@ -40,6 +41,7 @@ from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import WandbTracker
 from tropt.utils.refusal_dir import (
     compute_refusal_directions,
+    generate_jailbroken_logits,
     generate_jailbroken_responses,
 )
 
@@ -155,6 +157,52 @@ def _steering_targets(model, instruction: str, target: str, refusal_dirs) -> Tar
     )
 
 
+def _flrt_distill_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
+    """FLRT teacher = refusal-ablated victim. Generate K tokens + per-position logits."""
+    instruction_clean = instruction.replace(
+        f" {OPTIMIZED_TRIGGER_PLACEHOLDER}", ""
+    ).replace(OPTIMIZED_TRIGGER_PLACEHOLDER, "")
+    source_layer = int(0.5 * model.n_layers)
+    samples = generate_jailbroken_logits(
+        model=model,
+        prompts=[instruction_clean],
+        refusal_dirs=refusal_dirs,
+        source_layer=source_layer,
+        max_new_tokens=20,
+    )
+    teacher_ids, teacher_logits, _ = samples[0]
+    return Targets(
+        target_response_toks=[teacher_ids.to(model.device)],
+        target_response_logits=[teacher_logits.to(model.device)],
+    )
+
+
+# Fields of `Targets` and how to concatenate across templates.
+_TARGETS_LIST_FIELDS = ("target_response_strs", "target_response_toks", "target_response_logits")
+_TARGETS_TENSOR_FIELDS = ("target_vectors", "target_directions")
+
+
+def _merge_targets(per_template: list[Targets]) -> Targets:
+    """Concatenate per-template ``Targets`` (one template each) into one multi-template ``Targets``.
+
+    All inputs must have the same set of fields populated — violations raise AssertionError.
+    """
+    merged: dict = {}
+    for field in _TARGETS_LIST_FIELDS:
+        vals = [getattr(t, field) for t in per_template]
+        has = [v is not None for v in vals]
+        if any(has):
+            assert all(has), f"Inconsistent `{field}` across per-template targets"
+            merged[field] = [item for v in vals for item in v]
+    for field in _TARGETS_TENSOR_FIELDS:
+        vals = [getattr(t, field) for t in per_template]
+        has = [v is not None for v in vals]
+        if any(has):
+            assert all(has), f"Inconsistent `{field}` across per-template targets"
+            merged[field] = torch.cat(vals, dim=0)
+    return Targets(**merged)
+
+
 def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantConfig]:
     """Build variant list. Needs n_layers for attention layer slicing."""
     variants = [
@@ -231,12 +279,27 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             target_fn=_steering_targets,
             needs_refusal_dirs=True,
         ),
-        
+
+        # 8. FLRT loss clamping on PrefillCE (https://arxiv.org/abs/2407.17447, §4.2)
+        VariantConfig(
+            name="gcg_flrt_clamp",
+            loss_factory=lambda m: PrefillCELoss(clamp_min_nll=-math.log(0.6)),
+        ),
+
+        # 9. FLRT logits-distillation: teacher = refusal-ablated victim (§4.3.1)
+        VariantConfig(
+            name="gcg_flrt_distill",
+            loss_factory=lambda m: PrefillDistillationLoss(),
+            target_fn=_flrt_distill_targets,
+            needs_refusal_dirs=True,
+        ),
+
         # ── Additional tricks (uncomment to include) ─────────────────────
         # CE + TriggerPerplexityLoss — penalizes non-fluent triggers,
         #   may improve transferability (see recipe_hub/GCG.py:run_gcg_perplexity)
         # VariantConfig(
-        #     name="gcg_perplexity",
+        #     name="gc
+        # g_perplexity",
         #     loss_factory=lambda m: CombinedLoss(
         #         [PrefillCELoss(), TriggerPerplexityLoss()], weights=[1.0, 1.0]
         #     ),
@@ -496,6 +559,9 @@ def single(
                 tgt_fn = cfg.target_fn or _default_targets
                 targets = tgt_fn(model, instruction, target, refusal_dirs)
 
+                log_target = (
+                    targets.target_response_strs[0] if targets.target_response_strs else target
+                )
                 tracker = WandbTracker(
                     run_name,
                     tags=[_RUN_TYPE_SINGLE, cfg.name],
@@ -509,7 +575,7 @@ def single(
                         loss_name=cfg.name,
                         msg_id=msg_id,
                         instructions=[template],
-                        targets=[targets.target_response_strs[0] if targets.target_response_strs else ""],
+                        targets=[log_target],
                     ),
                 )
 
@@ -567,19 +633,17 @@ def multi(
             tmpl_fn = cfg.template_fn or _default_template
             templates = [tmpl_fn(inst, tgt) for inst, tgt in zip(instructions, target_strs)]
 
-            # Resolve targets — build per-instruction then merge
+            # Resolve targets — build per-instruction then merge (supports all target fields).
             tgt_fn = cfg.target_fn or _default_targets
-            all_target_response_strs = []
-            all_target_directions = []
-            for inst, tgt in zip(instructions, target_strs):
-                t = tgt_fn(model, inst, tgt, refusal_dirs)
-                all_target_response_strs.extend(t.target_response_strs or [tgt])
-                if t.target_directions is not None:
-                    all_target_directions.append(t.target_directions)
+            per_template = [
+                tgt_fn(model, inst, tgt, refusal_dirs)
+                for inst, tgt in zip(instructions, target_strs)
+            ]
+            targets = _merge_targets(per_template)
 
-            targets = Targets(target_response_strs=all_target_response_strs)
-            if all_target_directions:
-                targets.target_directions = torch.cat(all_target_directions, dim=0)
+            # Fall back to the original target strings for logging when the loss
+            # doesn't carry `target_response_strs` (e.g., FLRT distillation).
+            log_targets = targets.target_response_strs or target_strs
 
             tracker = WandbTracker(
                 run_name,
@@ -593,7 +657,7 @@ def multi(
                     seed=seed,
                     loss_name=cfg.name,
                     instructions=templates,
-                    targets=all_target_response_strs,
+                    targets=log_targets,
                 ),
             )
 

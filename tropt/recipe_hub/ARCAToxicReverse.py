@@ -98,15 +98,15 @@ def run_arca_toxic_reverse(
     model_obj: Optional[BaseModel] = None,
     tracker: Optional[BaseTracker] = None,
     num_steps: int = 500,
-    use_perplexity_loss: bool = False,
+    perplexity_weight: float = 0.0,
 ) -> OptimizerResult:
     """Reverse an LLM on a toxic output (Section 4.2.1 of Jones et al., 2023).
 
     Finds a prompt of ``prompt_length`` tokens whose greedy completion is
     ``target_output``, with no token overlap between prompt and output.
 
-    When ``use_perplexity_loss`` is True, adds an ExternalTriggerPerplexityLoss
-    to encourage more natural/fluent prompts.
+    ``perplexity_weight`` controls the weight of ExternalTriggerPerplexityLoss
+    added to the eval loss (0.0 disables it). PrefillCE weight is fixed at 1.0.
     """
     if model_obj is None:
         model_obj = LMHFModel(
@@ -120,10 +120,10 @@ def run_arca_toxic_reverse(
     # Loss setup: PrefillCE for gradients (proxy_loss), optionally combined
     # with ExternalTriggerPerplexityLoss for candidate evaluation.
     eval_loss = PrefillCELoss()
-    if use_perplexity_loss:
+    if perplexity_weight > 0.0:
         eval_loss = CombinedLoss(
             [PrefillCELoss(), ExternalTriggerPerplexityLoss()],
-            weights=[1.0, 0.01],
+            weights=[1.0, perplexity_weight],
         )
 
     optimizer = GCGPlusOptimizer(

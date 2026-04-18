@@ -59,6 +59,12 @@ class MessageTargets(pydantic.BaseModel):
     """Tokenized target response for this message.
     """
 
+    target_response_logits: Optional[Float[Tensor, "target_seq_len vocab_size"]] = None
+    """Target logits from a reference (e.g., jailbroken) model, one per target position.
+
+    Used by distillation-style losses (e.g., FLRT, https://arxiv.org/abs/2407.17447).
+    """
+
     target_vectors: Optional[Float[Tensor, "d_model"]] = None
     """Target embedding vector for this message.
     """
@@ -101,6 +107,14 @@ class Targets(pydantic.BaseModel):
     Used by: Language models for computing cross-entropy loss.
     """
 
+    target_response_logits: Optional[Annotated[List[Float[Tensor, "target_seq_len vocab_size"]], "n_templates"]] = None
+    """Target logits from a reference (e.g., jailbroken) model, one per target position.
+
+    Used by distillation-style losses (e.g., FLRT, https://arxiv.org/abs/2407.17447); one tensor per template.
+
+    List of length n_templates, each of (potentially different) shape (target_seq_len, vocab_size).
+    """
+
     target_vectors: Optional[Float[Tensor, "n_templates d_model"]] = None
     """Target embedding vectors, one per template.
 
@@ -133,9 +147,22 @@ class Targets(pydantic.BaseModel):
         return self
 
     def select_message(self, idx: int) -> "MessageTargets":
+        """Return a MessageTargets instance for the selected template index."""
         return MessageTargets(
             **{k: v[idx] for k, v in self if v is not None}
         )
+
+    def select_indices(self, indices: List[int]) -> "Targets":
+        """Return a new Targets with only the selected template indices."""
+        updates = {}
+        for k, v in self:
+            if v is None:
+                continue
+            if isinstance(v, Tensor):
+                updates[k] = v[indices]
+            elif isinstance(v, list):
+                updates[k] = [v[i] for i in indices]
+        return Targets(**updates)
 
     def to_device(self, device: torch.device | str) -> "Targets":
         updates = {}

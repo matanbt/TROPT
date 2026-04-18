@@ -19,6 +19,8 @@ import torch
 from datasets import load_dataset
 from jaxtyping import Float
 from sklearn.model_selection import train_test_split
+from jaxtyping import Float, Int
+from torch import Tensor
 
 from tropt.model.huggingface.lm import LMHFModel
 
@@ -343,9 +345,67 @@ def generate_jailbroken_responses(
             skip_special_tokens=True,
         )
         responses.append(response)
-        # TODO optionally return the "jailbroken" logits
 
         # Remove hooks
         remove_hooks()
 
     return responses
+
+
+def generate_jailbroken_logits(
+    model: LMHFModel,
+    prompts: List[str],
+    refusal_dirs: torch.Tensor,
+    source_layer: int,
+    max_new_tokens: int = 20,
+    **ablate_kwargs,
+) -> List[Tuple[Int[Tensor, "gen_len"], Float[Tensor, "gen_len vocab"], str]]:
+    """
+    Generate jailbroken responses while also returning per-position next-token logits.
+
+    Notes:
+    - Generation w/ greedy decoding.
+
+    Returns a list with one entry per prompt, each a tuple of:
+        - gen_ids: tensor of shape ``(gen_len,)`` with generated token ids (prompt tokens excluded), on CPU.
+        - gen_logits: tensor of shape ``(gen_len, vocab_size)`` with the logits at each generation step, on CPU.
+        - response_str: generated response string (special tokens skipped).
+    """
+    results: List[Tuple[Int[Tensor, "gen_len"], Float[Tensor, "gen_len vocab"], str]] = []
+
+    for prompt in prompts:
+        model, remove_hooks = ablate_refusal_direction(
+            model=model,
+            refusal_dirs=refusal_dirs,
+            source_layer=source_layer,
+            **ablate_kwargs,
+        )
+
+        messages = [{"role": "user", "content": prompt}]
+        inputs = model.tokenizer.apply_chat_template(
+            messages,
+            return_tensors="pt",
+            add_generation_prompt=True,
+        )["input_ids"].to(model.device)
+
+        hf_model = get_hf_model(model)
+
+        with torch.no_grad():
+            outputs = hf_model.generate(
+                inputs,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,  # greedy
+                pad_token_id=model.tokenizer.eos_token_id,
+                return_dict_in_generate=True,
+                output_scores=True,
+            )
+
+        remove_hooks()
+
+        gen_ids = outputs.sequences[0, inputs.shape[1]:]  # (gen_len,)
+        # outputs.scores: tuple of length gen_len, each (1, vocab_size)  # TODO verify
+        gen_logits = torch.stack([s[0] for s in outputs.scores], dim=0)  # (gen_len, vocab_size)
+        response_str = model.tokenizer.decode(gen_ids, skip_special_tokens=True)
+        results.append((gen_ids.detach().cpu(), gen_logits.detach().cpu(), response_str))
+
+    return results
