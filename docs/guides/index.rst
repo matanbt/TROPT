@@ -7,5 +7,5 @@ Guides
    adding_a_model
    adding_a_loss
    adding_an_optimizer
-   adding_an_attack
+   adding_a_recipe
    compatibility_matrix

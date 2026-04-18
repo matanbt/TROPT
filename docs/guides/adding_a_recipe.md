@@ -1,36 +1,33 @@
-# Adding an Attack
+# Adding a Recipe
 
-An attack script glues together a **Model**, **Loss**, and **Optimizer** into a runnable function. This works in any standalone script — no registration required. See `tropt/recipe_hub/` for examples.
+A recipe script glues together a **Model**, **Loss**, and **Optimizer** into a runnable function. This works in any standalone script — no registration required. See `tropt/recipe_hub/` for examples.
 
 ## Minimal Example
 
 ```python
-from typing import Optional
-
 from tropt.common import Targets
 from tropt.loss import PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
-from tropt.tracker import BaseTracker
-
-_INITIAL_TRIGGER = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.tracker import LiveLossPlotTracker
 
 
 def run_myattack(
     model_name: str = "google/gemma-3-270m-it",
     instruction: str = "Do something harmful. {{OPTIMIZED_TRIGGER}}",
     target_response: str = "Sure, here's how:",
-    model_obj: Optional[LMHFModel] = None,
-    tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
     """One-line description. https://arxiv.org/abs/XXXX.XXXXX"""
-    if model_obj is None:
-        model_obj = LMHFModel(model_name=model_name, use_prefix_cache=True)
+    model = LMHFModel(model_name=model_name, use_prefix_cache=True)
+    loss = PrefillCELoss()
+    tracker = LiveLossPlotTracker()
+    initial_trigger = get_printable_random_trigger(trigger_len=20, tokenizer=model.tokenizer)
 
     optimizer = GCGOptimizer(
-        model=model_obj,
-        loss=PrefillCELoss(),
+        model=model,
+        loss=loss,
         tracker=tracker,
         num_steps=500,
         n_candidates=512,
@@ -39,17 +36,45 @@ def run_myattack(
     return optimizer.optimize_trigger(
         templates=[instruction],
         targets=Targets(target_response_strs=[target_response]),
-        initial_trigger=_INITIAL_TRIGGER,
+        initial_trigger=initial_trigger,
     )
 ```
 
 ## Checklist
 
 1. **Template placeholder** -- use `{{OPTIMIZED_TRIGGER}}` where the trigger should be injected.
-2. **Model** -- pick a model class whose mixins satisfy the optimizer's `model_requirements`. Accept an optional `model_obj` parameter so callers can reuse a pre-loaded model.
+2. **Model** -- pick a model class whose mixins satisfy the optimizer's `model_requirements`.
 3. **Loss** -- choose from `tropt/loss/`. Use `CombinedLoss` for multi-objective optimization.
-4. **Optimizer** -- choose from `tropt/optimizer/`. Pass `tracker` through for logging.
-5. **Return type** -- always `OptimizerResult`, returned by `optimizer.optimize_trigger(...)`.
+4. **Optimizer** -- choose from `tropt/optimizer/`.
+5. **Tracker** (optional) -- pass a `BaseTracker` subclass to log per-step metrics. See the Trackers section below.
+6. **Return type** -- always `OptimizerResult`, returned by `optimizer.optimize_trigger(...)`. Exposes `best_trigger_str` / `best_trigger_ids`, `best_loss`, per-step `losses` and `trigger_strs`, and `full_prompt`. See `tropt/optimizer/base.py`.
+
+## Trackers
+
+Pass a tracker to the optimizer to log per-step metrics. Pick based on the setting:
+
+- `LiveLossPlotTracker` — inline loss plot, useful in notebooks.
+- `WandbTracker` — Weights & Biases, useful for experiments at scale.
+- `JSONTracker` — local JSON records, useful for offline analysis.
+- `PrintTracker` / `DictTracker` / `DummyTracker` — stdout, in-memory, or no-op.
+
+```python
+from tropt.tracker import WandbTracker
+optimizer = GCGOptimizer(model=model_obj, loss=PrefillCELoss(), tracker=WandbTracker())
+```
+
+See `tropt/tracker/` for the full set.
+
+## Recipe Conventions and Special Cases
+
+Patterns that recur across `tropt/recipe_hub/` and things to notice.
+
+- **Seed everything.** Pass `seed=seed` to the optimizer — `BaseOptimizer.__init__` calls `transformers.set_seed` internally, seeding torch/numpy/random for the whole run. No manual seeding needed.
+- **Token blacklist.** Build a `TokenConstraints(...)` once, pass it to the optimizer (`token_constraints=...`) and reuse its `get_blacklist_ids(tokenizer)` when sampling the initial trigger — so the starting point respects the same filters the optimizer enforces.
+- **Prefer `bfloat16` over `float32`.** On CUDA `float32` is expensive and rarely worth it for adversarial search; `dtype="bfloat16"` is a safe default.
+- **Special cases — losses.** Some losses need extra model wiring. E.g. `AttentionBasedLoss` subclasses need `use_eager_attention=True` on `LMHFModel` since SDPA doesn't expose attentions.
+- **Special cases — models.** Thinking-style models (Qwen3, etc.) emit a `<think>...</think>` block before the reply; prepend `"<think>\n\n</think>\n\n"` to the target so prefilling lands on the actual answer.
+- **Special cases — optimizers.** Some optimizers need an auxiliary model. Proxy-based optimizers (e.g. `PALOptimizer`, `QCGOptimizer`) take a `proxy_model=`; decoding-based ones (e.g. `BeamSearchOptimizer` in AdvDecoding mode) take a `util_lm=`.
 
 ## Tracking compute and capping runs
 
@@ -81,17 +106,92 @@ optimizer.set_budget(1_000_000, metric="total_tokens", scope="target")
 
 Set `num_steps` generously when budgeting — the budget becomes the real stopping criterion; `num_steps` is a safety ceiling.
 
-## Output
+## Maximal Example
 
-`OptimizerResult` (see `tropt/optimizer/base.py`) contains:
-- `best_trigger_str` / `best_trigger_ids` -- the optimized trigger
-- `best_loss` -- final loss value
-- `losses`, `trigger_strs` -- per-step history
-- `full_prompt` -- complete prompt(s) with the best trigger substituted in
+Let's now gather all of the additional, optional components together to demonstrate an inclusive example — covering the conventions, special cases, and budgeting features from the previous sections: `PALOptimizer` (proxy-guided) under a `CombinedLoss` of `PrefillCELoss` + `AttentionEnhLoss`, with `TokenConstraints`, a seeded random initial trigger, `bfloat16`, FLOP counting, a FLOP budget, and `WandbTracker`.
+
+```python
+import math
+
+from tropt.common import SliceKey, Targets
+from tropt.loss import AttentionEnhLoss, CombinedLoss, PrefillCELoss
+from tropt.model.huggingface.lm import LMHFModel
+from tropt.optimizer import OptimizerResult
+from tropt.optimizer.pal_optimizer import PALOptimizer
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.tracker import WandbTracker
+
+
+def run_myattack_maximal(
+    model_name: str = "google/gemma-2-2b-it",
+    instruction: str = "Do something harmful. {{OPTIMIZED_TRIGGER}}",
+    target_response: str = "Sure, here's how:",
+    seed: int = 42,
+    flop_budget: float = 3e17,
+) -> OptimizerResult:
+    """Maximal recipe demonstrating every optional feature."""
+    # Attention-based losses need eager attention; bfloat16 for cheap CUDA compute.
+    model = LMHFModel(
+        model_name=model_name,
+        dtype="bfloat16",
+        use_eager_attention=True,
+        use_prefix_cache=False,
+    )
+    model.set_flop_counting("manual")  # enables "total_flops" in get_usage_stats()
+
+    # Custom token blacklist — reuse for both the optimizer and the initial trigger.
+    token_constraints = TokenConstraints(
+        disallow_non_ascii=True,
+        disallow_special_tokens=True,
+    )
+
+    # CombinedLoss: prefill CE + attention-hijacking on middle layers.
+    loss = CombinedLoss(
+        [
+            PrefillCELoss(),
+            AttentionEnhLoss(
+                targeted_layers=slice(
+                    math.floor(0.1 * model.n_layers),
+                    math.ceil(0.9 * model.n_layers),
+                ),
+                src_slc_name=SliceKey.TRIGGER,
+                dst_slc_name=SliceKey.INPUT_AFTER,
+            ),
+        ],
+        weights=[1.0, 100.0],
+    )
+
+    tracker = WandbTracker("myattack_maximal", project_name="tropt-demo")
+
+    initial_trigger = get_printable_random_trigger(
+        trigger_len=20,
+        tokenizer=model.tokenizer,
+        token_constraints=token_constraints,
+    )
+
+    # Proxy-based optimizer: self-proxy in the whitebox case (same model for proxy).
+    optimizer = PALOptimizer(
+        model=model,
+        proxy_model=model,
+        loss=loss,
+        tracker=tracker,
+        seed=seed,
+        num_steps=20_000,  # generous; the FLOP budget is the real stopping criterion
+        token_constraints=token_constraints,
+    )
+    optimizer.set_budget(flop_budget, metric="total_flops")
+
+    return optimizer.optimize_trigger(
+        templates=[instruction],
+        targets=Targets(target_response_strs=[target_response]),
+        initial_trigger=initial_trigger,
+    )
+```
 
 ## Adding to TROPT
 
-If you want to contribute the attack to the package's Recipe Hub (not just use it in your own script), add your function to `tropt/recipe_hub/__init__.py`:
+If you want to contribute the recipe to the package's Recipe Hub (not just use it in your own script), add your function to `tropt/recipe_hub/__init__.py`:
 
 ```python
 from tropt.recipe_hub.myattack import run_myattack
