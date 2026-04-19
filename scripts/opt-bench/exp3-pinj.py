@@ -45,7 +45,7 @@ MALICIOUS_CLASS_IDX = 1
 N_HELD_IN = 50
 TRIGGER_LEN = 5
 NUM_STEPS = 500
-TEMPLATE_BATCH_SIZE = 5
+TEMPLATE_BATCH_SIZE = 10
 N_CANDIDATES = 256
 SEED = 42
 
@@ -63,7 +63,7 @@ def _evaluate_split(
     texts: list[str],
     trigger: str,
     append_trigger: bool,
-    batch_size: int = 128,
+    batch_size: int = 32,
 ) -> dict:
     """Classify texts (optionally with trigger appended) and return metrics."""
     if append_trigger:
@@ -103,7 +103,7 @@ def run():
 
     # --- Load model ---
     print(f"Loading model: {MODEL_NAME}")
-    model = ClassifierHFModel(model_name=MODEL_NAME)
+    model = ClassifierHFModel(model_name=MODEL_NAME, dtype=torch.bfloat16)
 
     # --- Load dataset ---
     print(f"Loading dataset: {DATASET_NAME}")
@@ -120,12 +120,14 @@ def run():
     held_out = shuffled_injections[N_HELD_IN:]
     print(f"Held-in: {len(held_in)}, Held-out: {len(held_out)}")
 
-    # --- Baseline: classify without trigger ---
-    print("\n--- Baseline (no trigger) ---")
-    baseline_injections = _evaluate_split(model, injections[:200], trigger="", append_trigger=False)
-    baseline_benign = _evaluate_split(model, benign_texts[:200], trigger="", append_trigger=False)
-    print(f"Injections classified as malicious: {baseline_injections['n_predicted_malicious']}/{baseline_injections['n_total']}")
-    print(f"Benign classified as benign: {baseline_benign['n_predicted_benign']}/{baseline_benign['n_total']}")
+    # --- Baseline: classify the actual eval splits without trigger ---
+    print("\n--- Baseline (no trigger, same splits used for eval) ---")
+    baseline_held_in = _evaluate_split(model, held_in, trigger="", append_trigger=False)
+    baseline_held_out = _evaluate_split(model, held_out, trigger="", append_trigger=False)
+    baseline_benign = _evaluate_split(model, benign_texts, trigger="", append_trigger=False)
+    print(f"Held-in  (no trigger): {baseline_held_in['benign_rate']:.1%} → benign  (natural FN rate)")
+    print(f"Held-out (no trigger): {baseline_held_out['benign_rate']:.1%} → benign  (natural FN rate)")
+    print(f"Benign   (no trigger): {baseline_benign['benign_rate']:.1%} → benign  (natural TN rate)")
 
     # --- Build templates ---
     templates = [
@@ -178,7 +180,7 @@ def run():
         sample_topk=256,
         sample_n_replace=1,
         token_constraints=TOKEN_CONSTRAINTS,
-        use_retokenize=False,
+        use_retokenize=True,
         template_batch_size=TEMPLATE_BATCH_SIZE,
     )
 
@@ -199,10 +201,13 @@ def run():
     eval_benign_triggered = _evaluate_split(model, benign_texts, trigger, append_trigger=True)
     eval_benign_clean = _evaluate_split(model, benign_texts, trigger, append_trigger=False)
 
-    print(f"Held-in  (injections + trigger):  {eval_held_in['benign_rate']:.1%} → benign  (ASR)")
-    print(f"Held-out (injections + trigger):  {eval_held_out['benign_rate']:.1%} → benign  (ASR)")
-    print(f"Benign   (+ trigger):             {eval_benign_triggered['benign_rate']:.1%} → benign")
-    print(f"Benign   (clean):                 {eval_benign_clean['benign_rate']:.1%} → benign")
+    lift_held_in = eval_held_in["benign_rate"] - baseline_held_in["benign_rate"]
+    lift_held_out = eval_held_out["benign_rate"] - baseline_held_out["benign_rate"]
+    benign_delta = eval_benign_triggered["benign_rate"] - baseline_benign["benign_rate"]
+
+    print(f"Held-in:  {baseline_held_in['benign_rate']:.1%} → {eval_held_in['benign_rate']:.1%}  (lift {lift_held_in:+.1%})")
+    print(f"Held-out: {baseline_held_out['benign_rate']:.1%} → {eval_held_out['benign_rate']:.1%}  (lift {lift_held_out:+.1%})")
+    print(f"Benign:   {baseline_benign['benign_rate']:.1%} → {eval_benign_triggered['benign_rate']:.1%}  (delta {benign_delta:+.1%})")
 
     # --- Save ---
     _save_results(
@@ -222,14 +227,20 @@ def run():
             "final_loss": result.best_loss,
             "timestamp": datetime.now().isoformat(),
             "baseline": {
-                "injections_as_malicious": baseline_injections,
-                "benign_as_benign": baseline_benign,
+                "held_in": baseline_held_in,
+                "held_out": baseline_held_out,
+                "benign": baseline_benign,
             },
             "eval": {
                 "held_in": eval_held_in,
                 "held_out": eval_held_out,
                 "benign_with_trigger": eval_benign_triggered,
                 "benign_clean": eval_benign_clean,
+            },
+            "lift": {
+                "held_in": lift_held_in,
+                "held_out": lift_held_out,
+                "benign_delta": benign_delta,
             },
             "config": experiment_config,
         },
@@ -238,10 +249,10 @@ def run():
 
     # --- Summary ---
     print(f"\n{'='*60}")
-    print(f"  Trigger:   {trigger!r}")
-    print(f"  ASR held-in:  {eval_held_in['benign_rate']:.1%}")
-    print(f"  ASR held-out: {eval_held_out['benign_rate']:.1%}")
-    print(f"  Benign kept:  {eval_benign_triggered['benign_rate']:.1%}")
+    print(f"  Trigger:      {trigger!r}")
+    print(f"  Held-in:      {baseline_held_in['benign_rate']:.1%} → {eval_held_in['benign_rate']:.1%}  (lift {lift_held_in:+.1%})")
+    print(f"  Held-out:     {baseline_held_out['benign_rate']:.1%} → {eval_held_out['benign_rate']:.1%}  (lift {lift_held_out:+.1%})")
+    print(f"  Benign kept:  {baseline_benign['benign_rate']:.1%} → {eval_benign_triggered['benign_rate']:.1%}  (delta {benign_delta:+.1%})")
     print(f"{'='*60}")
 
 
