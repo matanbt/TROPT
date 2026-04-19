@@ -48,16 +48,18 @@ class SliceKey(str, Enum):
     APPENDED = "appended"  # Appended tokens (if any); a.k.a. prefilled tokens
 
 class MessageTargets(pydantic.BaseModel):
-    """Targets for a single selected message."""
+    """Targets for a single selected message.
+    """
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
+    # ── LM response targets ────────────────────────────────────────────────
+    # Consumed by prefill-based and generation-based losses on language models.
+
     target_response_strs: Optional[str] = None
-    """Raw text target response for this message.
-    """
+    """Raw text target response for this message."""
 
     target_response_toks: Optional[Int[Tensor, "target_seq_len"]] = None
-    """Tokenized target response for this message.
-    """
+    """Tokenized target response for this message."""
 
     target_response_logits: Optional[Float[Tensor, "target_seq_len vocab_size"]] = None
     """Target logits from a reference (e.g., jailbroken) model, one per target position.
@@ -65,13 +67,28 @@ class MessageTargets(pydantic.BaseModel):
     Used by distillation-style losses (e.g., FLRT, https://arxiv.org/abs/2407.17447).
     """
 
+    # ── Representation targets ─────────────────────────────────────────────
+    # Consumed by losses that operate on embeddings or hidden-state directions.
+
     target_vectors: Optional[Float[Tensor, "d_model"]] = None
-    """Target embedding vector for this message.
-    """
+    """Target embedding vector for this message."""
 
     target_directions: Optional[Float[Tensor, "d_model"]] = None
     """Target direction in activation space for this message.
     Used by steering losses (e.g., representation engineering).
+    """
+
+    # ── Classifier targets ─────────────────────────────────────────────────
+    # Consumed by losses that operate on classifier logits.
+
+    target_class_idx: Optional[int] = None
+    """Target class index for this message.
+    Used by targeted-misclassification losses on classifier outputs.
+    """
+
+    true_class_idx: Optional[int] = None
+    """True (current) class index for this message; the class to steer away from.
+    Used by untargeted-misclassification losses on classifier outputs.
     """
 
 
@@ -83,6 +100,9 @@ class Targets(pydantic.BaseModel):
     For example, a standard LM jailbreak only needs `target_response_strs` to provide the target outputs.
     """
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True, extra='forbid')
+
+    # ── LM response targets ────────────────────────────────────────────────
+    # Consumed by prefill-based and generation-based losses on language models.
 
     target_response_strs: Optional[Annotated[List[str], "n_templates"]] = None
     """Raw text target outputs, one per template.
@@ -115,6 +135,9 @@ class Targets(pydantic.BaseModel):
     List of length n_templates, each of (potentially different) shape (target_seq_len, vocab_size).
     """
 
+    # ── Representation targets ─────────────────────────────────────────────
+    # Consumed by losses that operate on embeddings or hidden-state directions.
+
     target_vectors: Optional[Float[Tensor, "n_templates d_model"]] = None
     """Target embedding vectors, one per template.
 
@@ -129,6 +152,23 @@ class Targets(pydantic.BaseModel):
     Used by: Steering losses (e.g., refusal suppression).
     Note: if you need per-layer directions, store as (n_templates, n_layers, d_model)
     and update this annotation accordingly.
+    """
+
+    # ── Classifier targets ─────────────────────────────────────────────────
+    # Consumed by losses that operate on classifier logits.
+
+    target_class_idx: Optional[Annotated[List[int], "n_templates"]] = None
+    """Target class indices, one per template.
+
+    List of length n_templates.
+    Used by: targeted-misclassification losses on classifier outputs.
+    """
+
+    true_class_idx: Optional[Annotated[List[int], "n_templates"]] = None
+    """True (current) class indices, one per template; the class to steer away from.
+
+    List of length n_templates.
+    Used by: untargeted-misclassification losses on classifier outputs.
     """
 
     @property

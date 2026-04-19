@@ -16,6 +16,10 @@ Every loss is a callable that returns a per-sample loss tensor of shape `(bsz,)`
 
 This is the single most important rule. Get the names right and everything connects automatically.
 
+> **Target-specific and per-template data belongs in `Targets`/`MessageTargets`, not on the loss instance.**
+
+Dataclass fields on the loss are for **hyperparameters and mode flags** (e.g., `temperature`, `clamp_min_nll`, `targeted`). Anything that varies per template — target tokens, target vectors, target class indices — must live in [`Targets`](../../tropt/common.py) and be pulled in as a `__call__` parameter. This keeps losses stateless w.r.t. the attack and lets the optimizer slice/subsample targets (e.g. UAT template batching) without special-casing. If your loss needs a new kind of per-template info, add a field to both `MessageTargets` and `Targets` in `tropt/common.py` and then name your `__call__` parameter to match. `MisclassCELoss` (via `target_class_idx` / `true_class_idx`) is a reference example.
+
 ### Available parameter names
 
 The resolver matches against fields in three dataclasses:
@@ -47,6 +51,8 @@ The resolver matches against fields in three dataclasses:
 | `target_vectors` | `Float[Tensor, "d_model"]` | Target embedding vector |
 | `target_directions` | `Float[Tensor, "d_model"]` | Target direction in activation space |
 | `target_response_strs` | `str` | Raw target response text |
+| `target_class_idx` | `int` | Target class index (targeted classifier attacks) |
+| `true_class_idx` | `int` | True/current class index (untargeted classifier attacks) |
 
 For the full definitions, see [`ModelOutput`, `ModelInput`, and `MessageTargets` in `tropt/common.py`](../../tropt/common.py). Parameters with default values are ignored by the resolver.
 

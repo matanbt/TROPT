@@ -1,5 +1,6 @@
 from typing import Optional
 
+from tropt.common import Targets
 from tropt.loss import MisclassCELoss
 from tropt.model.huggingface.classifier import ClassifierHFModel
 from tropt.optimizer import OptimizerResult
@@ -37,7 +38,7 @@ def run_classifier_gcg(
 
     optimizer = GCGOptimizer(
         model=model_obj,
-        loss=MisclassCELoss(true_class_idx=true_class_idx),
+        loss=MisclassCELoss(targeted=False),
         tracker=tracker,
         num_steps=250,
         n_candidates=512,
@@ -49,5 +50,6 @@ def run_classifier_gcg(
 
     return optimizer.optimize_trigger(
         templates=[template],
+        targets=Targets(true_class_idx=[true_class_idx]),
         initial_trigger=_INITIAL_TRIGGER,
     )

@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 from datasets import load_dataset
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss import MisclassCELoss
 from tropt.model.huggingface.classifier import ClassifierHFModel
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
@@ -168,7 +168,8 @@ def run():
         experiment_config=experiment_config,
     )
 
-    loss = MisclassCELoss(targeted=True, target_class_idx=BENIGN_CLASS_IDX)
+    loss = MisclassCELoss(targeted=True)
+    targets = Targets(target_class_idx=[BENIGN_CLASS_IDX] * len(templates))
 
     optimizer = GCGPlusOptimizer(
         model=model,
@@ -186,6 +187,7 @@ def run():
 
     result = optimizer.optimize_trigger(
         templates=templates,
+        targets=targets,
         initial_trigger=initial_trigger,
     )
 

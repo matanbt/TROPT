@@ -540,41 +540,43 @@ class MisclassCELoss(ClassificationBasedLoss):
     Two modes:
     - Untargeted (targeted=False): minimizes probability of `true_class_idx`.
     - Targeted (targeted=True): maximizes probability of `target_class_idx`.
+
+    The class indices are per-template target data; pass them via
+    `Targets(true_class_idx=[...])` or `Targets(target_class_idx=[...])`
+    to `optimize_trigger`. See `tropt/common.py`.
     """
 
-    true_class_idx: Optional[int] = None
-    target_class_idx: Optional[int] = None
     targeted: bool = False
-
-    def __post_init__(self):
-        if self.targeted:
-            assert self.target_class_idx is not None, (
-                "target_class_idx must be provided for targeted misclassification."
-            )
-        else:  # untargeted mode
-            assert self.true_class_idx is not None, (
-                "true_class_idx must be provided for untargeted misclassification."
-            )
 
     def __call__(
         self,
         output_class_logits: Float[Tensor, "bsz n_classes"],
+        target_class_idx: Optional[int] = None,
+        true_class_idx: Optional[int] = None,
     ) -> Float[Tensor, "bsz"]:
         bsz = output_class_logits.shape[0]
         device = output_class_logits.device
 
         if self.targeted:
+            assert target_class_idx is not None, (
+                "MisclassCELoss(targeted=True) requires `target_class_idx` "
+                "in Targets / MessageTargets."
+            )
             # Minimize CE w.r.t. target class => maximize target class probability
             target = torch.full(  # ty: ignore[no-matching-overload]
-                (bsz,), self.target_class_idx, dtype=torch.long, device=device
+                (bsz,), target_class_idx, dtype=torch.long, device=device
             )
             return torch.nn.functional.cross_entropy(
                 output_class_logits, target, reduction="none"
             )
         else:  # untargeted mode
+            assert true_class_idx is not None, (
+                "MisclassCELoss(targeted=False) requires `true_class_idx` "
+                "in Targets / MessageTargets."
+            )
             # Negate CE w.r.t. true class => minimize true class probability
             target = torch.full(  # ty: ignore[no-matching-overload]
-                (bsz,), self.true_class_idx, dtype=torch.long, device=device
+                (bsz,), true_class_idx, dtype=torch.long, device=device
             )
             return -torch.nn.functional.cross_entropy(
                 output_class_logits, target, reduction="none"

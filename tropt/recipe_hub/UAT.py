@@ -9,7 +9,7 @@ Reference: https://arxiv.org/abs/1908.07125
 
 from typing import List, Optional
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss import MisclassCELoss
 from tropt.model.huggingface.classifier import ClassifierHFModel
 from tropt.optimizer import OptimizerResult
@@ -43,7 +43,7 @@ def run_uat_classifier(
         trigger_len: Number of trigger tokens to optimize.
         template_batch_size: Templates sampled per optimization step (UAT-style).
     """
-    loss = MisclassCELoss(targeted=True, target_class_idx=target_class_idx)
+    loss = MisclassCELoss(targeted=True)
     initial_trigger = get_printable_random_trigger(
         trigger_len=trigger_len,
         tokenizer=model_obj.tokenizer,
@@ -66,6 +66,7 @@ def run_uat_classifier(
 
     return optimizer.optimize_trigger(
         templates=templates,
+        targets=Targets(target_class_idx=[target_class_idx] * len(templates)),
         initial_trigger=initial_trigger,
     )
 
