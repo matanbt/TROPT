@@ -13,7 +13,7 @@ whether the completion exactly matches the target.
 
 Usage
 -----
-  python scripts/opt-bench/exp3toxic.py run
+  python scripts/opt-bench/exp3toxic.py
 """
 
 import json
