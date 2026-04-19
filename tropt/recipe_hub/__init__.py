@@ -14,7 +14,7 @@ from .GCGMult import run_gcg_mutl_instruction
 from .FLRTDistill import run_flrt_distill
 from .HotFlip import run_hotflip
 from .IRIS import run_iris, run_iris2
-from .MAC import run_mac, run_mac_multi
+from .MAC import run_mac
 from .PAL import run_gcgp_pal, run_pal, run_ral
 from .PEZ import run_pez
 from .PromptRecovery import (
@@ -55,7 +55,6 @@ RECIPES = {
     "iris": run_iris,
     "iris2": run_iris2,
     "mac": run_mac,
-    "mac_multi": run_mac_multi,
     "pal": run_pal,
     "pez": run_pez,
     "pgd": run_pgd,
