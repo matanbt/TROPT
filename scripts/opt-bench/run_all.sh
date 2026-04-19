@@ -39,6 +39,10 @@ mkdir -p "$RESULTS_DIR"
 EXP_FILTER="${EXP_FILTER:-}"      # "" | "1" | "2" | "1bb" (exp1 OpenAI blackbox only)
 MODEL_FILTER="${MODEL_FILTER:-}"  # "" | substring of a WHITEBOX_MODELS entry
 SEED_FILTER="${SEED_FILTER:-}"    # "" | single seed, e.g. "42"
+# Eval-only flow (only consulted when EXP_FILTER is empty, since non-empty
+# EXP_FILTER short-circuits out before the evaluation section).
+EVAL_EXP_FILTER="${EVAL_EXP_FILTER:-}"  # "" | "1" | "2" — restrict eval section to one experiment
+SKIP_CSV_III="${SKIP_CSV_III:-0}"       # "1" to skip the heavy build-csv-iii step in evaluate()
 
 if [[ -n "$MODEL_FILTER" ]]; then
     _filtered=()
@@ -76,11 +80,12 @@ if [[ "$EXP_FILTER" == "1" ]]; then
         python scripts/opt-bench/exp1.py whitebox --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
     done
 
-    echo "=== Exp1: External NanoGCG sweep ==="
-    for model in "${WHITEBOX_MODELS[@]}"; do
-        echo "--- Model: $model ---"
-        python scripts/opt-bench/exp1.py external-nanogcg --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
-    done
+    ## [Disabled -- only for reprod exp]
+    # echo "=== Exp1: External NanoGCG sweep ==="
+    # for model in "${WHITEBOX_MODELS[@]}"; do
+    #     echo "--- Model: $model ---"
+    #     python scripts/opt-bench/exp1.py external-nanogcg --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
+    # done
 
 fi
 
@@ -146,42 +151,49 @@ evaluate() {
         --output-path "$csv_ii" \
         $litellm_flag
 
-    python -m scripts.opt-bench.eval build-csv-iii \
-        --csv-i-path "$csv_i" \
-        --model-name "$eval_model" \
-        --output-path "$csv_iii" \
-        $litellm_flag
+    if [[ "$SKIP_CSV_III" == "1" ]]; then
+        echo "  [skip] build-csv-iii for $prefix (SKIP_CSV_III=1)"
+    else
+        python -m scripts.opt-bench.eval build-csv-iii \
+            --csv-i-path "$csv_i" \
+            --model-name "$eval_model" \
+            --output-path "$csv_iii" \
+            $litellm_flag
+    fi
 }
 
 WHITEBOX_MODELS=(
-    # "meta-llama/Llama-3.1-8B-Instruct"
+    "meta-llama/Llama-3.1-8B-Instruct"
     "google/gemma-3-12b-it"
-    # "Qwen/Qwen3-8B"
+    "Qwen/Qwen3-8B"
     # ----- other models -----
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
 )
 
 # Exp1 white-box: evaluate with each white-box model
-for model in "${WHITEBOX_MODELS[@]}"; do
-    short=$(echo "$model" | sed 's|.*/||')
-    evaluate "optbench_whitebox" "exp1_wb_${short}" "$model"
-done
+if [[ -z "$EVAL_EXP_FILTER" || "$EVAL_EXP_FILTER" == "1" ]]; then
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        short=$(echo "$model" | sed 's|.*/||')
+        evaluate "optbench_whitebox" "exp1_wb_${short}" "$model"
+    done
+fi
 
 # Exp1 black-box: evaluate with the black-box model via LiteLLM
 # short_bb=$(echo "$BLACKBOX_MODEL" | sed 's|.*/||')
 # evaluate "optbench_blackbox" "exp1_bb_${short_bb}" "$BLACKBOX_MODEL" "true"
 
-# Exp2 single: evaluate with each white-box model (separate wandb project)
-# for model in "${WHITEBOX_MODELS[@]}"; do
-#     short=$(echo "$model" | sed 's|.*/||')
-#     evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
-# done
+# Exp2 single + multi: evaluate with each white-box model (separate wandb project)
+if [[ -z "$EVAL_EXP_FILTER" || "$EVAL_EXP_FILTER" == "2" ]]; then
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        short=$(echo "$model" | sed 's|.*/||')
+        evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
+    done
 
-# Exp2 multi: evaluate with each white-box model (separate wandb project)
-# for model in "${WHITEBOX_MODELS[@]}"; do
-#     short=$(echo "$model" | sed 's|.*/||')
-#     evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
-# done
+    for model in "${WHITEBOX_MODELS[@]}"; do
+        short=$(echo "$model" | sed 's|.*/||')
+        evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
+    done
+fi
 
 echo "=== All done. Results in $RESULTS_DIR/ ==="

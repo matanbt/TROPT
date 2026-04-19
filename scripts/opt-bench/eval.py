@@ -84,7 +84,7 @@ def build_csv_i(
     filters = {"state": "finished", "config.run_type": run_type}
     if model_name:
         filters["config.model_name"] = model_name
-    filters["config.msg_id"] = 0  # Only include runs with msg_id=0 (initial optimization)
+    # filters["config.msg_id"] = 0  # Only include runs with msg_id=0 (initial optimization)
     runs = api.runs(f"{WANDB_ENTITY}/{wandb_project}", filters=filters)
     rows = []
     for run in runs:

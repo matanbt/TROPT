@@ -23,7 +23,7 @@ from pathlib import Path
 import torch
 from datasets import load_dataset
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 from tropt.loss import MisclassCELoss
 from tropt.model.huggingface.classifier import ClassifierHFModel
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
@@ -43,7 +43,7 @@ BENIGN_CLASS_IDX = 0
 MALICIOUS_CLASS_IDX = 1
 
 N_HELD_IN = 50
-TRIGGER_LEN = 5
+TRIGGER_LEN = 20
 NUM_STEPS = 500
 TEMPLATE_BATCH_SIZE = 10
 N_CANDIDATES = 256
@@ -150,9 +150,7 @@ def run():
         "n_held_out": len(held_out),
         "n_benign": len(benign_texts),
         "trigger_len": TRIGGER_LEN,
-        "num_steps": NUM_STEPS,
         "template_batch_size": TEMPLATE_BATCH_SIZE,
-        "n_candidates": N_CANDIDATES,
         "seed": SEED,
     }
 
@@ -168,26 +166,28 @@ def run():
         experiment_config=experiment_config,
     )
 
-    loss = MisclassCELoss(targeted=True)
-    targets = Targets(target_class_idx=[BENIGN_CLASS_IDX] * len(templates))
+    loss = MisclassCELoss(targeted=True, target_class_idx=BENIGN_CLASS_IDX)
 
     optimizer = GCGPlusOptimizer(
         model=model,
         loss=loss,
         tracker=tracker,
         seed=SEED,
-        num_steps=NUM_STEPS,
-        n_candidates=N_CANDIDATES,
+
+        # GCG parameters:
+        num_steps=500,
+        n_candidates=512,
         sample_topk=256,
         sample_n_replace=1,
         token_constraints=TOKEN_CONSTRAINTS,
         use_retokenize=True,
+
+        # UAT instantiation:
         template_batch_size=TEMPLATE_BATCH_SIZE,
     )
 
     result = optimizer.optimize_trigger(
         templates=templates,
-        targets=targets,
         initial_trigger=initial_trigger,
     )
 
@@ -201,7 +201,7 @@ def run():
     eval_held_in = _evaluate_split(model, held_in, trigger, append_trigger=True)
     eval_held_out = _evaluate_split(model, held_out, trigger, append_trigger=True)
     eval_benign_triggered = _evaluate_split(model, benign_texts, trigger, append_trigger=True)
-    eval_benign_clean = _evaluate_split(model, benign_texts, trigger, append_trigger=False)
+    eval_benign_clean = _evaluate_split(model, benign_texts, "", append_trigger=False)
 
     lift_held_in = eval_held_in["benign_rate"] - baseline_held_in["benign_rate"]
     lift_held_out = eval_held_out["benign_rate"] - baseline_held_out["benign_rate"]
