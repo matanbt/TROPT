@@ -27,14 +27,16 @@ def run_mac(
     optimizer = GCGPlusOptimizer(
         model=model_obj,
         loss=PrefillCELoss(),
+        proxy_model=model_obj,
         tracker=tracker,
         candidate_selection="gradient",
         num_steps=20,           # paper T
         n_candidates=256,       # paper B
         sample_topk=256,        # paper k
-        sample_n_replace=1,
+        sample_n_replace=(1, 1),
         momentum=momentum,
-        token_constraints=TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True),
+        candidate_oversample_factor=1.1,
+        token_constraints=TokenConstraints(),
         use_retokenize=True,
     )
 

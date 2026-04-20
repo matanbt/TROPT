@@ -20,7 +20,7 @@ from tropt.common import Targets
 from tropt.loss import SimilarityLoss
 from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
 from tropt.optimizer import OptimizerResult
-from tropt.optimizer.gcg_optimizer import GCGOptimizer
+from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
 
@@ -107,17 +107,19 @@ def run_prompt_recovery(
             model_name=model_name,
         )
 
-    optimizer = GCGOptimizer(
+    optimizer = GCGPlusOptimizer(
         model=model_obj,
         loss=SimilarityLoss(),
+        proxy_model=model_obj,
         tracker=tracker,
+        candidate_selection="gradient",
         num_steps=num_steps,
         n_candidates=n_candidates,
         sample_topk=256,
-        sample_n_replace=1,
-        token_constraints=TokenConstraints(
-            disallow_non_ascii=True, disallow_special_tokens=True
-        ),
+        sample_n_replace=(1, 1),
+        momentum=0.6,  # MAC paper's optimal mu
+        candidate_oversample_factor=1.1,
+        token_constraints=TokenConstraints(),
         use_retokenize=True,
     )
 
