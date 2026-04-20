@@ -16,7 +16,7 @@ from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.loss.base import BaseLoss
-from tropt.loss.utils import IGNORE_INDEX, masked_mean
+from tropt.loss.utils import masked_mean
 
 logger = logging.getLogger(__name__)
 
@@ -292,22 +292,21 @@ class FirstTokenNLLLoss(TextBasedLoss):
 
 @dataclass
 class ExternalTriggerPerplexityLoss(BaseLoss):
-    """Perplexity of the trigger under an external LM (operates on the trigger strings).
+    """Perplexity of trigger under an external LM.
 
-    Wraps each trigger with naturalness_prefix and computes the perplexity wrt model_name_or_path.
-    Not differentiable: uses a separate external model with no gradient path to the optimized trigger embeddings.
+    Notes:
+    - Scores the whole sequence. 
     """
 
     is_differentiable: ClassVar[bool] = False
 
     naturalness_prefix: str = "Here is a readable sentence: "
 
-    model_name_or_path: str = "HuggingFaceTB/SmolLM2-135M"
+    model_name_or_path: str = "google/gemma-2-2b"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     max_batch_size: int = 256
     _model: Any = field(default=None, init=False, repr=False)
     _tokenizer: Any = field(default=None, init=False, repr=False)
-    _prefix_tok_len: int = field(default=0, init=False, repr=False)
 
     def __post_init__(self):
         super().__post_init__()
@@ -321,12 +320,18 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
         _tokenizer = AutoTokenizer.from_pretrained(self.model_name_or_path)
         assert isinstance(_tokenizer, transformers.PreTrainedTokenizerBase)
         self._tokenizer: transformers.PreTrainedTokenizerBase = _tokenizer
+
+        # We feed raw "prefix + trigger" as plain text, which only makes sense for a
+        # base LM. A chat template means the model was trained on role-wrapped input
+        # and perplexity on plain text would be off-distribution.
+        assert getattr(self._tokenizer, "chat_template", None) is None, (
+            f"{type(self).__name__} expects a base LM without a chat template; "
+            f"{self.model_name_or_path} has one. Use a base model (e.g. 'google/gemma-2-2b')."
+        )
+
         self._tokenizer.padding_side = "left"
         if self._tokenizer.pad_token is None:
             self._tokenizer.pad_token = self._tokenizer.eos_token
-
-        # Store prefix length to mask it out later
-        self._prefix_tok_len = len(self._tokenizer(self.naturalness_prefix, add_special_tokens=False).input_ids)
 
     def __call__(
         self,
@@ -341,43 +346,33 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
 
             all_losses = []
             for i in range(0, len(texts), batch_size):
+                enc = self._tokenizer(
+                    texts[i : i + batch_size],
+                    return_tensors="pt", padding=True, truncation=True,
+                )
+                inputs = enc.to(self.device)
 
-                # Tokenize:
-                inputs = self._tokenizer(
-                    texts[i : i + batch_size], return_tensors="pt", padding=True, truncation=True
-                ).to(self.device)
-                trigger_ids = [
-                    self._tokenizer(t, add_special_tokens=False).input_ids for t in input_trigger_strs[i : i + batch_size]
-                ]
-
-                # Get trigger logits:
                 with torch.no_grad():
                     logits = self._model(**inputs).logits  # (bsz, seq_len, vocab_size)
 
-                # pad logits & ids with ignore index, to unify lengths:
-                max_trigger_len = max(len(ids) for ids in trigger_ids)
-                # Left pad trigger_ids to max_trigger_len with -100 for ignore index in loss:
-                trigger_ids = [  # left-pad with -100 for ignore index in loss
-                    torch.tensor([IGNORE_INDEX] * (max_trigger_len - len(ids)) + ids) for ids in trigger_ids
-                ]
-                # Extract the logits corresponding to the trigger tokens (accounting for prefix length and padding):
-                trigger_logits = [
-                    logits[j, -max_trigger_len - 1 : -1, :]
-                    for j, ids in enumerate(trigger_ids)
-                ]  # list of (max_trigger_len, vocab_size)
+                # Shift: logits[:, i] predicts input_ids[:, i+1].
+                pred_logits = logits[:, :-1]  # (bsz, seq-1, vocab)
+                target_ids = inputs.input_ids[:, 1:]  # (bsz, seq-1)
+                # A (predictor, target) pair is valid only if both are content
+                # tokens (not pad / first).
+                valid = (
+                    inputs.attention_mask[:, :-1] * inputs.attention_mask[:, 1:]
+                ).float()
 
-                trigger_logits = torch.stack(trigger_logits, dim=0).to(self.device)  # (bsz, trigger_len, vocab_size)
-                trigger_ids = torch.stack(trigger_ids, dim=0).to(self.device)  # (bsz, trigger_len)
-
-                log_perp = torch.nn.functional.cross_entropy(
-                    trigger_logits.transpose(1, 2),  # (bsz, vocab_size, trigger_len)
-                    trigger_ids,  # (bsz, trigger_len)
+                ce = torch.nn.functional.cross_entropy(
+                    pred_logits.transpose(1, 2),  # (bsz, vocab, seq-1)
+                    target_ids,                   # (bsz, seq-1)
                     reduction="none",
-                )  # (bsz, trigger_len)
+                )  # (bsz, seq-1)
 
-                all_losses.append(
-                    masked_mean(log_perp, (trigger_ids != IGNORE_INDEX).float())  # mean over trigger tokens
-                )
+                all_losses.append(masked_mean(ce, valid))
+
+                # Note: We compute the perplexity over the whole seq. The prefix is identical across triggers, and each prefix token's NLL depends only on preceding context (causal LM) --- so its contribution is an additive constant that cancels in comparisons/rankings; no need to isolate trigger tokens.
 
             return torch.cat(all_losses, dim=0)  # (bsz,)
 
