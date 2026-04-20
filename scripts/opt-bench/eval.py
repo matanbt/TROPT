@@ -51,8 +51,8 @@ def _generate_with_hf(triggered_messages: List[str], model_name: str,
         tok.pad_token_id = eos[0] if isinstance(eos, list) else eos
     tok.padding_side = "left"
     messages = [[{"role": "user", "content": t}] for t in triggered_messages]
-    outputs = pipe(messages, max_new_tokens=max_new_tokens, do_sample=False,
-                   batch_size=batch_size, return_full_text=False)
+    outputs = pipe(messages, max_new_tokens=max_new_tokens, max_length=None,
+                   do_sample=False, batch_size=batch_size, return_full_text=False)
     return [out[0]["generated_text"] for out in outputs]
 
 
