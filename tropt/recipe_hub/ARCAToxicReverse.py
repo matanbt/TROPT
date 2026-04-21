@@ -11,6 +11,7 @@ Reference: https://arxiv.org/abs/2303.04381
 Official implementation: https://github.com/ejones313/auditing-llms
 """
 
+import math
 from typing import List, Optional
 
 from tropt.common import Targets
@@ -99,6 +100,7 @@ def run_arca_toxic_reverse(
     tracker: Optional[BaseTracker] = None,
     num_steps: int = 500,
     perplexity_weight: float = 0.0,
+    clamp_min_nll: Optional[float] = -math.log(0.6),
 ) -> OptimizerResult:
     """Reverse an LLM on a toxic output (Section 4.2.1 of Jones et al., 2023).
 
@@ -107,6 +109,8 @@ def run_arca_toxic_reverse(
 
     ``perplexity_weight`` controls the weight of ExternalTriggerPerplexityLoss
     added to the eval loss (0.0 disables it). PrefillCE weight is fixed at 1.0.
+    ``clamp_min_nll`` floors per-token NLL on PrefillCELoss so already-solved
+    positions stop pulling the optimizer (FLRT, Eq. 5). Pass ``None`` to disable.
     """
     if model_obj is None:
         model_obj = LMHFModel(
@@ -119,10 +123,11 @@ def run_arca_toxic_reverse(
 
     # Loss setup: PrefillCE for gradients (proxy_loss), optionally combined
     # with ExternalTriggerPerplexityLoss for candidate evaluation.
-    eval_loss = PrefillCELoss()
+    # TODO use tricks found in exp2.py
+    eval_loss = PrefillCELoss(clamp_min_nll=clamp_min_nll)
     if perplexity_weight > 0.0:
         eval_loss = CombinedLoss(
-            [PrefillCELoss(), ExternalTriggerPerplexityLoss()],
+            [PrefillCELoss(clamp_min_nll=clamp_min_nll), ExternalTriggerPerplexityLoss()],
             weights=[1.0, perplexity_weight],
         )
 
@@ -130,7 +135,7 @@ def run_arca_toxic_reverse(
         model=model_obj,
         loss=eval_loss,
         proxy_model=model_obj,
-        proxy_loss=PrefillCELoss(),
+        proxy_loss=PrefillCELoss(clamp_min_nll=clamp_min_nll),
         tracker=tracker,
         num_steps=num_steps,
         n_candidates=512,

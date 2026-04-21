@@ -1,8 +1,8 @@
 """
-Jailbreak Enhancements Benchmark — fixes GCG optimizer, sweeps attack tricks.
+Jailbreak Enhancements Benchmark — fixes MAC optimizer, sweeps attack tricks.
 
 Evaluates loss variants, template tricks, and activation steering on a
-fixed GCG optimizer to isolate the effect of each enhancement.
+fixed MAC optimizer to isolate the effect of each enhancement.
 
 Usage
 -----
@@ -16,6 +16,7 @@ Usage
   python scripts/opt-bench/exp2.py single --model-name google/gemma-3-270m-it \
       --msg-ids 0 --seeds 42 --variants gcg_vanilla gcg_cw
 """
+from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 import math
 from dataclasses import dataclass
 from typing import Callable, List, Optional
@@ -36,7 +37,6 @@ from tropt.loss import (
     SteeringActivationLoss,
 )
 from tropt.model.huggingface.lm import LMHFModel
-from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import WandbTracker
 from tropt.utils.refusal_dir import (
@@ -56,13 +56,19 @@ CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 _RUN_TYPE_SINGLE = "enhancebench_single"
 _RUN_TYPE_MULTI = "enhancebench_multi"
 
-# ─── Fixed GCG hyperparameters (from attack zoo GCG.py defaults) ────────────
+# ─── Fixed MAC hyperparameters ─
 _TC = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
-_GCG_KWARGS = dict(
-    num_steps=500,
-    n_candidates=512,
-    sample_topk=256,
-    sample_n_replace=1,
+LARGE_NUM_STEPS = 20_000  # rely on FLOP budget to stop
+FLOP_BUDGET = 3e17        # matches exp1 for unified comparison
+_MAC_KWARGS = dict(
+    num_steps=LARGE_NUM_STEPS,
+    candidate_selection="gradient",
+    n_candidates=256, sample_topk=256,  # paper B=k=256
+    # n_candidates=512, sample_topk=256,  # GCG-like HPs 
+    # n_candidates=128, sample_topk=256  # PAL-like HPs
+    sample_n_replace=(1, 1),
+    momentum=0.6,  # paper's optimal mu
+    candidate_oversample_factor=1.1,
     token_constraints=_TC,
     use_retokenize=True,
 )
@@ -437,7 +443,7 @@ def _make_wandb_config(
         "run_type": run_type,
         "model_name": model_name,
         "variant_name": variant_name,
-        "optimizer_name": "gcg",  # fixed across exp2
+        "optimizer_name": "mac",  # fixed across exp2
         "loss_name": loss_name,
         "seed": seed,
     }
@@ -457,14 +463,17 @@ def _run_single_attack(
     tracker: WandbTracker,
     seed: int,
 ):
-    """Run one GCG optimization and log final stats."""
+    """Run one MAC optimization and log final stats."""
     torch.manual_seed(seed)
 
     blacklist_ids = _TC.get_blacklist_ids(model.tokenizer)
     initial_trigger = cfg.initial_trigger_fn(model.tokenizer, blacklist_ids, seed)
 
     loss = cfg.loss_factory(model)
-    optimizer = GCGOptimizer(model=model, loss=loss, tracker=tracker, seed=seed, **_GCG_KWARGS)
+    optimizer = GCGPlusOptimizer(
+        model=model, proxy_model=model, loss=loss, tracker=tracker, seed=seed, **_MAC_KWARGS
+    )
+    optimizer.set_budget(FLOP_BUDGET, metric="total_flops")
     optimizer.optimize_trigger(
         templates=[template],
         targets=targets,
@@ -481,14 +490,17 @@ def _run_multi_attack(
     tracker: WandbTracker,
     seed: int,
 ):
-    """Run one GCG optimization over multiple instructions simultaneously."""
+    """Run one MAC optimization over multiple instructions simultaneously."""
     torch.manual_seed(seed)
 
     blacklist_ids = _TC.get_blacklist_ids(model.tokenizer)
     initial_trigger = cfg.initial_trigger_fn(model.tokenizer, blacklist_ids, seed)
 
     loss = cfg.loss_factory(model)
-    optimizer = GCGOptimizer(model=model, loss=loss, tracker=tracker, seed=seed, **_GCG_KWARGS)
+    optimizer = GCGPlusOptimizer(
+        model=model, proxy_model=model, loss=loss, tracker=tracker, seed=seed, **_MAC_KWARGS
+    )
+    optimizer.set_budget(FLOP_BUDGET, metric="total_flops")
     optimizer.optimize_trigger(
         templates=templates,
         targets=targets,

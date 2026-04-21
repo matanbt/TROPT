@@ -21,9 +21,14 @@ WHITEBOX_MODELS=(
     "meta-llama/Llama-3.1-8B-Instruct"
     "google/gemma-3-12b-it"
     "Qwen/Qwen3-8B"
+    "google/gemma-4-26B-A4B-it"
     # ----- other models -----
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
+)
+# exp2 is pinned to a single model (cheaper sweep for tweak ablations).
+EXP2_MODELS=(
+    "google/gemma-3-12b-it"
 )
 BLACKBOX_MODEL="openai/gpt-4o-mini"
 
@@ -51,6 +56,12 @@ if [[ -n "$MODEL_FILTER" ]]; then
     done
     WHITEBOX_MODELS=("${_filtered[@]}")
     echo "[filter] WHITEBOX_MODELS -> ${WHITEBOX_MODELS[*]}"
+    _filtered=()
+    for _m in "${EXP2_MODELS[@]}"; do
+        if [[ "$_m" == *"$MODEL_FILTER"* ]]; then _filtered+=("$_m"); fi
+    done
+    EXP2_MODELS=("${_filtered[@]}")
+    echo "[filter] EXP2_MODELS -> ${EXP2_MODELS[*]}"
 fi
 if [[ -n "$SEED_FILTER" ]]; then
     SEEDS="$SEED_FILTER"
@@ -99,13 +110,13 @@ fi
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
 if [[ "$EXP_FILTER" == "2" ]]; then
     echo "=== Exp2: Single-instruction tweak sweep ==="
-    for model in "${WHITEBOX_MODELS[@]}"; do
+    for model in "${EXP2_MODELS[@]}"; do
         echo "--- Model: $model ---"
         python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
     done
 
     echo "=== Exp2: Multi-instruction tweak sweep ==="
-    for model in "${WHITEBOX_MODELS[@]}"; do
+    for model in "${EXP2_MODELS[@]}"; do
         echo "--- Model: $model ---"
         python scripts/opt-bench/exp2.py multi --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
     done
@@ -166,9 +177,13 @@ WHITEBOX_MODELS=(
     "meta-llama/Llama-3.1-8B-Instruct"
     "google/gemma-3-12b-it"
     "Qwen/Qwen3-8B"
+    "google/gemma-4-26B-A4B-it"
     # ----- other models -----
     # "HuggingFaceTB/SmolLM2-135M-Instruct"  # <-- sanity check
     # "mistralai/Mistral-7B-Instruct-v0.3"  # <-- optinal
+)
+EXP2_MODELS=(
+    "google/gemma-3-12b-it"
 )
 
 # Exp1 white-box: evaluate with each white-box model
@@ -185,12 +200,12 @@ fi
 
 # Exp2 single + multi: evaluate with each white-box model (separate wandb project)
 if [[ -z "$EVAL_EXP_FILTER" || "$EVAL_EXP_FILTER" == "2" ]]; then
-    for model in "${WHITEBOX_MODELS[@]}"; do
+    for model in "${EXP2_MODELS[@]}"; do
         short=$(echo "$model" | sed 's|.*/||')
         evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
     done
 
-    for model in "${WHITEBOX_MODELS[@]}"; do
+    for model in "${EXP2_MODELS[@]}"; do
         short=$(echo "$model" | sed 's|.*/||')
         evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
     done

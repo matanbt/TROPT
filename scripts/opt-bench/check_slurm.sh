@@ -4,9 +4,10 @@
 # Job naming scheme (one slurm job = one (exp, model, seed) triple):
 #   exp{N}{letter}{seed_idx}
 #     N        ∈ {1, 2}            — exp1.py / exp2.py
-#     letter   ∈ {l, g, q}         — Llama / Gemma / Qwen
+#     letter   ∈ {l, g, q, m}      — Llama / Gemma-3-12B / Qwen / Gemma-4-MoE
+#                                    (exp2 is pinned to {g}; see EXP2_LETTERS)
 #     seed_idx ∈ {1, 2, 3}         — position in SEEDS (42, 123, 777)
-# Example: exp1g1 = exp1 on Gemma with seed 42.
+# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m1 = exp1 on Gemma-4-MoE.
 #
 # Expects scripts/opt-bench/eval.slurm to exist; the slurm wrapper is expected
 # to end with `bash scripts/opt-bench/run_all.sh`, which reads the env vars
@@ -63,8 +64,10 @@ declare -A LETTER_TO_MODEL=(
     [l]="meta-llama/Llama-3.1-8B-Instruct"
     [g]="google/gemma-3-12b-it"
     [q]="Qwen/Qwen3-8B"
+    [m]="google/gemma-4-26B-A4B-it"
 )
-LETTERS=(l g q)
+EXP1_LETTERS=(l g q m)
+EXP2_LETTERS=(g)    # exp2 is pinned to gemma-3-12b (see run_all.sh EXP2_MODELS)
 SEEDS=(42 123 777)
 EXPS=(1 2)
 if [[ -n "$EXP_LIMIT" ]]; then
@@ -95,7 +98,11 @@ fi
 # ─── Build expected job list ────────────────────────────────────────────────
 EXPECTED=()
 for exp in "${EXPS[@]}"; do
-    for letter in "${LETTERS[@]}"; do
+    case "$exp" in
+        1) letters=("${EXP1_LETTERS[@]}") ;;
+        2) letters=("${EXP2_LETTERS[@]}") ;;
+    esac
+    for letter in "${letters[@]}"; do
         for i in 1 2 3; do
             EXPECTED+=("exp${exp}${letter}${i}")
         done
@@ -150,7 +157,7 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         #     sbatch -J "$job" --export=ALL,EXP_FILTER=1bb "$SLURM_FILE"
         #     continue
         # fi
-        if [[ ! "$job" =~ ^exp([12])([lgq])([123])$ ]]; then
+        if [[ ! "$job" =~ ^exp([12])([lgqm])([123])$ ]]; then
             echo "  [skip] $job — unrecognized format"
             continue
         fi
