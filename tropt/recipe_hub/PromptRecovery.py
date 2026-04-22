@@ -290,7 +290,6 @@ def recover_prompt_end_to_end(
     sd_model_name: str = "sd2-community/stable-diffusion-2-1",
     clip_model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
     num_steps: int = 1000,
-    n_candidates: int = 512,
     n_initial_tokens: int = 20,
     seed: int = 0,
     height: int = 768,
@@ -335,7 +334,6 @@ def recover_prompt_end_to_end(
         model_name=clip_model_name,
         initial_trigger=initial_trigger,
         num_steps=num_steps,
-        n_candidates=n_candidates,
         tracker=tracker,
         seed=seed,
     )

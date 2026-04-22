@@ -45,10 +45,7 @@ SAMPLED_PROMPTS = [
     'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
 ]
 
-N_PROMPTS = 5
-POOL_SIZE = 1000       # rows streamed from head before uniform sampling
 NUM_STEPS = 1000       # truncated from paper's 3000 for faster iteration
-N_CANDIDATES = 512     # paper p.7
 N_INITIAL_TOKENS = 20  # paper uses 8-20; we pick the upper bound with random init
 SEEDS = [0, 1, 2]      # three independent runs per prompt
 
@@ -137,7 +134,6 @@ def run():
                 "recovered_prompt": quad.recovered_prompt,
                 "best_loss": quad.best_loss,
                 "num_steps": NUM_STEPS,
-                "n_candidates": N_CANDIDATES,
                 "n_initial_tokens": N_INITIAL_TOKENS,
             }
             with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
@@ -159,7 +155,6 @@ def run():
         "sampled_prompts": list(SAMPLED_PROMPTS),
         "extra_prompts": EXTRA_PROMPTS,
         "num_steps": NUM_STEPS,
-        "n_candidates": N_CANDIDATES,
         "n_initial_tokens": N_INITIAL_TOKENS,
         "seeds": SEEDS,
         "gen_height": GEN_HEIGHT,
