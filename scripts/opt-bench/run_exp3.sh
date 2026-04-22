@@ -6,10 +6,14 @@
 # echo "=== Exp3: Corpus poisoning (RandomSearch on OpenAI) ==="
 # python scripts/opt-bench/exp3-corpois.py rs-openai
 
-echo "=== Exp3: Prompt Injection ==="
-python scripts/opt-bench/exp3-pinj.py
+# echo "=== Exp3: Prompt Injection ==="
+# python scripts/opt-bench/exp3-pinj.py
 
-echo "=== Exp3: Toxicity Auditing ==="
-python scripts/opt-bench/exp3-toxic.py
+# echo "=== Exp3: Toxicity Auditing ==="
+# python scripts/opt-bench/exp3-toxic.py
+
+echo "=== Exp3: Prompt Recovery ==="
+python scripts/opt-bench/exp3-promrec.py
+
 
 echo ">> After running all exp3. <<"
