@@ -192,9 +192,17 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         #     continue
         # fi
 
-        echo "  sbatch $job  exp=$exp_num model=$model seed=$seed"
+        # Gemma-4 MoE (m = gemma-4-26B-A4B-it) is much larger than the rest —
+        # needs a beefier partition and longer wall-time.
+        extra_sbatch_args=()
+        if [[ "$letter" == "m" ]]; then
+            extra_sbatch_args+=(--partition=gpu-h100-killable --time=1200)
+        fi
+
+        echo "  sbatch $job  exp=$exp_num model=$model seed=$seed ${extra_sbatch_args[*]}"
         sbatch \
             -J "$job" \
+            "${extra_sbatch_args[@]}" \
             --export=ALL,EXP_FILTER="$exp_num",MODEL_FILTER="$model",SEED_FILTER="$seed" \
             "$SLURM_FILE"
     done

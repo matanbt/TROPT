@@ -35,7 +35,9 @@ WANDB_PROJECT = "tropt-prompt-recovery"
 SD_MODEL = "sd2-community/stable-diffusion-2-1"  # mirror of stabilityai/stable-diffusion-2-1 (fn.2)
 CLIP_MODEL = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"  # SD-2.1's text encoder
 DATASET_NAME = "poloclub/diffusiondb"
-DATASET_CONFIG = "2m_text_only"  # prompts-only; streamed (avoids full image dataset download)
+# Text-only metadata parquet (2M prompts); load directly to avoid the
+# legacy dataset script that newer `datasets` versions no longer support.
+DATASET_PARQUET_URL = f"https://huggingface.co/datasets/{DATASET_NAME}/resolve/main/metadata.parquet"
 
 N_PROMPTS = 5
 POOL_SIZE = 1000      # rows streamed from head before uniform sampling
@@ -53,7 +55,9 @@ OUTPUT_DIR = Path("scripts/opt-bench/results/exp3_promrec")
 
 def _sample_prompts(n: int, pool_size: int, seed: int) -> list[str]:
     """Stream a head pool from DiffusionDB text-only and uniform-sample n prompts."""
-    ds = load_dataset(DATASET_NAME, DATASET_CONFIG, split="train", streaming=True)
+    ds = load_dataset(
+        "parquet", data_files=DATASET_PARQUET_URL, split="train", streaming=True,
+    )
     pool = [row["prompt"] for row in ds.take(pool_size)]
     return random.Random(seed).sample(pool, n)
 
@@ -61,7 +65,7 @@ def _sample_prompts(n: int, pool_size: int, seed: int) -> list[str]:
 def run():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Sampling {N_PROMPTS} prompts from {DATASET_NAME}/{DATASET_CONFIG} (pool={POOL_SIZE})...")
+    print(f"Sampling {N_PROMPTS} prompts from {DATASET_NAME} metadata.parquet (pool={POOL_SIZE})...")
     prompts = _sample_prompts(N_PROMPTS, POOL_SIZE, SEED)
     for i, p in enumerate(prompts):
         print(f"  [{i}] {p[:100]}")
@@ -158,7 +162,7 @@ def run():
         "sd_model": SD_MODEL,
         "clip_model": CLIP_MODEL,
         "dataset": DATASET_NAME,
-        "dataset_config": DATASET_CONFIG,
+        "dataset_file": "metadata.parquet",
         "n_prompts": N_PROMPTS,
         "pool_size": POOL_SIZE,
         "num_steps": NUM_STEPS,
