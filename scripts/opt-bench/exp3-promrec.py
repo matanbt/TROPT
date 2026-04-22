@@ -40,8 +40,7 @@ DATASET_PARQUET_URL = f"https://huggingface.co/datasets/{DATASET_NAME}/resolve/m
 
 N_PROMPTS = 5
 POOL_SIZE = 1000       # rows streamed from head before uniform sampling
-NUM_STEPS = 1000       # truncated from paper's 3000 for faster iteration
-N_CANDIDATES = 512     # paper p.7
+NUM_STEPS = 500       # truncated from paper's 3000 for faster iteration
 N_INITIAL_TOKENS = 20  # paper uses 8-20; we pick the upper bound with random init
 PROMPT_SAMPLING_SEED = 42
 SEEDS = [0, 1, 2]      # three independent runs per prompt
@@ -109,7 +108,6 @@ def run():
                     "prompt_idx": i,
                     "original_prompt": original_prompt,
                     "num_steps": NUM_STEPS,
-                    "n_candidates": N_CANDIDATES,
                     "n_initial_tokens": N_INITIAL_TOKENS,
                     "seed": seed,
                 },
@@ -120,7 +118,6 @@ def run():
                 sd_model_name=SD_MODEL,
                 clip_model_name=CLIP_MODEL,
                 num_steps=NUM_STEPS,
-                n_candidates=N_CANDIDATES,
                 n_initial_tokens=N_INITIAL_TOKENS,
                 seed=seed,
                 height=GEN_HEIGHT, width=GEN_WIDTH,

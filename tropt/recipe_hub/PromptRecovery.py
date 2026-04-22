@@ -75,8 +75,7 @@ def run_prompt_recovery(
     model_name: str = "openai/clip-vit-large-patch14",
     template: str = "{{OPTIMIZED_TRIGGER}}",
     initial_trigger: str = _DEFAULT_INITIAL_TRIGGER,
-    num_steps: int = 3000,
-    n_candidates: int = 512,
+    num_steps: int = 250,
     tracker: Optional[BaseTracker] = None,
     target_image_path: Optional[str] = None,
     target_image_emb: Optional[Float[Tensor, "d_model"]] = None,
@@ -89,7 +88,6 @@ def run_prompt_recovery(
         model_name: CLIP-like model to use as proxy.
         template: Text template with trigger placeholder.
         initial_trigger: Starting trigger tokens.
-        num_steps: Number of GCG optimization steps (paper uses 3000).
         n_candidates: Candidate batch size per step (paper uses 512).
         tracker: Optional experiment tracker.
         target_image_path: Path to an image file (used if `image` is None).
@@ -115,13 +113,15 @@ def run_prompt_recovery(
         loss=SimilarityLoss(),
         proxy_model=model_obj,
         tracker=tracker,
+        
+        # MAC paper params:
         candidate_selection="gradient",
         num_steps=num_steps,
-        n_candidates=n_candidates,
-        sample_topk=256,
+        sample_topk=256,  n_candidates=256,
         sample_n_replace=(1, 1),
-        momentum=0.6,  # MAC paper's optimal mu
+        momentum=0.6,
         candidate_oversample_factor=1.1,
+
         token_constraints=TokenConstraints(),
         use_retokenize=True,
         seed=seed,
