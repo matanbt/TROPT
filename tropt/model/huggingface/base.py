@@ -549,8 +549,9 @@ class HuggingFaceBackendModel:
     def dtype(self):
         return next(self._model.parameters()).dtype
 
-    @property
+    @cached_property
     def tokenizer(self) -> HFTokenizerWrapper:
+        # Cached so repeated `.tokenizer` accesses return the same wrapper
         return HFTokenizerWrapper(self._tokenizer)
 
     @property
