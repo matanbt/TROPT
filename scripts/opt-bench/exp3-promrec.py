@@ -38,7 +38,11 @@ DATASET_NAME = "poloclub/diffusiondb"
 # uniform-sample N_PROMPTS=5 with random.Random(PROMPT_SAMPLING_SEED=42).
 # See scripts/opt-bench/sample_diffusiondb_prompts.py to re-sample.
 SAMPLED_PROMPTS = [
-    # TODO: fill in after running sample_diffusiondb_prompts.py locally
+    'anthropomorphic ferret animal, dressed as cute raver girl dancer, dance club in tropical paradise, many woodland creatures dancing, concept design, contrast, hot toy, kim jung gi, greg rutkowski, zabrocki, karlkka, jayison devadas, trending on artstation, 8 k, ultra wide angle, pincushion lens effect ',
+    'render of dreamy beautiful landscape, fantasy dreamy, dreams beach, artger, large scale, details vintage photo hyper realistic ultra realistic photo realistic photography, unreal engine, high detailed, 8 k ',
+    'a painting by edward hopper of scenes from the mad max movie universe. ',
+    'overcook videogame in the style of hr giger ',
+    'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
 ]
 
 N_PROMPTS = 5

@@ -181,7 +181,7 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         fi
 
         # skip non gemma model:
-        # if [[ "$model" != "google/gemma-3-12b-it" ]]; then
+        # if [[ "$model" != "google/gemma-4-26B-A4B-it" ]]; then
         #     echo "  [skip] $job — model=$model (only Gemma is run to save resources)"
         #     continue
         # fi
@@ -193,10 +193,15 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         # fi
 
         # Gemma-4 MoE (m = gemma-4-26B-A4B-it) is much larger than the rest —
-        # needs a beefier partition and longer wall-time.
+        # route it to the H100 partition/node (the default eval.slurm pins
+        # nodelist to gpu-sharifm nodes, which would reject the h100 partition).
         extra_sbatch_args=()
         if [[ "$letter" == "m" ]]; then
-            extra_sbatch_args+=(--partition=gpu-h100-killable --time=1200)
+            extra_sbatch_args+=(
+                --partition=gpu-h100-killable
+                --nodelist=n-102,t-100
+                --time=1200
+            )
         fi
 
         echo "  sbatch $job  exp=$exp_num model=$model seed=$seed ${extra_sbatch_args[*]}"
