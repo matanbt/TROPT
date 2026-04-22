@@ -1,11 +1,13 @@
 """
 Prompt Recovery reproduction (Williams et al., 2024).
 
-Samples N prompts from DiffusionDB (text-only, streamed), generates reference
-images with SD-2.1, inverts each with the PromptRecovery recipe (MAC over
-OpenCLIP H/14), then regenerates from the recovered prompt. Writes original
-prompt, original image, recovered prompt, and recovered image per sample so
-the companion notebook can build a paper-style qualitative figure.
+Samples N prompts from DiffusionDB (text-only, streamed), then for each prompt
+runs the full recovery pipeline across multiple seeds. Each run generates a
+reference image with SD-2.1, inverts it with the PromptRecovery recipe (MAC
+over OpenCLIP H/14) from a random 20-token initial trigger, and regenerates
+the image from the recovered prompt. Writes the quadruple (original prompt,
+original image, recovered prompt, recovered image) per (prompt, seed) so the
+companion notebook can build a paper-style qualitative figure.
 
 Usage
 -----
@@ -21,10 +23,7 @@ from pathlib import Path
 import torch
 from datasets import load_dataset
 
-from tropt.recipe_hub.PromptRecovery import (
-    generate_image_from_prompt,
-    run_prompt_recovery,
-)
+from tropt.recipe_hub.PromptRecovery import recover_prompt_end_to_end
 from tropt.tracker import WandbTracker
 
 # ─── Constants ───────────────────────────────────────────────────────────────
@@ -40,10 +39,23 @@ DATASET_NAME = "poloclub/diffusiondb"
 DATASET_PARQUET_URL = f"https://huggingface.co/datasets/{DATASET_NAME}/resolve/main/metadata.parquet"
 
 N_PROMPTS = 5
-POOL_SIZE = 1000      # rows streamed from head before uniform sampling
-NUM_STEPS = 3000      # paper p.5: convergence point
-N_CANDIDATES = 512    # paper p.7
-SEED = 42
+POOL_SIZE = 1000       # rows streamed from head before uniform sampling
+NUM_STEPS = 1000       # truncated from paper's 3000 for faster iteration
+N_CANDIDATES = 512     # paper p.7
+N_INITIAL_TOKENS = 20  # paper uses 8-20; we pick the upper bound with random init
+PROMPT_SAMPLING_SEED = 42
+SEEDS = [0, 1, 2]      # three independent runs per prompt
+
+# Hand-picked prompts appended to the DiffusionDB sample for a paper-friendly
+# qualitative figure: one cool, one funny, one cute.
+EXTRA_PROMPTS = [
+    # cool
+    "a lone astronaut standing on a cliff watching two suns set over a crystalline desert, cinematic lighting, ultra detailed",
+    # funny
+    "a T-rex trying to eat spaghetti with tiny arms, frustration, photorealistic",
+    # cute
+    "a tiny dragon curled up asleep in a porcelain teacup, soft pastel lighting",
+]
 
 # SD generation
 GEN_HEIGHT = 768
@@ -66,96 +78,80 @@ def run():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"Sampling {N_PROMPTS} prompts from {DATASET_NAME} metadata.parquet (pool={POOL_SIZE})...")
-    prompts = _sample_prompts(N_PROMPTS, POOL_SIZE, SEED)
+    prompts = _sample_prompts(N_PROMPTS, POOL_SIZE, PROMPT_SAMPLING_SEED)
+    prompts = prompts + EXTRA_PROMPTS
     for i, p in enumerate(prompts):
         print(f"  [{i}] {p[:100]}")
 
     all_results = []
 
     for i, original_prompt in enumerate(prompts):
-        print(f"\n{'='*60}\n  Prompt {i+1}/{N_PROMPTS}\n{'='*60}")
-        run_dir = OUTPUT_DIR / f"prompt_{i:02d}"
-        run_dir.mkdir(parents=True, exist_ok=True)
+        prompt_dir = OUTPUT_DIR / f"prompt_{i:02d}"
+        prompt_dir.mkdir(parents=True, exist_ok=True)
+        (prompt_dir / "original_prompt.txt").write_text(original_prompt, encoding="utf-8")
 
-        # --- 1. Generate the original image ---
-        print(f"[1/3] Generating original image ({SD_MODEL})...")
-        original_image = generate_image_from_prompt(
-            prompt=original_prompt,
-            model_name=SD_MODEL,
-            num_inference_steps=NUM_INFERENCE_STEPS,
-            height=GEN_HEIGHT, width=GEN_WIDTH,
-            seed=SEED,
-        )
-        original_image.save(run_dir / "original_image.png")
-        (run_dir / "original_prompt.txt").write_text(original_prompt, encoding="utf-8")
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+        for seed in SEEDS:
+            print(f"\n{'='*60}\n  Prompt {i+1}/{len(prompts)}  |  seed={seed}\n{'='*60}")
+            run_dir = prompt_dir / f"seed_{seed:02d}"
+            run_dir.mkdir(parents=True, exist_ok=True)
 
-        # --- 2. Prompt recovery (MAC + CLIP H/14) ---
-        run_name = f"recovery[p={i},steps={NUM_STEPS}]"
-        tracker = WandbTracker(
-            run_name,
-            tags=["prompt-recovery", "mac", CLIP_MODEL.split("/")[-1]],
-            project_name=WANDB_PROJECT,
-            entity=WANDB_ENTITY,
-            experiment_config={
-                "attack": "mac",
-                "task": "prompt_recovery",
-                "sd_model": SD_MODEL,
-                "clip_model": CLIP_MODEL,
+            run_name = f"recovery[p={i},seed={seed},steps={NUM_STEPS}]"
+            tracker = WandbTracker(
+                run_name,
+                tags=["prompt-recovery", "mac", CLIP_MODEL.split("/")[-1]],
+                project_name=WANDB_PROJECT,
+                entity=WANDB_ENTITY,
+                experiment_config={
+                    "attack": "mac",
+                    "task": "prompt_recovery",
+                    "sd_model": SD_MODEL,
+                    "clip_model": CLIP_MODEL,
+                    "prompt_idx": i,
+                    "original_prompt": original_prompt,
+                    "num_steps": NUM_STEPS,
+                    "n_candidates": N_CANDIDATES,
+                    "n_initial_tokens": N_INITIAL_TOKENS,
+                    "seed": seed,
+                },
+            )
+
+            quad = recover_prompt_end_to_end(
+                prompt=original_prompt,
+                sd_model_name=SD_MODEL,
+                clip_model_name=CLIP_MODEL,
+                num_steps=NUM_STEPS,
+                n_candidates=N_CANDIDATES,
+                n_initial_tokens=N_INITIAL_TOKENS,
+                seed=seed,
+                height=GEN_HEIGHT, width=GEN_WIDTH,
+                num_inference_steps=NUM_INFERENCE_STEPS,
+                tracker=tracker,
+            )
+
+            quad.original_image.save(run_dir / "original_image.png")
+            quad.recovered_image.save(run_dir / "recovered_image.png")
+            (run_dir / "recovered_prompt.txt").write_text(quad.recovered_prompt, encoding="utf-8")
+
+            print(f"  Original:  {original_prompt!r}")
+            print(f"  Recovered: {quad.recovered_prompt!r}")
+            print(f"  Best loss: {quad.best_loss:.4f}")
+
+            metadata = {
                 "prompt_idx": i,
+                "seed": seed,
                 "original_prompt": original_prompt,
+                "recovered_prompt": quad.recovered_prompt,
+                "best_loss": quad.best_loss,
                 "num_steps": NUM_STEPS,
                 "n_candidates": N_CANDIDATES,
-                "seed": SEED,
-            },
-        )
-
-        print(f"[2/3] Recovering prompt ({NUM_STEPS} steps)...")
-        result = run_prompt_recovery(
-            image=original_image,
-            model_name=CLIP_MODEL,
-            num_steps=NUM_STEPS,
-            n_candidates=N_CANDIDATES,
-            tracker=tracker,
-        )
-        recovered_prompt = result.best_trigger_str
-        print(f"  Original:  {original_prompt!r}")
-        print(f"  Recovered: {recovered_prompt!r}")
-        print(f"  Best loss: {result.best_loss:.4f}")
-
-        (run_dir / "recovered_prompt.txt").write_text(recovered_prompt, encoding="utf-8")
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        # --- 3. Regenerate image from recovered prompt ---
-        print("[3/3] Regenerating image from recovered prompt...")
-        recovered_image = generate_image_from_prompt(
-            prompt=recovered_prompt,
-            model_name=SD_MODEL,
-            num_inference_steps=NUM_INFERENCE_STEPS,
-            height=GEN_HEIGHT, width=GEN_WIDTH,
-            seed=SEED,
-        )
-        recovered_image.save(run_dir / "recovered_image.png")
-
-        metadata = {
-            "prompt_idx": i,
-            "original_prompt": original_prompt,
-            "recovered_prompt": recovered_prompt,
-            "best_loss": float(result.best_loss),
-            "num_steps": NUM_STEPS,
-            "n_candidates": N_CANDIDATES,
-            "seed": SEED,
-        }
-        with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
-            json.dump(metadata, f, indent=2, ensure_ascii=False)
-        all_results.append(metadata)
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+                "n_initial_tokens": N_INITIAL_TOKENS,
+            }
+            with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            all_results.append(metadata)
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     summary = {
         "experiment": "prompt_recovery",
@@ -163,11 +159,16 @@ def run():
         "clip_model": CLIP_MODEL,
         "dataset": DATASET_NAME,
         "dataset_file": "metadata.parquet",
-        "n_prompts": N_PROMPTS,
+        "n_prompts": len(prompts),
+        "n_sampled_prompts": N_PROMPTS,
+        "n_extra_prompts": len(EXTRA_PROMPTS),
+        "extra_prompts": EXTRA_PROMPTS,
         "pool_size": POOL_SIZE,
         "num_steps": NUM_STEPS,
         "n_candidates": N_CANDIDATES,
-        "seed": SEED,
+        "n_initial_tokens": N_INITIAL_TOKENS,
+        "prompt_sampling_seed": PROMPT_SAMPLING_SEED,
+        "seeds": SEEDS,
         "gen_height": GEN_HEIGHT,
         "gen_width": GEN_WIDTH,
         "num_inference_steps": NUM_INFERENCE_STEPS,
@@ -179,7 +180,7 @@ def run():
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     print(f"\nSummary saved to {summary_path}")
-    print(f"All {N_PROMPTS} runs complete.")
+    print(f"All {len(prompts)}×{len(SEEDS)} runs complete.")
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ and Text Embedding Similarity (inverted prompt vs. ground-truth prompt).
 """
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from jaxtyping import Float
@@ -22,6 +22,7 @@ from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
 # Paper uses 8-20 free tokens; 8 is the default
@@ -79,6 +80,7 @@ def run_prompt_recovery(
     tracker: Optional[BaseTracker] = None,
     target_image_path: Optional[str] = None,
     target_image_emb: Optional[Float[Tensor, "d_model"]] = None,
+    seed: Optional[int] = None,
 ) -> OptimizerResult:
     """Recover the prompt that generated a given image using GCG + CLIP.
 
@@ -107,6 +109,7 @@ def run_prompt_recovery(
             model_name=model_name,
         )
 
+    # Uses MAC optimizer:
     optimizer = GCGPlusOptimizer(
         model=model_obj,
         loss=SimilarityLoss(),
@@ -121,6 +124,7 @@ def run_prompt_recovery(
         candidate_oversample_factor=1.1,
         token_constraints=TokenConstraints(),
         use_retokenize=True,
+        seed=seed,
     )
 
     result = optimizer.optimize_trigger(
@@ -266,3 +270,90 @@ def generate_image_from_prompt(
 
     del pipe
     return image
+
+
+# ======================= End-to-end =======================
+
+
+@dataclass
+class PromptRecoveryQuadruple:
+    """Prompt → image → recovered prompt → regenerated image."""
+    original_prompt: str
+    original_image: Any  # PIL.Image.Image
+    recovered_prompt: str
+    recovered_image: Any  # PIL.Image.Image
+    best_loss: float
+
+
+def recover_prompt_end_to_end(
+    prompt: str,
+    sd_model_name: str = "sd2-community/stable-diffusion-2-1",
+    clip_model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
+    num_steps: int = 1000,
+    n_candidates: int = 512,
+    n_initial_tokens: int = 20,
+    seed: int = 0,
+    height: int = 768,
+    width: int = 768,
+    num_inference_steps: int = 50,
+    tracker: Optional[BaseTracker] = None,
+    initial_trigger: Optional[str] = None,
+) -> PromptRecoveryQuadruple:
+    """Generate an image from `prompt`, recover the prompt from the image, regenerate.
+
+    Defaults mirror the exp3-promrec reproduction of Williams et al. 2024:
+    SD-2.1 + OpenCLIP H/14 (laion2B), 1K GCG steps, random 20-token init.
+    """
+    import gc
+    import random as _random
+
+    original_image = generate_image_from_prompt(
+        prompt=prompt,
+        model_name=sd_model_name,
+        num_inference_steps=num_inference_steps,
+        height=height, width=width,
+        seed=seed,
+    )
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    if initial_trigger is None:
+        from transformers import AutoTokenizer
+        # Re-seed `random` immediately before the initializer — SD pipeline init
+        # above may have consumed global random state.
+        _random.seed(seed)
+        initial_trigger = get_printable_random_trigger(
+            trigger_len=n_initial_tokens,
+            tokenizer=AutoTokenizer.from_pretrained(clip_model_name),
+        )
+
+    result = run_prompt_recovery(
+        image=original_image,
+        model_name=clip_model_name,
+        initial_trigger=initial_trigger,
+        num_steps=num_steps,
+        n_candidates=n_candidates,
+        tracker=tracker,
+        seed=seed,
+    )
+    recovered_prompt = result.best_trigger_str
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    recovered_image = generate_image_from_prompt(
+        prompt=recovered_prompt,
+        model_name=sd_model_name,
+        num_inference_steps=num_inference_steps,
+        height=height, width=width,
+        seed=seed,
+    )
+
+    return PromptRecoveryQuadruple(
+        original_prompt=prompt,
+        original_image=original_image,
+        recovered_prompt=recovered_prompt,
+        recovered_image=recovered_image,
+        best_loss=float(result.best_loss),
+    )
