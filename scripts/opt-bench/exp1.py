@@ -391,6 +391,7 @@ def _model_short(model_name: str) -> str:
 # `<think>...</think>` block. To get them to prefill our attack target directly,
 # we prepend an empty think block that suppresses reasoning.
 _THINKING_PREFIX = "<think>\n\n</think>\n\n"
+# [Note: that is an option to that for Gemm4 as well, but it requires also modifying the chat-template in the lm model. we want to attack the DEFAULT model in this experiment]
 
 
 def _maybe_prepend_thinking(model_name: str, target: str) -> str:
@@ -401,6 +402,18 @@ def _maybe_prepend_thinking(model_name: str, target: str) -> str:
 
 def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
     return f"optbench[{opt_name},{_model_short(model_name)},m={msg_id},s={seed}]"
+
+
+# Optimizers too expensive to run on Gemma4 under current compute constraints.
+_GEMMA4_SKIP_OPTIMIZERS = {
+    "pez", "soft_prompt", "gbda", "hotflip", "beast",
+    "qcg", "arca", "gaslite", "gaslite2", "gcgplus_rand",
+}
+
+
+def _is_gemma4(model_name: str) -> bool:
+    n = model_name.lower().replace("-", "")
+    return "gemma4" in n
 
 
 def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
@@ -425,6 +438,12 @@ def whitebox(
 ):
     """Run whitebox optimizers on a HuggingFace model, all under PrefillCELoss."""
     selected = [_OPT_BY_NAME[n] for n in optimizers]
+
+    if _is_gemma4(model_name):
+        skipped = [c.name for c in selected if c.name in _GEMMA4_SKIP_OPTIMIZERS]
+        if skipped:
+            print(f"Gemma4 detected: skipping {len(skipped)} optimizers due to compute constraints: {skipped}")
+        selected = [c for c in selected if c.name not in _GEMMA4_SKIP_OPTIMIZERS]
 
     finished: set[str] = _finished_run_names() if skip_existing else set()
     print(f"Skipping {len(finished)} already-finished runs.")

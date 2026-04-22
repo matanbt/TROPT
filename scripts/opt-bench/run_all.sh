@@ -13,7 +13,7 @@ set -euo pipefail
 #   Smoke test:  MSG_IDS="0"
 #   Medium:      MSG_IDS="0 1 2 3 4"
 #   Full:        MSG_IDS="0 1 2 3 4 5 6 7 8 9"
-MSG_IDS="0 1 2 3 4 5 6 7 8 9"
+MSG_IDS="0 1 2 3 4 5 6 7 8 9 10 11 12 13 14"
 SEEDS="42 123 777"
 
 

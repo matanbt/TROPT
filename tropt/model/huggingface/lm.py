@@ -198,6 +198,7 @@ class LMHFModel(
                 [{"role": "user", "content": template}],
                 tokenize=True,
                 add_generation_prompt=True,
+                # TODO add self.chat_template_kwargs (such as "enable_thinking")
             )["input_ids"]
             for template in templates
         ]  # type: ignore[assignment]  (`tokenize` returns List[List[int]])
