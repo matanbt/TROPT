@@ -6757,9 +6757,6 @@ dev = [
     { name = "sphinx-autodoc-typehints", version = "3.9.11", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "sphinx-rtd-theme" },
 ]
-diffusion = [
-    { name = "diffusers" },
-]
 evaluate = [
     { name = "strong-reject" },
 ]
@@ -6783,12 +6780,15 @@ tracking = [
     { name = "livelossplot" },
     { name = "wandb" },
 ]
+vision = [
+    { name = "diffusers" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "accelerate", specifier = ">=1.0.0" },
     { name = "datasets", specifier = ">=4.8.3" },
-    { name = "diffusers", marker = "extra == 'diffusion'", specifier = ">=0.27.0" },
+    { name = "diffusers", marker = "extra == 'vision'", specifier = ">=0.27.0" },
     { name = "google-genai", marker = "extra == 'google'", specifier = ">=1.0.0" },
     { name = "ipython", marker = "extra == 'notebooks'", specifier = ">=8.0.0" },
     { name = "jaxtyping" },
@@ -6821,7 +6821,7 @@ requires-dist = [
     { name = "tropt", extras = ["all"], marker = "extra == 'dev'" },
     { name = "wandb", marker = "extra == 'tracking'", specifier = ">=0.15.0" },
 ]
-provides-extras = ["openai", "google", "litellm", "diffusion", "tracking", "notebooks", "all", "dev", "evaluate"]
+provides-extras = ["openai", "google", "litellm", "vision", "tracking", "notebooks", "all", "dev", "evaluate"]
 
 [[package]]
 name = "typer"

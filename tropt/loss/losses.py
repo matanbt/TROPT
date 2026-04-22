@@ -563,7 +563,7 @@ class MisclassCELoss(ClassificationBasedLoss):
                 "in Targets / MessageTargets."
             )
             # Minimize CE w.r.t. target class => maximize target class probability
-            target = torch.full(  # ty: ignore[no-matching-overload]
+            target = torch.full(
                 (bsz,), target_class_idx, dtype=torch.long, device=device
             )
             return torch.nn.functional.cross_entropy(
@@ -575,7 +575,7 @@ class MisclassCELoss(ClassificationBasedLoss):
                 "in Targets / MessageTargets."
             )
             # Negate CE w.r.t. true class => minimize true class probability
-            target = torch.full(  # ty: ignore[no-matching-overload]
+            target = torch.full(
                 (bsz,), true_class_idx, dtype=torch.long, device=device
             )
             return -torch.nn.functional.cross_entropy(

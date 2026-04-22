@@ -323,10 +323,12 @@ def recover_prompt_end_to_end(
         # Re-seed `random` immediately before the initializer — SD pipeline init
         # above may have consumed global random state.
         _random.seed(seed)
-        initial_trigger = get_printable_random_trigger(
+        _init = get_printable_random_trigger(
             trigger_len=n_initial_tokens,
             tokenizer=AutoTokenizer.from_pretrained(clip_model_name),
         )
+        assert isinstance(_init, str)
+        initial_trigger = _init
 
     result = run_prompt_recovery(
         image=original_image,

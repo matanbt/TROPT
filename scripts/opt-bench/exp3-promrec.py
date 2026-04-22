@@ -16,12 +16,10 @@ Usage
 
 import gc
 import json
-import random
 from datetime import datetime
 from pathlib import Path
 
 import torch
-from datasets import load_dataset
 
 from tropt.recipe_hub.PromptRecovery import recover_prompt_end_to_end
 from tropt.tracker import WandbTracker
@@ -34,15 +32,20 @@ WANDB_PROJECT = "tropt-prompt-recovery"
 SD_MODEL = "sd2-community/stable-diffusion-2-1"  # mirror of stabilityai/stable-diffusion-2-1 (fn.2)
 CLIP_MODEL = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"  # SD-2.1's text encoder
 DATASET_NAME = "poloclub/diffusiondb"
-# Text-only metadata parquet (2M prompts); load directly to avoid the
-# legacy dataset script that newer `datasets` versions no longer support.
-DATASET_PARQUET_URL = f"https://huggingface.co/datasets/{DATASET_NAME}/resolve/main/metadata.parquet"
+# Prompts pre-sampled once from DiffusionDB's metadata.parquet to avoid
+# fetching from HF on compute nodes with no internet access. Sampling
+# procedure: stream first POOL_SIZE=1000 rows from text-only metadata.parquet,
+# uniform-sample N_PROMPTS=5 with random.Random(PROMPT_SAMPLING_SEED=42).
+# See scripts/opt-bench/sample_diffusiondb_prompts.py to re-sample.
+SAMPLED_PROMPTS = [
+    # TODO: fill in after running sample_diffusiondb_prompts.py locally
+]
 
 N_PROMPTS = 5
 POOL_SIZE = 1000       # rows streamed from head before uniform sampling
-NUM_STEPS = 500       # truncated from paper's 3000 for faster iteration
+NUM_STEPS = 1000       # truncated from paper's 3000 for faster iteration
+N_CANDIDATES = 512     # paper p.7
 N_INITIAL_TOKENS = 20  # paper uses 8-20; we pick the upper bound with random init
-PROMPT_SAMPLING_SEED = 42
 SEEDS = [0, 1, 2]      # three independent runs per prompt
 
 # Hand-picked prompts appended to the DiffusionDB sample for a paper-friendly
@@ -64,21 +67,11 @@ NUM_INFERENCE_STEPS = 50
 OUTPUT_DIR = Path("scripts/opt-bench/results/exp3_promrec")
 
 
-def _sample_prompts(n: int, pool_size: int, seed: int) -> list[str]:
-    """Stream a head pool from DiffusionDB text-only and uniform-sample n prompts."""
-    ds = load_dataset(
-        "parquet", data_files=DATASET_PARQUET_URL, split="train", streaming=True,
-    )
-    pool = [row["prompt"] for row in ds.take(pool_size)]
-    return random.Random(seed).sample(pool, n)
-
-
 def run():
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    print(f"Sampling {N_PROMPTS} prompts from {DATASET_NAME} metadata.parquet (pool={POOL_SIZE})...")
-    prompts = _sample_prompts(N_PROMPTS, POOL_SIZE, PROMPT_SAMPLING_SEED)
-    prompts = prompts + EXTRA_PROMPTS
+    prompts = list(SAMPLED_PROMPTS) + EXTRA_PROMPTS
+    print(f"Using {len(SAMPLED_PROMPTS)} pre-sampled {DATASET_NAME} prompts + {len(EXTRA_PROMPTS)} extras")
     for i, p in enumerate(prompts):
         print(f"  [{i}] {p[:100]}")
 
@@ -157,14 +150,13 @@ def run():
         "dataset": DATASET_NAME,
         "dataset_file": "metadata.parquet",
         "n_prompts": len(prompts),
-        "n_sampled_prompts": N_PROMPTS,
+        "n_sampled_prompts": len(SAMPLED_PROMPTS),
         "n_extra_prompts": len(EXTRA_PROMPTS),
+        "sampled_prompts": list(SAMPLED_PROMPTS),
         "extra_prompts": EXTRA_PROMPTS,
-        "pool_size": POOL_SIZE,
         "num_steps": NUM_STEPS,
         "n_candidates": N_CANDIDATES,
         "n_initial_tokens": N_INITIAL_TOKENS,
-        "prompt_sampling_seed": PROMPT_SAMPLING_SEED,
         "seeds": SEEDS,
         "gen_height": GEN_HEIGHT,
         "gen_width": GEN_WIDTH,

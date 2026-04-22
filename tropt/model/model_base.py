@@ -352,10 +352,11 @@ class BaseTokenizer(ABC):
     def batch_decode(self, ids: List[int] | List[List[int]] | torch.Tensor, **kwargs) -> List[str]:
         """Converts a batch of token IDs back to a list of strings."""
         pass
-
+    
     @property
+    @abstractmethod
     def name_or_path(self) -> str:
-        return "unknown"
+        pass 
 
     # --- Specific helpers (concrete, build on abstract primitives above) ---
 
@@ -371,6 +372,22 @@ class BaseTokenizer(ABC):
     def decode_triggers(self, trigger_ids: Int[Tensor, "bsz trigger_seq_len"]) -> List[str]:
         """Batch-decode a 2-D trigger ids tensor -> list of strings (special tokens skipped)."""
         return self.batch_decode(trigger_ids, skip_special_tokens=True)
+
+    # --- Equality for tokenizer comparison ---
+    def __eq__(self, other: object) -> bool:
+        """
+        To compare tokenizers; useful for optimizers to check if an identical vocabulary is expected.
+        - Default falls back to `name_or_path` (a reasonable proxy for "same tokenizer")
+        - Override in subclass for different logic.
+        """
+        if not isinstance(other, BaseTokenizer):
+            return NotImplemented
+        if self is other:
+            return True
+        my_name = self.name_or_path
+        if my_name == "unknown" or other.name_or_path == "unknown":
+            return False
+        return my_name == other.name_or_path
 
 
 class HFTokenizerWrapper(BaseTokenizer):

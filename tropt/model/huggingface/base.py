@@ -551,7 +551,6 @@ class HuggingFaceBackendModel:
 
     @cached_property
     def tokenizer(self) -> HFTokenizerWrapper:
-        # Cached so repeated `.tokenizer` accesses return the same wrapper
         return HFTokenizerWrapper(self._tokenizer)
 
     @property

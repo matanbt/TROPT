@@ -69,7 +69,7 @@ class ClassifierHFModel(
 
     @property
     def n_classes(self) -> int:
-        return self._model.config.num_labels
+        return int(self._model.config.num_labels)
 
     @property
     def id2label(self) -> Dict[int, str]:

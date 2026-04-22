@@ -36,6 +36,21 @@ def get_hf_model(
     return model._model
 
 
+def get_decoder_layers(hf_model):
+    """Return the decoder layer ModuleList, handling multimodal model layouts."""
+    # Text-only causal LMs (Llama, Gemma 1/2, Gemma3-text): hf_model.model.layers
+    # Multimodal Gemma3 (Gemma3ForConditionalGeneration): hf_model.model.language_model.layers
+    inner = hf_model.model
+    if hasattr(inner, "layers"):
+        return inner.layers
+    if hasattr(inner, "language_model") and hasattr(inner.language_model, "layers"):
+        return inner.language_model.layers
+    raise AttributeError(
+        f"Could not locate decoder layers on {type(hf_model).__name__}; "
+        "checked .model.layers and .model.language_model.layers"
+    )
+
+
 def get_harmful_instructions(n_samples: Optional[int] = None, test_split: float = 0.2) -> Tuple[List[str], List[str]]:
     """
     Load harmful instructions from AdvBench dataset.
@@ -274,7 +289,7 @@ def ablate_refusal_direction(
 
     # Register hooks to model layers
     hook_handles = []
-    for i, layer in enumerate(hf_model.model.layers):
+    for i, layer in enumerate(get_decoder_layers(hf_model)):
         if targeted_layers is not None and i not in targeted_layers:
             continue
         hook_handles.append(layer.register_forward_hook(hook_fn))

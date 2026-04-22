@@ -94,8 +94,8 @@ class CLIPTextEncoderHFModel(
     @property
     def d_model(self) -> int:
         if self._without_final_projection:
-            return self._model.config.hidden_size
-        return self._model.config.projection_dim
+            return int(self._model.config.hidden_size)
+        return int(self._model.config.projection_dim)
 
     # ----------------------- set_inputs_from_tokens -----------------------
 
