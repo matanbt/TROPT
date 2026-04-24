@@ -19,7 +19,7 @@ from torch import Tensor
 from tropt.common import Targets
 from tropt.loss import SimilarityLoss
 from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
-from tropt.optimizer import OptimizerResult
+from tropt.optimizer import BeamSearchOptimizer, OptimizerResult
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
@@ -27,6 +27,10 @@ from tropt.tracker import BaseTracker
 
 # Paper uses 8-20 free tokens; 8 is the default
 _DEFAULT_INITIAL_TRIGGER = "! ! ! ! ! ! ! !"
+
+# MAC (momentum-accelerated GCG) step count. Fixed here so the recipe owns
+# all optimizer settings; callers only choose the optimizer_type.
+_MAC_NUM_STEPS = 500
 
 
 def get_image_embedding_for_clip_model(
@@ -75,20 +79,26 @@ def run_prompt_recovery(
     model_name: str = "openai/clip-vit-large-patch14",
     template: str = "{{OPTIMIZED_TRIGGER}}",
     initial_trigger: str = _DEFAULT_INITIAL_TRIGGER,
-    num_steps: int = 250,
+    optimizer_type: str = "gcg",
+    trigger_len: int = 20,
+    util_lm_model_name: str = "google/gemma-2-2b-it",
     tracker: Optional[BaseTracker] = None,
     target_image_path: Optional[str] = None,
     target_image_emb: Optional[Float[Tensor, "d_model"]] = None,
     seed: Optional[int] = None,
 ) -> OptimizerResult:
-    """Recover the prompt that generated a given image using GCG + CLIP.
+    """Recover the prompt that generated a given image using CLIP + a discrete optimizer.
 
     Args:
         image: A PIL Image to invert. If None, loads from `target_image_path`.
         model_name: CLIP-like model to use as proxy.
         template: Text template with trigger placeholder.
-        initial_trigger: Starting trigger tokens.
-        n_candidates: Candidate batch size per step (paper uses 512).
+        initial_trigger: Starting trigger tokens (ignored by `adv_decoding`).
+        optimizer_type: `"gcg"` for MAC (momentum-accelerated GCG+) or
+            `"adv_decoding"` for beam-search decoding with a utility LM.
+        trigger_len: Number of trigger tokens. For `adv_decoding` this also
+            sets the number of optimizer steps (one appended token per step).
+        util_lm_model_name: HF model id for the utility LM (only for adv_decoding).
         tracker: Optional experiment tracker.
         target_image_path: Path to an image file (used if `image` is None).
         target_image_emb: Pre-computed image embedding (skips encoding).
@@ -107,25 +117,58 @@ def run_prompt_recovery(
             model_name=model_name,
         )
 
-    # Uses MAC optimizer:
-    optimizer = GCGPlusOptimizer(
-        model=model_obj,
-        loss=SimilarityLoss(),
-        proxy_model=model_obj,
-        tracker=tracker,
-        
-        # MAC paper params:
-        candidate_selection="gradient",
-        num_steps=num_steps,
-        sample_topk=256,  n_candidates=256,
-        sample_n_replace=(1, 1),
-        momentum=0.6,
-        candidate_oversample_factor=1.1,
+    token_constraints = TokenConstraints()
 
-        token_constraints=TokenConstraints(),
-        use_retokenize=True,
-        seed=seed,
-    )
+    if optimizer_type == "gcg":
+        # MAC optimizer (paper params).
+        optimizer = GCGPlusOptimizer(
+            model=model_obj,
+            loss=SimilarityLoss(),
+            proxy_model=model_obj,
+            tracker=tracker,
+
+            candidate_selection="gradient",
+            num_steps=_MAC_NUM_STEPS,
+            sample_topk=256, n_candidates=256,
+            sample_n_replace=(1, 1),
+            momentum=0.6,
+            candidate_oversample_factor=1.1,
+
+            token_constraints=token_constraints,
+            use_retokenize=True,
+            seed=seed,
+        )
+    elif optimizer_type == "adv_decoding":
+        # Beam-search decoding guided by a utility LM. Hyperparameters mirror
+        # exp1 (scripts/opt-bench/exp1.py `adv_decoding`), except `num_steps`
+        # is set from `trigger_len` (one token appended per step).
+        from tropt.model.huggingface.lm import LMHFModel
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        util_lm = LMHFModel(
+            model_name=util_lm_model_name,
+            device=device,
+            use_prefix_cache=False,
+            dtype="bfloat16",
+        )
+        optimizer = BeamSearchOptimizer(
+            model=model_obj,
+            loss=SimilarityLoss(),
+            tracker=tracker,
+            seed=seed,
+            util_lm=util_lm,
+            util_lm_prefix="Write a sentence with a lot of triggers. {{OPTIMIZED_TRIGGER}}",
+            num_steps=trigger_len,
+            beam_size=96,
+            branching_factor=10,
+            top_k=10,
+            temperature=1.0,
+            token_constraints=token_constraints,
+        )
+    else:
+        raise ValueError(
+            f"Unknown optimizer_type={optimizer_type!r}; expected 'gcg' or 'adv_decoding'."
+        )
 
     result = optimizer.optimize_trigger(
         templates=[template],
@@ -289,8 +332,9 @@ def recover_prompt_end_to_end(
     prompt: str,
     sd_model_name: str = "sd2-community/stable-diffusion-2-1",
     clip_model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    num_steps: int = 1000,
-    n_initial_tokens: int = 20,
+    optimizer_type: str = "gcg",
+    trigger_len: int = 20,
+    util_lm_model_name: str = "google/gemma-2-2b-it",
     seed: int = 0,
     height: int = 768,
     width: int = 768,
@@ -301,7 +345,8 @@ def recover_prompt_end_to_end(
     """Generate an image from `prompt`, recover the prompt from the image, regenerate.
 
     Defaults mirror the exp3-promrec reproduction of Williams et al. 2024:
-    SD-2.1 + OpenCLIP H/14 (laion2B), 1K GCG steps, random 20-token init.
+    SD-2.1 + OpenCLIP H/14 (laion2B), random 20-token init. The recipe owns
+    optimizer hyperparameters; callers pick `optimizer_type` ∈ {"gcg", "adv_decoding"}.
     """
     import gc
     import random as _random
@@ -323,7 +368,7 @@ def recover_prompt_end_to_end(
         # above may have consumed global random state.
         _random.seed(seed)
         _init = get_printable_random_trigger(
-            trigger_len=n_initial_tokens,
+            trigger_len=trigger_len,
             tokenizer=AutoTokenizer.from_pretrained(clip_model_name),
         )
         assert isinstance(_init, str)
@@ -333,7 +378,9 @@ def recover_prompt_end_to_end(
         image=original_image,
         model_name=clip_model_name,
         initial_trigger=initial_trigger,
-        num_steps=num_steps,
+        optimizer_type=optimizer_type,
+        trigger_len=trigger_len,
+        util_lm_model_name=util_lm_model_name,
         tracker=tracker,
         seed=seed,
     )

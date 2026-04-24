@@ -49,7 +49,7 @@ from tropt.utils.refusal_dir import (
 WANDB_ENTITY = "matanbt"
 WANDB_PROJECT = "tropt-enhancebench"
 SEEDS = [42, 123, 777]
-MSG_IDS = list(range(10))
+MSG_IDS = list(range(15))
 TRIGGER_LEN = 20
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
 

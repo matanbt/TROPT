@@ -45,9 +45,9 @@ SAMPLED_PROMPTS = [
     # 'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
 ]
 
-NUM_STEPS = 500       # truncated from paper's 3000 for faster iteration
-N_INITIAL_TOKENS = 10  # paper uses 8-20; we pick the upper bound with random init
-SEEDS = [0, 1, 2]      # three independent runs per prompt
+OPTIMIZER_TYPES = ["gcg", "adv_decoding"]  # MAC and beam-search-decoding
+TRIGGER_LENS = [5, 10, 15, 20]             # paper uses 8-20; sweep for ablation
+SEEDS = [0, 1]                             # two independent runs per config
 
 # Hand-picked prompts appended to the DiffusionDB sample for a paper-friendly
 # qualitative figure: one cool, one funny, one cute.
@@ -69,6 +69,14 @@ EXTRA_PROMPTS = [
     "a samurai silhouetted against a giant red moon, cherry blossoms mid-swirl in the wind, cinematic wide shot, painterly detail",
     # surreal
     "an enormous library where the bookshelves curve into a spiral staircase reaching into the clouds, warm dust-lit beams, highly detailed",
+
+    # from PEZ paper:
+    "teddy bear on skateboard, city street, shallow depth of field, photorealistic, cinematic lighting, low angle",
+
+    # beautiful
+    "a jellyfish drifting through a moonlit aurora sky, translucent glow, ethereal atmosphere",
+    # funny
+    "a grumpy cat wearing a tiny crown, sitting on a throne of yarn balls, regal lighting",
 ]
 
 # SD generation
@@ -89,72 +97,75 @@ def run():
 
     all_results = []
 
+    n_configs = len(OPTIMIZER_TYPES) * len(TRIGGER_LENS) * len(SEEDS)
+
     for i, original_prompt in enumerate(prompts):
         prompt_dir = OUTPUT_DIR / f"prompt_{i:02d}"
         prompt_dir.mkdir(parents=True, exist_ok=True)
         (prompt_dir / "original_prompt.txt").write_text(original_prompt, encoding="utf-8")
 
-        for seed in SEEDS:
-            print(f"\n{'='*60}\n  Prompt {i+1}/{len(prompts)}  |  seed={seed}\n{'='*60}")
-            run_dir = prompt_dir / f"seed_{seed:02d}"
-            run_dir.mkdir(parents=True, exist_ok=True)
+        for optimizer_type in OPTIMIZER_TYPES:
+            for trigger_len in TRIGGER_LENS:
+                for seed in SEEDS:
+                    cfg_tag = f"{optimizer_type}_tl{trigger_len:02d}_seed{seed:02d}"
+                    print(f"\n{'='*60}\n  Prompt {i+1}/{len(prompts)}  |  {cfg_tag}\n{'='*60}")
+                    run_dir = prompt_dir / cfg_tag
+                    run_dir.mkdir(parents=True, exist_ok=True)
 
-            run_name = f"recovery[p={i},seed={seed},steps={NUM_STEPS}]"
-            tracker = WandbTracker(
-                run_name,
-                tags=["prompt-recovery", "mac", CLIP_MODEL.split("/")[-1]],
-                project_name=WANDB_PROJECT,
-                entity=WANDB_ENTITY,
-                experiment_config={
-                    "attack": "mac",
-                    "task": "prompt_recovery",
-                    "sd_model": SD_MODEL,
-                    "clip_model": CLIP_MODEL,
-                    "prompt_idx": i,
-                    "original_prompt": original_prompt,
-                    "num_steps": NUM_STEPS,
-                    "n_initial_tokens": N_INITIAL_TOKENS,
-                    "seed": seed,
-                },
-            )
+                    run_name = f"recovery[p={i},opt={optimizer_type},tl={trigger_len},seed={seed}]"
+                    tracker = WandbTracker(
+                        run_name,
+                        tags=["prompt-recovery", optimizer_type, CLIP_MODEL.split("/")[-1]],
+                        project_name=WANDB_PROJECT,
+                        entity=WANDB_ENTITY,
+                        experiment_config={
+                            "attack": optimizer_type,
+                            "task": "prompt_recovery",
+                            "sd_model": SD_MODEL,
+                            "clip_model": CLIP_MODEL,
+                            "prompt_idx": i,
+                            "original_prompt": original_prompt,
+                            "optimizer_type": optimizer_type,
+                            "trigger_len": trigger_len,
+                            "seed": seed,
+                        },
+                    )
 
-            # TODO in this method add an option to choose the optimizer, it should either be: (i) GCG (as it is now), (ii) AdvDecoding. For the former will stop accepting num_steps and just fix it to be as it is here, for the latter the num-steps determined by the number of tokens, so it'll be inferred. The rational is that the recipe will have default optimizer setting! Another small comment, instead of naming the argument `n_initial_tokens` call it `trigger_len`.
-            # FOR advdecoding i want you to use the same parameters as exp1 (well..except for the trigger len whhic is gfiven here..) 
-            quad = recover_prompt_end_to_end(
-                prompt=original_prompt,
-                sd_model_name=SD_MODEL,
-                clip_model_name=CLIP_MODEL,
-                num_steps=NUM_STEPS,
-                n_initial_tokens=N_INITIAL_TOKENS,
-                seed=seed,
-                height=GEN_HEIGHT, width=GEN_WIDTH,
-                num_inference_steps=NUM_INFERENCE_STEPS,
-                tracker=tracker,
-            )
+                    quad = recover_prompt_end_to_end(
+                        prompt=original_prompt,
+                        sd_model_name=SD_MODEL,
+                        clip_model_name=CLIP_MODEL,
+                        optimizer_type=optimizer_type,
+                        trigger_len=trigger_len,
+                        seed=seed,
+                        height=GEN_HEIGHT, width=GEN_WIDTH,
+                        num_inference_steps=NUM_INFERENCE_STEPS,
+                        tracker=tracker,
+                    )
 
-            quad.original_image.save(run_dir / "original_image.png")
-            quad.recovered_image.save(run_dir / "recovered_image.png")
-            (run_dir / "recovered_prompt.txt").write_text(quad.recovered_prompt, encoding="utf-8")
+                    quad.original_image.save(run_dir / "original_image.png")
+                    quad.recovered_image.save(run_dir / "recovered_image.png")
+                    (run_dir / "recovered_prompt.txt").write_text(quad.recovered_prompt, encoding="utf-8")
 
-            print(f"  Original:  {original_prompt!r}")
-            print(f"  Recovered: {quad.recovered_prompt!r}")
-            print(f"  Best loss: {quad.best_loss:.4f}")
+                    print(f"  Original:  {original_prompt!r}")
+                    print(f"  Recovered: {quad.recovered_prompt!r}")
+                    print(f"  Best loss: {quad.best_loss:.4f}")
 
-            metadata = {
-                "prompt_idx": i,
-                "seed": seed,
-                "original_prompt": original_prompt,
-                "recovered_prompt": quad.recovered_prompt,
-                "best_loss": quad.best_loss,
-                "num_steps": NUM_STEPS,
-                "n_initial_tokens": N_INITIAL_TOKENS,
-            }
-            with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
-            all_results.append(metadata)
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                    metadata = {
+                        "prompt_idx": i,
+                        "seed": seed,
+                        "original_prompt": original_prompt,
+                        "recovered_prompt": quad.recovered_prompt,
+                        "best_loss": quad.best_loss,
+                        "optimizer_type": optimizer_type,
+                        "trigger_len": trigger_len,
+                    }
+                    with open(run_dir / "metadata.json", "w", encoding="utf-8") as f:
+                        json.dump(metadata, f, indent=2, ensure_ascii=False)
+                    all_results.append(metadata)
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
     summary = {
         "experiment": "prompt_recovery",
@@ -167,8 +178,8 @@ def run():
         "n_extra_prompts": len(EXTRA_PROMPTS),
         "sampled_prompts": list(SAMPLED_PROMPTS),
         "extra_prompts": EXTRA_PROMPTS,
-        "num_steps": NUM_STEPS,
-        "n_initial_tokens": N_INITIAL_TOKENS,
+        "optimizer_types": OPTIMIZER_TYPES,
+        "trigger_lens": TRIGGER_LENS,
         "seeds": SEEDS,
         "gen_height": GEN_HEIGHT,
         "gen_width": GEN_WIDTH,
@@ -181,7 +192,7 @@ def run():
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
     print(f"\nSummary saved to {summary_path}")
-    print(f"All {len(prompts)}×{len(SEEDS)} runs complete.")
+    print(f"All {len(prompts)}×{n_configs} runs complete.")
 
 
 if __name__ == "__main__":
