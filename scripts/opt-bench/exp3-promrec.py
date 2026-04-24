@@ -38,15 +38,15 @@ DATASET_NAME = "poloclub/diffusiondb"
 # uniform-sample N_PROMPTS=5 with random.Random(PROMPT_SAMPLING_SEED=42).
 # See scripts/opt-bench/sample_diffusiondb_prompts.py to re-sample.
 SAMPLED_PROMPTS = [
-    'anthropomorphic ferret animal, dressed as cute raver girl dancer, dance club in tropical paradise, many woodland creatures dancing, concept design, contrast, hot toy, kim jung gi, greg rutkowski, zabrocki, karlkka, jayison devadas, trending on artstation, 8 k, ultra wide angle, pincushion lens effect ',
-    'render of dreamy beautiful landscape, fantasy dreamy, dreams beach, artger, large scale, details vintage photo hyper realistic ultra realistic photo realistic photography, unreal engine, high detailed, 8 k ',
-    'a painting by edward hopper of scenes from the mad max movie universe. ',
-    'overcook videogame in the style of hr giger ',
-    'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
+    # 'anthropomorphic ferret animal, dressed as cute raver girl dancer, dance club in tropical paradise, many woodland creatures dancing, concept design, contrast, hot toy, kim jung gi, greg rutkowski, zabrocki, karlkka, jayison devadas, trending on artstation, 8 k, ultra wide angle, pincushion lens effect ',
+    # 'render of dreamy beautiful landscape, fantasy dreamy, dreams beach, artger, large scale, details vintage photo hyper realistic ultra realistic photo realistic photography, unreal engine, high detailed, 8 k ',
+    # 'a painting by edward hopper of scenes from the mad max movie universe. ',
+    # 'overcook videogame in the style of hr giger ',
+    # 'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
 ]
 
-NUM_STEPS = 1000       # truncated from paper's 3000 for faster iteration
-N_INITIAL_TOKENS = 20  # paper uses 8-20; we pick the upper bound with random init
+NUM_STEPS = 500       # truncated from paper's 3000 for faster iteration
+N_INITIAL_TOKENS = 10  # paper uses 8-20; we pick the upper bound with random init
 SEEDS = [0, 1, 2]      # three independent runs per prompt
 
 # Hand-picked prompts appended to the DiffusionDB sample for a paper-friendly
@@ -58,6 +58,17 @@ EXTRA_PROMPTS = [
     "a T-rex trying to eat spaghetti with tiny arms, frustration, photorealistic",
     # cute
     "a tiny dragon curled up asleep in a porcelain teacup, soft pastel lighting",
+
+    # epic
+    "a colossal whale drifting silently through a sky of swirling nebulae, bioluminescent fins, dreamlike atmosphere, cinematic scale",
+    # funny
+    "a raccoon in a tiny lab coat presenting a chaotic equation on a chalkboard, chalk dust floating, dramatic lighting",
+    # cute
+    "a family of hedgehogs having a candlelit dinner on a mushroom table in a mossy forest, golden hour, storybook style",
+    # cool
+    "a samurai silhouetted against a giant red moon, cherry blossoms mid-swirl in the wind, cinematic wide shot, painterly detail",
+    # surreal
+    "an enormous library where the bookshelves curve into a spiral staircase reaching into the clouds, warm dust-lit beams, highly detailed",
 ]
 
 # SD generation
@@ -107,6 +118,8 @@ def run():
                 },
             )
 
+            # TODO in this method add an option to choose the optimizer, it should either be: (i) GCG (as it is now), (ii) AdvDecoding. For the former will stop accepting num_steps and just fix it to be as it is here, for the latter the num-steps determined by the number of tokens, so it'll be inferred. The rational is that the recipe will have default optimizer setting! Another small comment, instead of naming the argument `n_initial_tokens` call it `trigger_len`.
+            # FOR advdecoding i want you to use the same parameters as exp1 (well..except for the trigger len whhic is gfiven here..) 
             quad = recover_prompt_end_to_end(
                 prompt=original_prompt,
                 sd_model_name=SD_MODEL,

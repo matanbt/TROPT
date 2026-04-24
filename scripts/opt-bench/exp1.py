@@ -406,8 +406,11 @@ def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
 
 # Optimizers too expensive to run on Gemma4 under current compute constraints.
 _GEMMA4_SKIP_OPTIMIZERS = {
-    "pez", "soft_prompt", "gbda", "hotflip", "beast",
-    "qcg", "arca", "gaslite", "gaslite2", "gcgplus_rand",
+    # "pez", "soft_prompt", "gbda", "hotflip", 
+    # "beast",
+    # "qcg", "arca", 
+    # "gaslite", "gaslite2", 
+    # "gcgplus_rand",
 }
 
 
