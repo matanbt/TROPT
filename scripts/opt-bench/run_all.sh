@@ -41,12 +41,12 @@ mkdir -p "$RESULTS_DIR"
 # ─── Slurm-filter support ───────────────────────────────────────────────────
 # When launched per-job by check_slurm.sh, these env vars narrow the sweep to a
 # single (exp, model, seed) tuple. Empty means "run everything" (legacy behavior).
-EXP_FILTER="${EXP_FILTER:-}"      # "" | "1" | "2" | "1bb" (exp1 OpenAI blackbox only)
+EXP_FILTER="${EXP_FILTER:-}"      # "" | "1" | "2" | "2u" | "1bb" (2 = exp2 single, 2u = exp2 multi, 1bb = exp1 OpenAI blackbox only)
 MODEL_FILTER="${MODEL_FILTER:-}"  # "" | substring of a WHITEBOX_MODELS entry
 SEED_FILTER="${SEED_FILTER:-}"    # "" | single seed, e.g. "42"
 # Eval-only flow (only consulted when EXP_FILTER is empty, since non-empty
 # EXP_FILTER short-circuits out before the evaluation section).
-EVAL_EXP_FILTER="${EVAL_EXP_FILTER:-}"  # "" | "1" | "2" — restrict eval section to one experiment
+EVAL_EXP_FILTER="${EVAL_EXP_FILTER:-}"  # "" | "1" | "2" | "2u" — restrict eval section to one experiment (2 = exp2 single, 2u = exp2 multi)
 SKIP_CSV_III="${SKIP_CSV_III:-0}"       # "1" to skip the heavy build-csv-iii step in evaluate()
 
 if [[ -n "$MODEL_FILTER" ]]; then
@@ -108,13 +108,18 @@ if [[ "$EXP_FILTER" == "1bb" ]]; then
 fi
 
 # ─── Exp2: Jailbreak Tweaks Benchmarks ──────────────────────────────────────
+# Split into two filters: "2" = single-instruction sweep; "2u" = multi-instruction
+# sweep. Kept separate so each can be scheduled / re-launched / evaluated on its
+# own (multi is heavier and routed to H100 by check_slurm.sh).
 if [[ "$EXP_FILTER" == "2" ]]; then
     echo "=== Exp2: Single-instruction tweak sweep ==="
     for model in "${EXP2_MODELS[@]}"; do
         echo "--- Model: $model ---"
         python scripts/opt-bench/exp2.py single --model-name "$model" $MSG_ID_FLAGS $SEED_FLAGS
     done
+fi
 
+if [[ "$EXP_FILTER" == "2u" ]]; then
     echo "=== Exp2: Multi-instruction tweak sweep ==="
     for model in "${EXP2_MODELS[@]}"; do
         echo "--- Model: $model ---"
@@ -204,7 +209,9 @@ if [[ -z "$EVAL_EXP_FILTER" || "$EVAL_EXP_FILTER" == "2" ]]; then
         short=$(echo "$model" | sed 's|.*/||')
         evaluate "enhancebench_single" "exp2_single_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
     done
+fi
 
+if [[ -z "$EVAL_EXP_FILTER" || "$EVAL_EXP_FILTER" == "2u" ]]; then
     for model in "${EXP2_MODELS[@]}"; do
         short=$(echo "$model" | sed 's|.*/||')
         evaluate "enhancebench_multi" "exp2_multi_${short}" "$model" "false" "$WANDB_PROJECT_EXP2"
