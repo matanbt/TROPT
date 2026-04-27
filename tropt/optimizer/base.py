@@ -369,6 +369,9 @@ class BaseOptimizer(ABC):
         The budget is checked at the top of each step, so overshoot is bounded
         by one step's work. Without a budget set, behaves like plain ``tqdm``.
 
+        Note: If you implement a personal-use custom optimizer for quick check, and don't care for 
+              fancy progress bar / budget, you may safely ignore this.
+
         Usage::
 
             for _ in self.track_steps(range(self.num_steps), desc="MyOpt"):
