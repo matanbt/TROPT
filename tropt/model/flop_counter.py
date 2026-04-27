@@ -87,13 +87,15 @@ class ManualFlopCounter(FlopCounterBase):
         For MoE models expert parameters are scaled by (num_active / num_experts).
         Falls back to config-based counting when quantization is detected.
         """
-        config = model.config
+        # Multimodal configs (e.g. Gemma4ForConditionalGeneration) nest the LM fields under `text_config`
+        config = getattr(model.config, "text_config", model.config)
         num_experts = getattr(config, "num_local_experts", None) or getattr(
             config, "num_experts", None
         )
         num_active = (
             getattr(config, "num_experts_per_tok", None)
             or getattr(config, "num_selected_experts", None)
+            or getattr(config, "top_k_experts", None)
             or getattr(config, "top_k", None)
         )
 
@@ -157,8 +159,13 @@ class ManualFlopCounter(FlopCounterBase):
 
     @staticmethod
     def _expert_params_from_config(config) -> int | None:
+        config = getattr(config, "text_config", config)
         h = getattr(config, "hidden_size", None)
-        intermediate = getattr(config, "intermediate_size", None)
+        # Some MoE configs (e.g. Gemma4) report the expert MLP width in a dedicated field.
+        intermediate = (
+            getattr(config, "moe_intermediate_size", None) 
+            or getattr(config, "intermediate_size", None
+        ))
         n_layers = getattr(config, "num_hidden_layers", None)
         num_experts = getattr(config, "num_local_experts", None) or getattr(
             config, "num_experts", None
@@ -169,6 +176,7 @@ class ManualFlopCounter(FlopCounterBase):
 
     @staticmethod
     def _shared_params_from_config(config) -> int | None:
+        config = getattr(config, "text_config", config)
         h = getattr(config, "hidden_size", None)
         n_layers = getattr(config, "num_hidden_layers", None)
         n_heads = getattr(config, "num_attention_heads", None)
@@ -183,9 +191,11 @@ class ManualFlopCounter(FlopCounterBase):
             head_dim = h // n_heads
         if n_kv_heads is None:
             n_kv_heads = n_heads
+        # `attention_k_eq_v` means K and V share weights -> one KV projection instead of two.
+        kv_factor = 1 if getattr(config, "attention_k_eq_v", False) else 2
         attn = (
             h * (n_heads * head_dim)
-            + 2 * h * (n_kv_heads * head_dim)
+            + kv_factor * h * (n_kv_heads * head_dim)
             + (n_heads * head_dim) * h
         )
         ln = 2 * h
@@ -194,6 +204,7 @@ class ManualFlopCounter(FlopCounterBase):
 
     @staticmethod
     def _params_from_config(config) -> int | None:
+        config = getattr(config, "text_config", config)
         h = getattr(config, "hidden_size", None)
         intermediate = getattr(config, "intermediate_size", None)
         n_layers = getattr(config, "num_hidden_layers", None)
@@ -202,9 +213,10 @@ class ManualFlopCounter(FlopCounterBase):
             return None
         head_dim = getattr(config, "head_dim", h // n_heads)
         n_kv_heads = getattr(config, "num_key_value_heads", n_heads)
+        kv_factor = 1 if getattr(config, "attention_k_eq_v", False) else 2
         attn = (
             h * (n_heads * head_dim)
-            + 2 * h * (n_kv_heads * head_dim)
+            + kv_factor * h * (n_kv_heads * head_dim)
             + (n_heads * head_dim) * h
         )
         mlp = 3 * h * intermediate
