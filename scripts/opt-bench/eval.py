@@ -165,11 +165,21 @@ def build_csv_iii(
     output_path: str = typer.Option("scripts/opt-bench/results/csv_iii.csv"),
     batch_size: int = typer.Option(8),
     use_litellm: bool = typer.Option(False, help="Use LiteLLM for generation (API models)"),
+    judge_openai_model: str = typer.Option(
+        None,
+        help="If set (e.g. 'openai/gpt-4o-mini'), use strongreject_rubric with this "
+             "OpenAI judge instead of strongreject_finetuned. Requires OPENAI_API_KEY.",
+    ),
 ):
     """Run full universality evaluation on all triggers -> CSV III."""
     df = pd.read_csv(csv_i_path)
     df["trigger_id"] = range(len(df))
     df["best_trigger_str"] = df["best_trigger_str"].fillna("").astype(str)
+
+    eval_kwargs = {}
+    if judge_openai_model:
+        eval_kwargs["evaluators"] = ["strongreject_rubric"]
+        eval_kwargs["judge_models"] = [judge_openai_model]
 
     eval_df = evaluate_triggers(
         model_name=model_name,
@@ -178,6 +188,7 @@ def build_csv_iii(
         harmful_dataset="clearharm[:100]",
         batch_size=batch_size,
         model_backend="litellm" if use_litellm else "hf_pipeline",
+        **eval_kwargs,
     )
     eval_df["eval_model"] = model_name
 

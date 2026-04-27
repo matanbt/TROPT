@@ -32,6 +32,11 @@ EXP2_MODELS=(
 )
 BLACKBOX_MODEL="openai/gpt-4o-mini"
 
+# When set (e.g. "openai/gpt-4o-mini"), build-csv-iii uses strongreject_rubric with
+# this OpenAI judge instead of strongreject_finetuned. Empty = use the local
+# fine-tuned Gemma judge. Requires OPENAI_API_KEY in the environment.
+JUDGE_OPENAI_MODEL=""
+
 WANDB_PROJECT="tropt-optbench"
 WANDB_PROJECT_EXP2="tropt-enhancebench"  # exp2.py uses a separate project
 RESULTS_DIR="scripts/opt-bench/results"
@@ -170,11 +175,16 @@ evaluate() {
     if [[ "$SKIP_CSV_III" == "1" ]]; then
         echo "  [skip] build-csv-iii for $prefix (SKIP_CSV_III=1)"
     else
+        local judge_flag=""
+        if [[ -n "$JUDGE_OPENAI_MODEL" ]]; then
+            judge_flag="--judge-openai-model $JUDGE_OPENAI_MODEL"
+        fi
         python -m scripts.opt-bench.eval build-csv-iii \
             --csv-i-path "$csv_i" \
             --model-name "$eval_model" \
             --output-path "$csv_iii" \
-            $litellm_flag
+            $litellm_flag \
+            $judge_flag
     fi
 }
 

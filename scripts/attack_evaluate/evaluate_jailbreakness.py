@@ -20,10 +20,15 @@ from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
 def evaluate_jailbreakness_of_responses(
         instructions: List[str], responses: List[str],
         override_evaluators: List[str] = None,
-        batch_size: int = 8
+        batch_size: int = 8,
+        judge_models: List[str] = None,
     ) -> Dict[str, List[float]]:
     """
     Returns: a DataFrame with the evaluation results; column for `score` (between 0.0 to 1.0) and `evaluator` name.
+
+    `judge_models` is forwarded to LLM-judge evaluators (`strongreject_rubric`, `gpt4_judge`)
+    as their `models=` kwarg in LiteLLM format, e.g. `["openai/gpt-4o-mini"]`. Requires
+    `OPENAI_API_KEY` set. Ignored by HF-based evaluators (e.g. `strongreject_finetuned`).
     """
     assert len(instructions) == len(responses), "instructions-responses mismatch"
 
@@ -36,14 +41,21 @@ def evaluate_jailbreakness_of_responses(
     evaluators = override_evaluators or [
         # "string_matching",
         "strongreject_finetuned",  # https://huggingface.co/qylu4156/strongreject-15k-v1
+        # "strongreject_rubric",  # paper-validated LLM judge; pass judge_models=["openai/gpt-4o-mini"]
         # "harmbench"  # https://huggingface.co/cais/HarmBench-Llama-2-13b-cls; https://github.com/centerforaisafety/HarmBench/blob/main/docs/evaluation_pipeline.md#%EF%B8%8F-step-3---evaluate-completions
         # gpt4_judge
     ]
+
+    extra_kwargs = {}
+    if judge_models is not None:
+        extra_kwargs["models"] = judge_models
+
     eval_dataset = evaluate_dataset(
         dataset,
         evaluators=evaluators,
         empty_model_cache=False,
         batch_size=batch_size,
+        **extra_kwargs,
     )
 
     eval_dataset = eval_dataset.to_pandas()
@@ -97,6 +109,7 @@ def evaluate_triggers(
     model_backend: Literal["hf_pipeline", "litellm"] = "hf_pipeline",
     evaluators: List[str] = None,
     eval_batch_size: int = 8,
+    judge_models: List[str] = None,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
@@ -107,6 +120,8 @@ def evaluate_triggers(
         model_backend: "hf_pipeline" for local HuggingFace, "litellm" for API-based generation.
         evaluators: StrongReject evaluator names (default: ["strongreject_finetuned"]).
         eval_batch_size: Batch size for the StrongReject evaluator.
+        judge_models: LiteLLM-format model list for LLM-judge evaluators (e.g.
+            `["openai/gpt-4o-mini"]` for `strongreject_rubric`/`gpt4_judge`). Needs OPENAI_API_KEY.
     """
     evaluators = evaluators or ["strongreject_finetuned"]
 
@@ -180,6 +195,7 @@ def evaluate_triggers(
             responses=df['response'].tolist(),
             override_evaluators=evaluators,
             batch_size=eval_batch_size,
+            judge_models=judge_models,
         )
 
         # Add metrics to df (one column per metric)
