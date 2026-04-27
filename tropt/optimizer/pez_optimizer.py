@@ -106,7 +106,8 @@ class PEZOptimizer(BaseOptimizer):
                 candidate_trigger_embeds=projected_embeds.unsqueeze(0),  # (1, trigger_seq_len, embed_dim)
                 normalize_grads=False,
                 return_loss=True,
-            )  # Shape: (1, trigger_seq_len, embed_dim)
+            )  # grad: (1, trigger_seq_len, embed_dim); loss: (1,)
+            curr_loss = curr_loss.item()
 
             # Set gradient on the continuous embeddings and step
             trigger_embeds.grad = trigger_grad

@@ -86,7 +86,8 @@ class SoftPromptOptimizer(BaseOptimizer):
                 candidate_trigger_embeds=trigger_embeds,
                 normalize_grads=False,
                 return_loss=True,
-            )  # Shape: (1, trigger_seq_len, vocab_size)
+            )  # grad: (1, trigger_seq_len, embed_dim); loss: (1,)
+            curr_loss = curr_loss.item()
 
             # Set gradient on trigger embeddings
             trigger_embeds.grad = trigger_grad

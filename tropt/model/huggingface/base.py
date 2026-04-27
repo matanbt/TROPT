@@ -722,12 +722,16 @@ class HuggingFaceBackendModel:
             embedding_matrix = self.embedding_matrix  # (vocab_size, embd_dim)
 
             for cand_idx_start in range(0, n_candidates, batch_size):
-                # for each batch we calculate its gradients, through the per-message loss
-                batch_losses = []  # of len n_templates
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
+                cand_bsz = cand_idx_end - cand_idx_start
 
-                # we compute the loss per template in the batch
-                # (we avoid mixing templates, per a potentially different objective)
+                # Backward each template immediately to avoid keeping n_templates graphs at once
+                accum_grad = torch.zeros(
+                    (cand_bsz, trigger_seq_len, embedding_layer.num_embeddings),
+                    device=device, dtype=dtype,
+                )
+                accum_loss = torch.zeros(cand_bsz, device=device, dtype=dtype)
+
                 for template_idx in range(0, n_templates):
                     # 1. Enable gradients on the one-hot input
                     # (bsz_triggers, trigger_seq_len, vocab_size)
@@ -789,22 +793,18 @@ class HuggingFaceBackendModel:
                         count_backward=True,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
-                    batch_losses.append(loss)
 
-                # collect losses for the batch & take avg over texts
-                batch_losses = torch.stack(
-                    batch_losses, dim=0
-                )  # (n_templates, bsz_triggers)
-                batch_losses = batch_losses.mean(dim=0)  # Reduce template dim; Shape: (bsz_triggers,)
+                    # 4. Backward and accumulate
+                    template_grad = torch.autograd.grad(
+                        outputs=loss,
+                        inputs=[candidate_ids_onehot],
+                        grad_outputs=torch.ones_like(loss, device=device),
+                    )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
+                    accum_grad += template_grad / n_templates
+                    accum_loss += loss.detach() / n_templates
 
-                # Compute the gradient of each trigger's loss w.r.t. its one-hot input
-                candidate_onehot_grad = torch.autograd.grad(
-                    outputs=batch_losses,
-                    inputs=[candidate_ids_onehot],
-                    grad_outputs=torch.ones_like(batch_losses, device=device),
-                )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
-                all_grads.append(candidate_onehot_grad)
-                all_losses.append(batch_losses.detach())
+                all_grads.append(accum_grad)
+                all_losses.append(accum_loss)
                 # clear_device_cache()  # clear unused GPU memory
 
             return (
@@ -830,14 +830,14 @@ class HuggingFaceBackendModel:
         candidate_trigger_embeds: Float[Tensor, "n_candidates trigger_seq_len embed_dim"],
         return_loss: bool = False,
         normalize_grads: bool = False,
-    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"] | Tuple[Tensor, float]:
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len embed_dim"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. trigger embeddings.
 
         This variant optimizes directly in the continuous embedding space, with no constraints.
 
         Returns:
             If return_loss is False: gradients tensor (n_candidates, trigger_seq_len, embed_dim).
-            If return_loss is True: tuple of (gradients tensor, average loss scalar).
+            If return_loss is True: tuple of (gradients tensor, per-candidate loss tensor (n_candidates,)).
         """
         assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
@@ -849,7 +849,7 @@ class HuggingFaceBackendModel:
         @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
             batch_size: int,
-        ) -> Tuple[Float[Tensor, "n_templates n_candidates"], float]:
+        ) -> Tuple[Tensor, Tensor]:
 
             # --- Update backward batch size ---
             if batch_size < self._backward_pass_batch_size:
@@ -861,8 +861,15 @@ class HuggingFaceBackendModel:
             all_losses = []
 
             for cand_idx_start in range(0, n_candidates, batch_size):
-                batch_losses = []
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
+                cand_bsz = cand_idx_end - cand_idx_start
+
+                # See compute_grad_from_tokens for the per-template accumulation rationale.
+                accum_grad = torch.zeros_like(
+                    candidate_trigger_embeds[cand_idx_start:cand_idx_end],
+                    device=device, dtype=dtype,
+                )
+                accum_loss = torch.zeros(cand_bsz, device=device, dtype=dtype)
 
                 for template_idx in range(0, n_templates):
                     # 1. Enable gradients on the embedding input directly
@@ -890,35 +897,33 @@ class HuggingFaceBackendModel:
                         count_backward=True,
                     )
 
-                    # 4. Compute Loss
+                    # 4. Loss + per-template backward, then accumulate.
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
-                    batch_losses.append(loss)
+                    template_grad = torch.autograd.grad(
+                        outputs=loss,
+                        inputs=[candidate_embeds],
+                        grad_outputs=torch.ones_like(loss, device=device),
+                    )[0]  # (bsz_triggers, trigger_seq_len, embed_dim)
+                    accum_grad += template_grad / n_templates
+                    accum_loss += loss.detach() / n_templates
 
-                # Collect losses & average over messages
-                batch_losses = torch.stack(batch_losses, dim=0) # (n_templates, bsz_triggers)
-                batch_losses = batch_losses.mean(dim=0)
+                all_grads.append(accum_grad)
+                all_losses.append(accum_loss)
 
-                # 5. Compute gradients w.r.t. the embeddings
-                candidate_embeds_grad = torch.autograd.grad(
-                    outputs=batch_losses,
-                    inputs=[candidate_embeds],
-                    grad_outputs=torch.ones_like(batch_losses, device=device),
-                )[0] # (bsz_triggers, trigger_seq_len, embed_dim)
-
-                all_grads.append(candidate_embeds_grad)
-                all_losses.extend(batch_losses.detach().cpu().tolist())
-
-            return torch.cat(all_grads, dim=0), float(torch.tensor(all_losses, device=device).mean().item())
+            return (
+                torch.cat(all_grads, dim=0),  # (n_candidates, trigger_seq_len, embed_dim)
+                torch.cat(all_losses, dim=0),  # (n_candidates,)
+            )
 
         # Execute batched computation
-        all_grads, avg_loss = _compute_grad__batched()
+        all_grads, all_losses = _compute_grad__batched()
 
         # normalize each token's gradient vector (over the embed_dim dim)
         if normalize_grads:
             all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
         if return_loss:
-            return all_grads, avg_loss
+            return all_grads, all_losses
 
         return all_grads
 
