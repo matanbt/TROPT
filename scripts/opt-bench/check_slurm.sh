@@ -92,7 +92,8 @@ if [[ "$MODE" == "eval" || "$MODE" == "eval-fast" ]]; then
     [[ -z "$EXP_LIMIT" ]] && job_name="eval"
     [[ "$MODE" == "eval-fast" ]] && job_name="${job_name}f"
     echo "=== Submitting $MODE job (name=$job_name, exp=${EXP_LIMIT:-all}) ==="
-    sbatch -J "$job_name" --export="$export_args" "$SLURM_FILE"
+    # Pin evaluation jobs to n-804 (override the default nodelist in eval.slurm).
+    sbatch -J "$job_name" --nodelist=n-804 --export="$export_args" "$SLURM_FILE"
     exit 0
 fi
 
