@@ -60,7 +60,7 @@ _RUN_TYPE_MULTI = "enhancebench_multi"
 _TC = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
 LARGE_NUM_STEPS = 20_000  # rely on FLOP budget to stop
 FLOP_BUDGET = 3e17        # matches exp1 for unified comparison
-FLOP_BUDGET_MULTI = 3e18  # 10x for the multi-instruction sweep — needs more headroom
+FLOP_BUDGET_MULTI = 5e18  # 10x for the multi-instruction sweep — needs more headroom
 
 # Variants to skip in the `multi` command only (comment-out / clear to re-enable).
 SKIP_MULTI_VARIANTS = {
@@ -216,6 +216,19 @@ def _merge_targets(per_template: list[Targets]) -> Targets:
             assert all(has), f"Inconsistent `{field}` across per-template targets"
             merged[field] = torch.cat(vals, dim=0)
     return Targets(**merged)
+
+
+def get_variant_template_fn(variant_name: str) -> Optional[Callable[[str, str], str]]:
+    """Look up the `template_fn` used by a given variant.
+
+    Returns `None` for variants that don't define a `template_fn` (i.e. those
+    that use the default identity wrapping). Used by the eval pipeline to
+    reproduce the exact prompt wrapping the target model saw during optimization.
+    """
+    for v in _build_variants(n_layers=0, sweep_weights=True):
+        if v.name == variant_name:
+            return v.template_fn
+    return None
 
 
 def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantConfig]:

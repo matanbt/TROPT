@@ -5,7 +5,7 @@ https://strong-reject.readthedocs.io/en/latest/api/index.html
 Requires the `evaluate` extra: ``uv sync --extra evaluate``
 """
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 import torch
@@ -110,6 +110,7 @@ def evaluate_triggers(
     evaluators: List[str] = None,
     eval_batch_size: int = 8,
     judge_models: List[str] = None,
+    template_fns: Optional[List[Optional[Callable[[str, str], str]]]] = None,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
@@ -122,7 +123,15 @@ def evaluate_triggers(
         eval_batch_size: Batch size for the StrongReject evaluator.
         judge_models: LiteLLM-format model list for LLM-judge evaluators (e.g.
             `["openai/gpt-4o-mini"]` for `strongreject_rubric`/`gpt4_judge`). Needs OPENAI_API_KEY.
+        template_fns: Optional per-trigger `(message_template, target_response_prefix) -> str`
+            wrappers applied before trigger substitution. Aligned with `trigger_strs`;
+            use `None` for an entry to skip wrapping. Used to reproduce attacks that
+            modify the prompt (e.g. PRS). Affects only the target-model prompt;
+            the judge always receives the clean `message` column.
     """
+    if template_fns is not None:
+        assert len(template_fns) == len(trigger_strs), \
+            "template_fns must align with trigger_strs"
     evaluators = evaluators or ["strongreject_finetuned"]
 
     # Load HF model directly via pipeline (isolated, no TROPT wrapping)
@@ -160,13 +169,22 @@ def evaluate_triggers(
 
     all_results = []
 
-    for trigger_id, trigger_str in zip(trigger_ids, trigger_strs):
+    for i, (trigger_id, trigger_str) in enumerate(zip(trigger_ids, trigger_strs)):
         # Create a copy for this specific trigger to avoid modifying base_df
         df = base_df.copy()
 
         # Add metadata columns
         df['trigger_id'] = trigger_id
         df['trigger_str'] = trigger_str
+
+        # Optionally wrap the template (e.g. PRS) before trigger substitution.
+        # Judge still receives `df['message']` (clean) below.
+        template_fn = template_fns[i] if template_fns is not None else None
+        if template_fn is not None:
+            df['message_template'] = df.apply(
+                lambda r: template_fn(r['message_template'], r['target_response_prefix']),
+                axis=1,
+            )
 
         # Create triggered messages
         df['triggered_message'] = df['message_template'].apply(

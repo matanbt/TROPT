@@ -22,8 +22,14 @@ import typer
 import wandb
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 
+from importlib import import_module
+
 from scripts.attack_evaluate.evaluate_jailbreakness import evaluate_triggers
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+
+# `scripts.opt-bench` has a hyphen, so it can't be imported via `from ... import`;
+# use string-based import to grab the variant→template_fn lookup.
+get_variant_template_fn = import_module("scripts.opt-bench.exp2").get_variant_template_fn
 
 # ─── Defaults ───────────────────────────────────────────────────────────────
 WANDB_ENTITY = "matanbt"
@@ -171,7 +177,12 @@ def build_csv_iii(
              "OpenAI judge instead of strongreject_finetuned. Requires OPENAI_API_KEY.",
     ),
 ):
-    """Run full universality evaluation on all triggers -> CSV III."""
+    """Run full universality evaluation on all triggers -> CSV III.
+
+    Each trigger is evaluated under the same prompt-wrapping `template_fn`
+    the variant used during training (e.g. PRS for `gcg_prs_template`).
+    Variants without a `template_fn` fall through identity wrapping.
+    """
     df = pd.read_csv(csv_i_path)
     df["trigger_id"] = range(len(df))
     df["best_trigger_str"] = df["best_trigger_str"].fillna("").astype(str)
@@ -181,6 +192,8 @@ def build_csv_iii(
         eval_kwargs["evaluators"] = ["strongreject_rubric"]
         eval_kwargs["judge_models"] = [judge_openai_model]
 
+    template_fns = [get_variant_template_fn(v) for v in df["variant_name"].tolist()]
+
     eval_df = evaluate_triggers(
         model_name=model_name,
         trigger_strs=df["best_trigger_str"].tolist(),
@@ -188,6 +201,7 @@ def build_csv_iii(
         harmful_dataset="clearharm[:100]",
         batch_size=batch_size,
         model_backend="litellm" if use_litellm else "hf_pipeline",
+        template_fns=template_fns,
         **eval_kwargs,
     )
     eval_df["eval_model"] = model_name
