@@ -218,7 +218,7 @@ WHITEBOX_OPTIMIZER_CONFIGS: list[OptimizerConfig] = [
             candidate_selection="gradient", 
             # num_steps=500,  # <-- original
             num_steps=LARGE_NUM_STEPS,
-            n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,
+            n_candidates=128, sample_topk=256, n_candidates_after_proxy_filter=32,  # this is canceled anyway
             sample_n_replace=1,
             candidate_oversample_factor=1.1, 
             token_constraints=_TC,
@@ -404,19 +404,12 @@ def _run_name(opt_name: str, model_name: str, msg_id: int, seed: int) -> str:
     return f"optbench[{opt_name},{_model_short(model_name)},m={msg_id},s={seed}]"
 
 
-# Optimizers too expensive to run on Gemma4 under current compute constraints.
-_GEMMA4_SKIP_OPTIMIZERS = {
-    # "pez", "soft_prompt", "gbda", "hotflip", 
-    # "beast",
-    # "qcg", "arca", 
-    # "gaslite", "gaslite2", 
-    # "gcgplus_rand",
+# Optimizers too expensive to run under current compute constraints (applied to all models).
+_SKIP_OPTIMIZERS: set[str] = {
+    "soft_prompt",
+    "gaslite2",
+    "gcgplus_rand",
 }
-
-
-def _is_gemma4(model_name: str) -> bool:
-    n = model_name.lower().replace("-", "")
-    return "gemma4" in n
 
 
 def _finished_run_names(project: str = WANDB_PROJECT) -> set[str]:
@@ -442,11 +435,10 @@ def whitebox(
     """Run whitebox optimizers on a HuggingFace model, all under PrefillCELoss."""
     selected = [_OPT_BY_NAME[n] for n in optimizers]
 
-    if _is_gemma4(model_name):
-        skipped = [c.name for c in selected if c.name in _GEMMA4_SKIP_OPTIMIZERS]
-        if skipped:
-            print(f"Gemma4 detected: skipping {len(skipped)} optimizers due to compute constraints: {skipped}")
-        selected = [c for c in selected if c.name not in _GEMMA4_SKIP_OPTIMIZERS]
+    skipped = [c.name for c in selected if c.name in _SKIP_OPTIMIZERS]
+    if skipped:
+        print(f"Skipping {len(skipped)} optimizers due to compute constraints: {skipped}")
+    selected = [c for c in selected if c.name not in _SKIP_OPTIMIZERS]
 
     finished: set[str] = _finished_run_names() if skip_existing else set()
     print(f"Skipping {len(finished)} already-finished runs.")

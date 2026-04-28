@@ -62,13 +62,6 @@ LARGE_NUM_STEPS = 20_000  # rely on FLOP budget to stop
 FLOP_BUDGET = 3e17        # matches exp1 for unified comparison
 FLOP_BUDGET_MULTI = 5e18  # 10x for the multi-instruction sweep — needs more headroom
 
-# Variants to skip in the `multi` command only (comment-out / clear to re-enable).
-SKIP_MULTI_VARIANTS = {
-    "gcg_flrt_distill",
-    "gcg_begging_init",
-    "gcg_cw",
-    "gcg_steering",
-}
 _MAC_KWARGS = dict(
     num_steps=LARGE_NUM_STEPS,
     candidate_selection="gradient",
@@ -631,7 +624,6 @@ def multi(
     all_variants = _build_variants(n_layers=0, sweep_weights=sweep_weights)
     variant_map = {v.name: v for v in all_variants}
     selected_names = variants or [v.name for v in all_variants]
-    selected_names = [n for n in selected_names if n not in SKIP_MULTI_VARIANTS]
     selected = [variant_map[n] for n in selected_names]
 
     any_eager = any(v.needs_eager_attn for v in selected)

@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Monitor (and optionally re-launch) the exp1/exp2/exp2u slurm jobs.
 #
-# Job naming scheme (one slurm job = one (exp, model, seed) triple):
-#   exp{N}{letter}{seed_idx}
-#     N        ∈ {1, 2, 2u}        — exp1.py / exp2.py single / exp2.py multi
-#     letter   ∈ {l, g, q, m}      — Llama / Gemma-3-12B / Qwen / Gemma-4-MoE
+# Job naming scheme (one slurm job = one (exp, model, seed[, msg_split]) tuple):
+#   exp{N}{letter}{seed_idx}[{msg_split}]
+#     N         ∈ {1, 2, 2u}       — exp1.py / exp2.py single / exp2.py multi
+#     letter    ∈ {l, g, q, m}     — Llama / Gemma-3-12B / Qwen / Gemma-4-MoE
 #                                    (exp2 and exp2u are pinned to {g}; see EXP2_LETTERS)
-#     seed_idx ∈ {1, 2, 3}         — position in SEEDS (42, 123, 777)
-# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp2ug1 = exp2 multi on Gemma-3.
+#     seed_idx  ∈ {1, 2, 3}        — position in SEEDS (42, 123, 777)
+#     msg_split ∈ {a, b}           — REQUIRED for exp1m only: a=msgs 0-7, b=msgs 8-14
+#                                    (gemma-4 is split because each run is too long for one slurm job)
+# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m2a = exp1 on Gemma-4, seed 123, msgs 0-7.
 #
 # Expects scripts/opt-bench/eval.slurm to exist; the slurm wrapper is expected
 # to end with `bash scripts/opt-bench/run_all.sh`, which reads the env vars
@@ -71,6 +73,10 @@ EXP1_LETTERS=(l g q m)
 EXP2_LETTERS=(g)    # exp2 is pinned to gemma-3-12b (see run_all.sh EXP2_MODELS)
 SEEDS=(42 123 777)
 EXPS=(1 2 2u)
+# Models already finished — fully excluded from the expected list (so they
+# don't appear as "missing" and aren't relaunched). Add letters from
+# LETTER_TO_MODEL keys above; e.g. DONE_MODELS=(l q) to skip Llama + Qwen.
+DONE_MODELS=(l g)
 if [[ -n "$EXP_LIMIT" ]]; then
     EXPS=("$EXP_LIMIT")
 fi
@@ -105,8 +111,21 @@ for exp in "${EXPS[@]}"; do
         2|2u) letters=("${EXP2_LETTERS[@]}") ;;
     esac
     for letter in "${letters[@]}"; do
+        # skip models marked as already done
+        skip=0
+        for done_letter in "${DONE_MODELS[@]:-}"; do
+            [[ "$letter" == "$done_letter" ]] && skip=1 && break
+        done
+        if [[ $skip -eq 1 ]]; then continue; fi
         for i in 1 2 3; do
-            EXPECTED+=("exp${exp}${letter}${i}")
+            if [[ "$exp" == "1" && "$letter" == "m" ]]; then
+                # gemma-4 is split into two msg-id halves (see header)
+                for split in a b; do
+                    EXPECTED+=("exp${exp}${letter}${i}${split}")
+                done
+            else
+                EXPECTED+=("exp${exp}${letter}${i}")
+            fi
         done
     done
 done
@@ -159,15 +178,26 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         #     sbatch -J "$job" --export=ALL,EXP_FILTER=1bb "$SLURM_FILE"
         #     continue
         # fi
-        if [[ ! "$job" =~ ^exp(1|2u|2)([lgqm])([123])$ ]]; then
+        if [[ ! "$job" =~ ^exp(1|2u|2)([lgqm])([123])([ab]?)$ ]]; then
             echo "  [skip] $job — unrecognized format"
             continue
         fi
         exp_num="${BASH_REMATCH[1]}"
         letter="${BASH_REMATCH[2]}"
         idx="${BASH_REMATCH[3]}"
+        split="${BASH_REMATCH[4]}"  # "" | "a" | "b" (a/b only valid for exp1m)
         model="${LETTER_TO_MODEL[$letter]}"
         seed="${SEEDS[$((idx - 1))]}"
+
+        # Split suffix is required for exp1m, forbidden elsewhere.
+        if [[ "$exp_num" == "1" && "$letter" == "m" && -z "$split" ]]; then
+            echo "  [skip] $job — exp1m requires split suffix (a or b)"
+            continue
+        fi
+        if [[ -n "$split" && ( "$exp_num" != "1" || "$letter" != "m" ) ]]; then
+            echo "  [skip] $job — split suffix '$split' only valid for exp1m"
+            continue
+        fi
 
         # skip seed idx != 1
         # if [[ "$idx" != "1" ]]; then
@@ -207,11 +237,15 @@ if [[ $RUN_MISSING -eq 1 ]]; then
             )
         fi
 
-        echo "  sbatch $job  exp=$exp_num model=$model seed=$seed ${extra_sbatch_args[*]}"
+        export_args="ALL,EXP_FILTER=$exp_num,MODEL_FILTER=$model,SEED_FILTER=$seed"
+        if [[ -n "$split" ]]; then
+            export_args="$export_args,MSG_ID_FILTER=$split"
+        fi
+        echo "  sbatch $job  exp=$exp_num model=$model seed=$seed${split:+ split=$split} ${extra_sbatch_args[*]}"
         sbatch \
             -J "$job" \
             "${extra_sbatch_args[@]}" \
-            --export=ALL,EXP_FILTER="$exp_num",MODEL_FILTER="$model",SEED_FILTER="$seed" \
+            --export="$export_args" \
             "$SLURM_FILE"
     done
 fi

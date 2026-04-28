@@ -158,7 +158,7 @@ def evaluate_triggers(
     elif harmful_dataset == "clearharm[:50]":
         base_df = pd.read_csv(CLEARHARM_PATH).head(50)
     elif harmful_dataset == "clearharm[:100]":
-        base_df = pd.read_csv(CLEARHARM_PATH).head(100)
+        base_df = pd.read_csv(CLEARHARM_PATH).head(115)  #+15 to ensure test set
     else:
         raise ValueError(f"Unsupported harmful_dataset: {harmful_dataset}")
 
