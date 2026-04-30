@@ -49,7 +49,7 @@ mkdir -p "$RESULTS_DIR"
 EXP_FILTER="${EXP_FILTER:-}"        # "" | "1" | "2" | "2u" | "1bb" (2 = exp2 single, 2u = exp2 multi, 1bb = exp1 OpenAI blackbox only)
 MODEL_FILTER="${MODEL_FILTER:-}"    # "" | substring of a WHITEBOX_MODELS entry
 SEED_FILTER="${SEED_FILTER:-}"      # "" | single seed, e.g. "42"
-MSG_ID_FILTER="${MSG_ID_FILTER:-}"  # "" | "a" (msgs 0-7) | "b" (msgs 8-14) — used to split gemma-4 exp1 across two slurm jobs
+MSG_ID_FILTER="${MSG_ID_FILTER:-}"  # "" | "a" (msgs 0-4) | "b" (msgs 5-9) | "c" (msgs 10-14) — used to split gemma-4 exp1 across three slurm jobs
 # Eval-only flow (only consulted when EXP_FILTER is empty, since non-empty
 # EXP_FILTER short-circuits out before the evaluation section).
 EVAL_EXP_FILTER="${EVAL_EXP_FILTER:-}"  # "" | "1" | "2" | "2u" — restrict eval section to one experiment (2 = exp2 single, 2u = exp2 multi)
@@ -77,13 +77,16 @@ if [[ -n "$EXP_FILTER" ]]; then
     echo "[filter] EXP_FILTER -> $EXP_FILTER (exp3 + evals disabled)"
 fi
 if [[ "$MSG_ID_FILTER" == "a" ]]; then
-    MSG_IDS="0 1 2 3 4 5 6 7"
+    MSG_IDS="0 1 2 3 4"
     echo "[filter] MSG_ID_FILTER=a -> MSG_IDS=$MSG_IDS"
 elif [[ "$MSG_ID_FILTER" == "b" ]]; then
-    MSG_IDS="8 9 10 11 12 13 14"
+    MSG_IDS="5 6 7 8 9"
     echo "[filter] MSG_ID_FILTER=b -> MSG_IDS=$MSG_IDS"
+elif [[ "$MSG_ID_FILTER" == "c" ]]; then
+    MSG_IDS="10 11 12 13 14"
+    echo "[filter] MSG_ID_FILTER=c -> MSG_IDS=$MSG_IDS"
 elif [[ -n "$MSG_ID_FILTER" ]]; then
-    echo "ERROR: unknown MSG_ID_FILTER: $MSG_ID_FILTER (expected a|b)" >&2
+    echo "ERROR: unknown MSG_ID_FILTER: $MSG_ID_FILTER (expected a|b|c)" >&2
     exit 1
 fi
 

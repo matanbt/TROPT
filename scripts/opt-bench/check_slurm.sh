@@ -7,9 +7,9 @@
 #     letter    ∈ {l, g, q, m}     — Llama / Gemma-3-12B / Qwen / Gemma-4-MoE
 #                                    (exp2 and exp2u are pinned to {g}; see EXP2_LETTERS)
 #     seed_idx  ∈ {1, 2, 3}        — position in SEEDS (42, 123, 777)
-#     msg_split ∈ {a, b}           — REQUIRED for exp1m only: a=msgs 0-7, b=msgs 8-14
+#     msg_split ∈ {a, b, c}        — REQUIRED for exp1m only: a=msgs 0-4, b=msgs 5-9, c=msgs 10-14
 #                                    (gemma-4 is split because each run is too long for one slurm job)
-# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m2a = exp1 on Gemma-4, seed 123, msgs 0-7.
+# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m2a = exp1 on Gemma-4, seed 123, msgs 0-4.
 #
 # Expects scripts/opt-bench/eval.slurm to exist; the slurm wrapper is expected
 # to end with `bash scripts/opt-bench/run_all.sh`, which reads the env vars
@@ -76,7 +76,7 @@ EXPS=(1 2 2u)
 # Models already finished — fully excluded from the expected list (so they
 # don't appear as "missing" and aren't relaunched). Add letters from
 # LETTER_TO_MODEL keys above; e.g. DONE_MODELS=(l q) to skip Llama + Qwen.
-DONE_MODELS=(l g)
+DONE_MODELS=(l g q)
 if [[ -n "$EXP_LIMIT" ]]; then
     EXPS=("$EXP_LIMIT")
 fi
@@ -119,8 +119,8 @@ for exp in "${EXPS[@]}"; do
         if [[ $skip -eq 1 ]]; then continue; fi
         for i in 1 2 3; do
             if [[ "$exp" == "1" && "$letter" == "m" ]]; then
-                # gemma-4 is split into two msg-id halves (see header)
-                for split in a b; do
+                # gemma-4 is split into three msg-id chunks (see header)
+                for split in a b c; do
                     EXPECTED+=("exp${exp}${letter}${i}${split}")
                 done
             else
@@ -178,20 +178,20 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         #     sbatch -J "$job" --export=ALL,EXP_FILTER=1bb "$SLURM_FILE"
         #     continue
         # fi
-        if [[ ! "$job" =~ ^exp(1|2u|2)([lgqm])([123])([ab]?)$ ]]; then
+        if [[ ! "$job" =~ ^exp(1|2u|2)([lgqm])([123])([abc]?)$ ]]; then
             echo "  [skip] $job — unrecognized format"
             continue
         fi
         exp_num="${BASH_REMATCH[1]}"
         letter="${BASH_REMATCH[2]}"
         idx="${BASH_REMATCH[3]}"
-        split="${BASH_REMATCH[4]}"  # "" | "a" | "b" (a/b only valid for exp1m)
+        split="${BASH_REMATCH[4]}"  # "" | "a" | "b" | "c" (a/b/c only valid for exp1m)
         model="${LETTER_TO_MODEL[$letter]}"
         seed="${SEEDS[$((idx - 1))]}"
 
         # Split suffix is required for exp1m, forbidden elsewhere.
         if [[ "$exp_num" == "1" && "$letter" == "m" && -z "$split" ]]; then
-            echo "  [skip] $job — exp1m requires split suffix (a or b)"
+            echo "  [skip] $job — exp1m requires split suffix (a, b, or c)"
             continue
         fi
         if [[ -n "$split" && ( "$exp_num" != "1" || "$letter" != "m" ) ]]; then
