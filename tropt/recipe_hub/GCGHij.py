@@ -69,7 +69,7 @@ def gcg_hij__bentov2025(
     
     loss = CombinedLoss(
         loss_funcs=[PrefillCELoss(), attn_loss],
-        weights=[1.0, 100],  # TODO: these are indeed the weights used by GCG-Hijack; what weights are used by AttnGCG?
+        weights=[1.0, 100],  # both paprs default weighting
     )
 
     optimizer = GCGOptimizer(
