@@ -42,11 +42,11 @@ from .PAL__sitawarin2024 import (
     ral__sitawarin2024,
 )
 from .PEZ__wen2023 import pez__wen2023
-from .PromptRecovery__williams2025 import (
+from .PromptRecovery__wen2023 import (
     evaluate_prompt_recovery,
     generate_image_from_prompt,
     get_image_embedding_for_clip_model,
-    prompt_recovery__williams2025,
+    prompt_recovery__wen2023,
 )
 from .PRS__andriushchenko2024 import prs__andriushchenko2024, rs_emb
 from .QCG__hayase2024 import (
@@ -74,8 +74,9 @@ RECIPES = {
     # GBDA (Guo 2021)
     "gbda__guo2021": gbda__guo2021,
 
-    # PEZ (Wen 2023)
+    # PEZ (Wen 2023, Williams 2025)
     "pez__wen2023": pez__wen2023,
+    "prompt_recovery__wen2023": prompt_recovery__wen2023,
 
     # ARCA (Jones 2023)
     "arca__jones2023": arca__jones2023,
@@ -131,9 +132,6 @@ RECIPES = {
     # IRIS (Huang 2025)
     "iris__huang2025": iris__huang2025,
     "iris2": iris2,
-
-    # Prompt Recovery (Williams 2025)
-    "prompt_recovery__williams2025": prompt_recovery__williams2025,
 }
 
 

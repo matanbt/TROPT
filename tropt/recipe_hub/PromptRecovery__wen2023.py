@@ -82,7 +82,7 @@ def get_image_embedding_for_clip_model(
     return image_emb.pooler_output
 
 
-def prompt_recovery__williams2025(
+def prompt_recovery__wen2023(
     image=None,
     model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
     template: str = "{{OPTIMIZED_TRIGGER}}",

@@ -13,7 +13,6 @@ Usage
   python -m scripts.opt-bench.eval build-csv-ii --model-name openai/gpt-5-nano --use-litellm
   python -m scripts.opt-bench.eval build-csv-iii --model-name google/gemma-2-2b-it
 """
-from ty_extensions import Unknown
 import ast
 import os
 from typing import List
