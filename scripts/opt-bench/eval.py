@@ -13,6 +13,8 @@ Usage
   python -m scripts.opt-bench.eval build-csv-ii --model-name openai/gpt-5-nano --use-litellm
   python -m scripts.opt-bench.eval build-csv-iii --model-name google/gemma-2-2b-it
 """
+from ty_extensions import Unknown
+import ast
 import os
 from typing import List
 
@@ -40,6 +42,66 @@ app = typer.Typer()
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
+def _maybe_parse_list(val):
+    """Parse a stringified Python list back to a list; pass through otherwise.
+
+    `enhancebench_multi` runs log `optimized_instruction` / `optimized_target`
+    as a Python list (one entry per template), which `pd.read_csv` reads back
+    as the string repr `"['a', 'b', ...]"`. This recovers the list.
+    """
+    if isinstance(val, str) and val.startswith("[") and val.endswith("]"):
+        try:
+            parsed = ast.literal_eval(val)
+            if isinstance(parsed, list):
+                return parsed
+        except (ValueError, SyntaxError):
+            pass
+    return val
+
+
+_MULTI_RUN_TYPES = {"enhancebench_multi"}
+
+
+def _explode_multi_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Explode multi-instruction rows into one row per (instruction, target).
+
+    **CSV-II only.** Multi-instruction runs (`run_type` in `_MULTI_RUN_TYPES`)
+    log `optimized_instruction` / `optimized_target` as Python lists; CSV-II
+    needs per-template BLEU, so each multi-row is exploded into N rows that
+    share the same universal trigger but differ in the training template.
+
+    Do NOT use for CSV-III: there, each universal trigger should be evaluated
+    once against the held-out universality dataset, not N times against the N
+    training templates (the trigger is identical across the exploded rows).
+    """
+    df = df.copy()
+    is_multi_row = df["run_type"].isin(_MULTI_RUN_TYPES)
+    # Only parse the cells we actually intend to explode — avoids
+    # mis-parsing single-instruction strings that happen to look list-like.
+    df.loc[is_multi_row, "optimized_instruction"] = (
+        df.loc[is_multi_row, "optimized_instruction"].map(_maybe_parse_list)
+    )
+    df.loc[is_multi_row, "optimized_target"] = (
+        df.loc[is_multi_row, "optimized_target"].map(_maybe_parse_list)
+    )
+
+    is_multi = df["optimized_instruction"].map(lambda v: isinstance(v, list))
+    if not is_multi.any():
+        return df.reset_index(drop=True)
+    # Sanity-check pairing before exploding.
+    bad = df[is_multi].apply(
+        lambda r: not isinstance(r["optimized_target"], list)
+        or len(r["optimized_target"]) != len(r["optimized_instruction"]),
+        axis=1,
+    )
+    if bad.any():
+        raise ValueError(
+            f"{bad.sum()} multi-row(s) have mismatched instruction/target list lengths"
+        )
+    df = df.explode(["optimized_instruction", "optimized_target"], ignore_index=True)
+    return df
+
+
 def _generate_with_hf(triggered_messages: List[str], model_name: str,
                       max_new_tokens: int, batch_size: int) -> List[str]:
     """Generate responses using a local HuggingFace pipeline."""
@@ -98,6 +160,7 @@ def build_csv_i(
         rows.append({
             "run_id": run.id,
             "run_name": run.name,
+            "run_type": c.get("run_type"),
             "model_name": c.get("model_name"),
             "optimizer_name": c.get("optimizer_name"),
             "variant_name": c.get("variant_name"),
@@ -131,6 +194,15 @@ def build_csv_ii(
 ):
     """Add triggered-message generation and BLEU score to CSV I -> CSV II."""
     df = pd.read_csv(csv_i_path)
+    df = _explode_multi_rows(df)
+
+    # Drop rows missing the fields we need; otherwise `str(NaN) == "nan"` and
+    # the placeholder substitution silently produces a malformed prompt.
+    required = ["optimized_instruction", "optimized_target", "best_trigger_str"]
+    n_before = len(df)
+    df = df.dropna(subset=required).reset_index(drop=True)
+    if len(df) < n_before:
+        print(f"  dropped {n_before - len(df)} row(s) with missing required fields")
 
     df["triggered_message"] = df.apply(
         lambda r: str(r["optimized_instruction"]).replace(
@@ -152,6 +224,13 @@ def build_csv_ii(
     smooth = SmoothingFunction().method1
 
     def _bleu(row) -> float:
+        # Truncate generated to the same number of *words* as target — char
+        # truncation can cut a word in half and produce noisy BLEU.
+        # target_words = str(row["optimized_target"]).split()
+        # generated_words = str(row["generated_response"]).split()[: len(target_words)]
+        # return sentence_bleu(
+        #     [target_words], generated_words, smoothing_function=smooth
+        # )
         target = str(row["optimized_target"])
         generated = str(row["generated_response"])[:len(target)]
         return sentence_bleu([target.split()], generated.split(), smoothing_function=smooth)
@@ -182,6 +261,12 @@ def build_csv_iii(
     Each trigger is evaluated under the same prompt-wrapping `template_fn`
     the variant used during training (e.g. PRS for `gcg_prs_template`).
     Variants without a `template_fn` fall through identity wrapping.
+
+    NOTE: deliberately consumes raw CSV-I (one row per run, including multi
+    runs as a single row with a universal trigger) — does NOT call
+    `_explode_multi_rows`. Each universal trigger is evaluated once on the
+    held-out universality dataset; exploding here would generate the same
+    trigger × dataset N times redundantly.
     """
     df = pd.read_csv(csv_i_path)
     df["trigger_id"] = range(len(df))
