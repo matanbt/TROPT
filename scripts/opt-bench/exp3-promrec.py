@@ -21,7 +21,7 @@ from pathlib import Path
 
 import torch
 
-from tropt.recipe_hub.PromptRecovery import recover_prompt_end_to_end
+from tropt.recipe_hub.PromptRecovery__wen2023 import recover_prompt_end_to_end
 from tropt.tracker import WandbTracker
 
 # ─── Constants ───────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ SAMPLED_PROMPTS = [
     # 'a beautiful painting of the heart of pripyat by nekro and pascal blanche and syd mead and greg rutkowski and sin jong hun and victo ngai and simon stalenhag and chris voy. in style of cg art. ray tracing, cel shading, 3 d. ue 5. hyper detailed. realistic. maya. octane render. ',
 ]
 
-OPTIMIZER_TYPES = ["gcg", "adv_decoding"]  # MAC and beam-search-decoding
+OPTIMIZER_TYPES = ["mac", "adv_decoding"]  # MAC and beam-search-decoding
 TRIGGER_LENS = [5, 10, 15, 20]             # paper uses 8-20; sweep for ablation
 SEEDS = [0, 1]                             # two independent runs per config
 

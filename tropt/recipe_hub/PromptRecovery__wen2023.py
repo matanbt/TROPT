@@ -1,7 +1,8 @@
 """Prompt Recovery for Image Generation Models.
 
-Based on: "Prompt Recovery for Image Generation Models: A Comparative Study
-of Discrete Optimizers" (Williams et al., 2025).
+Based on: Hard Prompts Made Easy: Gradient-Based Discrete Optimization for 
+Prompt Tuning and Discovery (Wen et al. 2023) "Prompt Recovery for Image
+Generation Models: A Comparative Study of Discrete Optimizers" (Williams et al., 2025).
 
 Uses CLIP-like models as a proxy: optimize discrete text tokens to maximize
 cosine similarity between the text embedding and a target image embedding.
@@ -20,17 +21,24 @@ from tropt.common import Targets
 from tropt.loss import SimilarityLoss
 from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
 from tropt.optimizer import BeamSearchOptimizer, OptimizerResult
+from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
+from tropt.optimizer.pez_optimizer import PEZOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
-# Paper uses 8-20 free tokens; 8 is the default
-_DEFAULT_INITIAL_TRIGGER = "! ! ! ! ! ! ! !"
+# Paper uses 8-20 free tokens; Wen 2023 Fig 5 finds 16 most generalizable.
+_DEFAULT_TRIGGER_LEN = 16
 
-# MAC (momentum-accelerated GCG) step count. Fixed here so the recipe owns
-# all optimizer settings; callers only choose the optimizer_type.
+# Paper §3.2 / §5.1: vanilla GCG run for 3000 steps with batch 512.
+_GCG_NUM_STEPS = 3000
+
+# MAC (momentum-accelerated GCG+) step count.
 _MAC_NUM_STEPS = 500
+
+# PEZ (Wen et al., 2023): paper uses 3000 steps with AdamW lr=0.1, wd=0.1.
+_PEZ_NUM_STEPS = 3000
 
 
 def get_image_embedding_for_clip_model(
@@ -74,13 +82,13 @@ def get_image_embedding_for_clip_model(
     return image_emb.pooler_output
 
 
-def run_prompt_recovery(
+def prompt_recovery__williams2025(
     image=None,
-    model_name: str = "openai/clip-vit-large-patch14",
+    model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
     template: str = "{{OPTIMIZED_TRIGGER}}",
-    initial_trigger: str = _DEFAULT_INITIAL_TRIGGER,
-    optimizer_type: str = "gcg",
-    trigger_len: int = 20,
+    initial_trigger: Optional[str] = None,
+    optimizer_type: str = "pez",
+    trigger_len: int = _DEFAULT_TRIGGER_LEN,
     util_lm_model_name: str = "google/gemma-2-2b-it",
     tracker: Optional[BaseTracker] = None,
     target_image_path: Optional[str] = None,
@@ -91,13 +99,17 @@ def run_prompt_recovery(
 
     Args:
         image: A PIL Image to invert. If None, loads from `target_image_path`.
-        model_name: CLIP-like model to use as proxy.
+        model_name: CLIP-like model to use as proxy. Default is OpenCLIP ViT-H/14
+            on LAION-2B, matching Wen 2023 §4.1.
         template: Text template with trigger placeholder.
-        initial_trigger: Starting trigger tokens (ignored by `adv_decoding`).
-        optimizer_type: `"gcg"` for MAC (momentum-accelerated GCG+) or
-            `"adv_decoding"` for beam-search decoding with a utility LM.
-        trigger_len: Number of trigger tokens. For `adv_decoding` this also
-            sets the number of optimizer steps (one appended token per step).
+        initial_trigger: Starting trigger string. If None (default), a random
+            vocab-embedded trigger of length `trigger_len` is sampled.
+        optimizer_type: which discrete optimizer to drive the inversion:
+            - `"pez"` (default): PEZ (Wen et al., 2023).
+            - `"mac"`: MAC = momentum-accelerated GCG+ (Wang 2024).
+            - `"gcg"`: vanilla GCG.
+            - `"adv_decoding"`: beam-search decoding with a utility LM.
+        trigger_len: Number of trigger tokens. 
         util_lm_model_name: HF model id for the utility LM (only for adv_decoding).
         tracker: Optional experiment tracker.
         target_image_path: Path to an image file (used if `image` is None).
@@ -119,29 +131,58 @@ def run_prompt_recovery(
 
     token_constraints = TokenConstraints()
 
-    if optimizer_type == "gcg":
-        # MAC optimizer (paper params).
+    if initial_trigger is None:
+        # Wen 2023 Algorithm 1: P ~ E^{|V|} (random vocab-embedded init).
+        initial_trigger = get_printable_random_trigger(
+            trigger_len=trigger_len,
+            tokenizer=model_obj.tokenizer,
+        )
+
+    if optimizer_type == "mac":
+        # MAC (momentum-accelerated GCG+, Wang 2024) with paper params.
         optimizer = GCGPlusOptimizer(
             model=model_obj,
             loss=SimilarityLoss(),
             proxy_model=model_obj,
             tracker=tracker,
-
             candidate_selection="gradient",
             num_steps=_MAC_NUM_STEPS,
-            sample_topk=256, n_candidates=256,
+            sample_topk=256,
+            n_candidates=256,
             sample_n_replace=(1, 1),
             momentum=0.6,
             candidate_oversample_factor=1.1,
-
             token_constraints=token_constraints,
             use_retokenize=True,
             seed=seed,
         )
+    elif optimizer_type == "gcg":
+        # Vanilla GCG with Williams et al. §3.2 / §5.1 hparams:
+        # 3000 steps, batch 512, top-k 256.
+        optimizer = GCGOptimizer(
+            model=model_obj,
+            loss=SimilarityLoss(),
+            tracker=tracker,
+            num_steps=_GCG_NUM_STEPS,
+            n_candidates=512,
+            sample_topk=256,
+            sample_n_replace=1,
+            token_constraints=token_constraints,
+            use_retokenize=True,
+            seed=seed,
+        )
+    elif optimizer_type == "pez":
+        optimizer = PEZOptimizer(
+            model=model_obj,
+            loss=SimilarityLoss(),
+            tracker=tracker,
+            num_steps=_PEZ_NUM_STEPS,
+            learning_rate=0.1,
+            weight_decay=0.1,
+            gd_optimizer=torch.optim.AdamW,
+            seed=seed,
+        )
     elif optimizer_type == "adv_decoding":
-        # Beam-search decoding guided by a utility LM. Hyperparameters mirror
-        # exp1 (scripts/opt-bench/exp1.py `adv_decoding`), except `num_steps`
-        # is set from `trigger_len` (one token appended per step).
         from tropt.model.huggingface.lm import LMHFModel
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -167,7 +208,8 @@ def run_prompt_recovery(
         )
     else:
         raise ValueError(
-            f"Unknown optimizer_type={optimizer_type!r}; expected 'gcg' or 'adv_decoding'."
+            f"Unknown optimizer_type={optimizer_type!r}; "
+            f"expected 'mac', 'gcg', 'pez', or 'adv_decoding'."
         )
 
     result = optimizer.optimize_trigger(
@@ -194,7 +236,9 @@ def evaluate_prompt_recovery(
     image=None,
     image_path: Optional[str] = None,
     original_prompt: Optional[str] = None,
-    clip_model_name: str = "openai/clip-vit-large-patch14",
+    # Wen 2023 §4.1 evaluates with a held-out OpenCLIP ViT-G to avoid scoring
+    # against the same backbone used for optimization.
+    clip_model_name: str = "laion/CLIP-ViT-g-14-laion2B-s12B-b42K",
     text_sim_model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     clip_text_model_obj: Optional[CLIPTextEncoderHFModel] = None,
 ) -> PromptRecoveryEvaluation:
@@ -332,7 +376,7 @@ def recover_prompt_end_to_end(
     prompt: str,
     sd_model_name: str = "sd2-community/stable-diffusion-2-1",
     clip_model_name: str = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K",
-    optimizer_type: str = "gcg",
+    optimizer_type: str = "pez",
     trigger_len: int = 20,
     util_lm_model_name: str = "google/gemma-2-2b-it",
     seed: int = 0,
@@ -346,7 +390,7 @@ def recover_prompt_end_to_end(
 
     Defaults mirror the exp3-promrec reproduction of Williams et al. 2024:
     SD-2.1 + OpenCLIP H/14 (laion2B), random 20-token init. The recipe owns
-    optimizer hyperparameters; callers pick `optimizer_type` ∈ {"gcg", "adv_decoding"}.
+    optimizer hyperparameters; callers pick `optimizer_type` ∈ {"gcg", "mac", "pez", "adv_decoding"}.
     """
     import gc
     import random as _random
@@ -374,7 +418,7 @@ def recover_prompt_end_to_end(
         assert isinstance(_init, str)
         initial_trigger = _init
 
-    result = run_prompt_recovery(
+    result = prompt_recovery__wen2023(
         image=original_image,
         model_name=clip_model_name,
         initial_trigger=initial_trigger,
