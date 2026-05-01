@@ -32,7 +32,7 @@ class ARCAOptimizer(BaseOptimizer):
     gradients over multiple random-token perturbations at that position,
     then evaluates all top-k candidates there.
 
-    Reference: https://arxiv.org/abs/2311.02150
+    Reference: https://arxiv.org/abs/2303.04381
     """
 
     model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)

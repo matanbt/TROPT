@@ -19,3 +19,7 @@ docs/guides/compatibility_matrix.md
 runner/
 tests/
 misc/
+tropt/recipe_hub/SoftGCG.py
+tropt/recipe_hub/PGD.py
+tropt/recipe_hub/PGD__geisler2024.py
+tropt/optimizer/pgd_optimizer.py

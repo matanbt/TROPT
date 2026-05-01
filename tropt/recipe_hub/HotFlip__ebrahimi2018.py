@@ -47,8 +47,9 @@ def hotflip__ebrahimi2018(
         tracker=tracker,
         # Paper budget = O(input length); for a 20-token trigger, 20 flips ≈ paper's
         # "≤10–20% of chars" budget on a 100-char input.
-        num_steps=20,
-        token_constraints=_TOKEN_CONSTRAINTS,
+        # We set it generously to 500 to allow for convergence
+        num_steps=500,
+        token_constraints=_TOKEN_CONSTRAINTS,    # Token blocking was not mentioned in the paper; we add it anyway
         use_retokenize=False,
     )
 
