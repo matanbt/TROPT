@@ -92,7 +92,7 @@ def _get_no_overlap_constraints(
     )
 
 
-def run_arca_toxic_reverse(
+def arca_toxic_reverse(
     model_name: str = "google/gemma-2b-it",
     target_output: str = _DEFAULT_TARGET_OUTPUT,
     prompt_length: int = 5,

@@ -12,7 +12,7 @@ from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
 
 
-def run_gcg_embedding_variant(
+def gcg_emb(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     prefix_info: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,

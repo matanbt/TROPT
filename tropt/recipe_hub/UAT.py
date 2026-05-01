@@ -23,7 +23,7 @@ _UAT_TOKEN_CONSTRAINTS = TokenConstraints(
 )
 
 
-def run_uat_classifier(
+def uat_classifier(
     templates: List[str],
     target_class_idx: int,
     model_obj: ClassifierHFModel,
@@ -71,7 +71,7 @@ def run_uat_classifier(
     )
 
 
-def run_uat_prompt_injection(
+def uat_prompt_injection(
     model_name: str = "meta-llama/Llama-Prompt-Guard-2-86M",
     n_samples: int = 50,
     trigger_len: int = 5,
@@ -118,7 +118,7 @@ def run_uat_prompt_injection(
     ]
 
     # --- Optimize ---
-    result = run_uat_classifier(
+    result = uat_classifier(
         templates=templates,
         target_class_idx=benign_class_idx,
         model_obj=model,
