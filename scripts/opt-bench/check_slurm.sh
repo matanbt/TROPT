@@ -7,9 +7,11 @@
 #     letter    ∈ {l, g, q, m}     — Llama / Gemma-3-12B / Qwen / Gemma-4-MoE
 #                                    (exp2 and exp2u are pinned to {g}; see EXP2_LETTERS)
 #     seed_idx  ∈ {1, 2, 3}        — position in SEEDS (42, 123, 777)
-#     msg_split ∈ {a, b, c}        — REQUIRED for exp1m only: a=msgs 0-4, b=msgs 5-9, c=msgs 10-14
-#                                    (gemma-4 is split because each run is too long for one slurm job)
-# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m2a = exp1 on Gemma-4, seed 123, msgs 0-4.
+#     msg_split ∈ {a, b, c}        — REQUIRED for exp1m (a=msgs 0-4, b=msgs 5-9, c=msgs 10-14)
+#                                    and for exp2 single (a=msgs 0-7, b=msgs 8-14).
+#                                    Each split keeps the slurm walltime in check.
+# Example: exp1g1 = exp1 on Gemma-3 with seed 42; exp1m2a = exp1 on Gemma-4, seed 123, msgs 0-4;
+#          exp2g1a = exp2 single on Gemma-3, seed 42, msgs 0-7.
 #
 # Expects scripts/opt-bench/eval.slurm to exist; the slurm wrapper is expected
 # to end with `bash scripts/opt-bench/run_all.sh`, which reads the env vars
@@ -123,6 +125,11 @@ for exp in "${EXPS[@]}"; do
                 for split in a b c; do
                     EXPECTED+=("exp${exp}${letter}${i}${split}")
                 done
+            elif [[ "$exp" == "2" ]]; then
+                # exp2-single is split into two msg-id chunks: a=0-7, b=8-14
+                for split in a b; do
+                    EXPECTED+=("exp${exp}${letter}${i}${split}")
+                done
             else
                 EXPECTED+=("exp${exp}${letter}${i}")
             fi
@@ -189,14 +196,23 @@ if [[ $RUN_MISSING -eq 1 ]]; then
         model="${LETTER_TO_MODEL[$letter]}"
         seed="${SEEDS[$((idx - 1))]}"
 
-        # Split suffix is required for exp1m, forbidden elsewhere.
+        # Split suffix is required for exp1m (a/b/c) and exp2 (a/b); forbidden elsewhere.
         if [[ "$exp_num" == "1" && "$letter" == "m" && -z "$split" ]]; then
             echo "  [skip] $job — exp1m requires split suffix (a, b, or c)"
             continue
         fi
-        if [[ -n "$split" && ( "$exp_num" != "1" || "$letter" != "m" ) ]]; then
-            echo "  [skip] $job — split suffix '$split' only valid for exp1m"
+        if [[ "$exp_num" == "2" && -z "$split" ]]; then
+            echo "  [skip] $job — exp2 requires split suffix (a or b)"
             continue
+        fi
+        if [[ -n "$split" ]]; then
+            split_ok=0
+            if [[ "$exp_num" == "1" && "$letter" == "m" && "$split" =~ ^[abc]$ ]]; then split_ok=1; fi
+            if [[ "$exp_num" == "2" && "$split" =~ ^[ab]$ ]]; then split_ok=1; fi
+            if [[ $split_ok -eq 0 ]]; then
+                echo "  [skip] $job — split suffix '$split' invalid for exp${exp_num}${letter}"
+                continue
+            fi
         fi
 
         # skip seed idx != 1

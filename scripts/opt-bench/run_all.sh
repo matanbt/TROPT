@@ -49,7 +49,10 @@ mkdir -p "$RESULTS_DIR"
 EXP_FILTER="${EXP_FILTER:-}"        # "" | "1" | "2" | "2u" | "1bb" (2 = exp2 single, 2u = exp2 multi, 1bb = exp1 OpenAI blackbox only)
 MODEL_FILTER="${MODEL_FILTER:-}"    # "" | substring of a WHITEBOX_MODELS entry
 SEED_FILTER="${SEED_FILTER:-}"      # "" | single seed, e.g. "42"
-MSG_ID_FILTER="${MSG_ID_FILTER:-}"  # "" | "a" (msgs 0-4) | "b" (msgs 5-9) | "c" (msgs 10-14) — used to split gemma-4 exp1 across three slurm jobs
+MSG_ID_FILTER="${MSG_ID_FILTER:-}"  # "" | "a" | "b" | "c" — splits a single sweep across multiple slurm jobs.
+                                    # Range depends on EXP_FILTER:
+                                    #   exp1 (gemma-4): a=0-4, b=5-9, c=10-14
+                                    #   exp2 (single):  a=0-7, b=8-14
 # Eval-only flow (only consulted when EXP_FILTER is empty, since non-empty
 # EXP_FILTER short-circuits out before the evaluation section).
 EVAL_EXP_FILTER="${EVAL_EXP_FILTER:-}"  # "" | "1" | "2" | "2u" — restrict eval section to one experiment (2 = exp2 single, 2u = exp2 multi)
@@ -76,18 +79,26 @@ fi
 if [[ -n "$EXP_FILTER" ]]; then
     echo "[filter] EXP_FILTER -> $EXP_FILTER (exp3 + evals disabled)"
 fi
-if [[ "$MSG_ID_FILTER" == "a" ]]; then
-    MSG_IDS="0 1 2 3 4"
-    echo "[filter] MSG_ID_FILTER=a -> MSG_IDS=$MSG_IDS"
-elif [[ "$MSG_ID_FILTER" == "b" ]]; then
-    MSG_IDS="5 6 7 8 9"
-    echo "[filter] MSG_ID_FILTER=b -> MSG_IDS=$MSG_IDS"
-elif [[ "$MSG_ID_FILTER" == "c" ]]; then
-    MSG_IDS="10 11 12 13 14"
-    echo "[filter] MSG_ID_FILTER=c -> MSG_IDS=$MSG_IDS"
-elif [[ -n "$MSG_ID_FILTER" ]]; then
-    echo "ERROR: unknown MSG_ID_FILTER: $MSG_ID_FILTER (expected a|b|c)" >&2
-    exit 1
+# MSG_ID_FILTER semantics depend on the experiment:
+#   - exp1m (gemma-4): a=msgs 0-4, b=msgs 5-9, c=msgs 10-14 (three thirds)
+#   - exp2 (single):   a=msgs 0-7, b=msgs 8-14            (two halves)
+if [[ -n "$MSG_ID_FILTER" ]]; then
+    case "$EXP_FILTER:$MSG_ID_FILTER" in
+        2:a) MSG_IDS="0 1 2 3 4 5 6 7" ;;
+        2:b) MSG_IDS="8 9 10 11 12 13 14" ;;
+        2:c)
+            echo "ERROR: MSG_ID_FILTER=c is not valid for EXP_FILTER=2 (only a|b)" >&2
+            exit 1
+            ;;
+        *:a) MSG_IDS="0 1 2 3 4" ;;
+        *:b) MSG_IDS="5 6 7 8 9" ;;
+        *:c) MSG_IDS="10 11 12 13 14" ;;
+        *)
+            echo "ERROR: unknown MSG_ID_FILTER: $MSG_ID_FILTER (expected a|b|c)" >&2
+            exit 1
+            ;;
+    esac
+    echo "[filter] MSG_ID_FILTER=$MSG_ID_FILTER (exp=$EXP_FILTER) -> MSG_IDS=$MSG_IDS"
 fi
 
 # Build repeated --msg-ids flags from the space-separated list
