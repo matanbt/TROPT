@@ -353,7 +353,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         if SliceKey.INPUT_AFTER in (self.src_slc_name, self.dst_slc_name):
-            logger.debug("Note: `chat_template_after` is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
+            logger.debug("Note: `INPUT_AFTER` slice is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
         slc_src = input_slices.get(self.src_slc_name, slice(None))
         slc_dst = input_slices.get(self.dst_slc_name, slice(None))
 

@@ -18,6 +18,7 @@ Usage
 """
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 import math
+import os
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
@@ -39,11 +40,7 @@ from tropt.loss import (
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import WandbTracker
-from tropt.utils.refusal_dir import (
-    compute_refusal_directions,
-    generate_jailbroken_logits,
-    generate_jailbroken_responses,
-)
+from tropt.utils.refusal_dir import compute_refusal_directions
 
 # ─── Constants (shared with exp1) ───────────────────────────────────────────
 WANDB_ENTITY = "matanbt"
@@ -53,6 +50,14 @@ MSG_IDS = list(range(15))
 TRIGGER_LEN = 20
 LONG_TRIGGER_LEN = 50  # used by `gcg_long` to study trigger-length scaling
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
+
+# Pre-abliterated victim used as the "jailbroken" teacher for
+# `gcg_jailbroken_target` and `gcg_flrt_distill`. Replaces the previous
+# hook-based refusal-direction ablation, which was producing token-salad
+# teacher outputs on Gemma-3-12b. Kept as a separate weights file so we
+# don't have to tune source_layer / direction-source / single-vs-all-layer
+# ablation by hand.
+ABLITERATED_MODEL_NAME = "mlabonne/gemma-3-12b-it-abliterated-v2"
 
 _RUN_TYPE_SINGLE = "enhancebench_single"
 _RUN_TYPE_MULTI = "enhancebench_multi"
@@ -180,29 +185,172 @@ def _assert_valid_jailbroken_response(text: str, instruction: str) -> None:
         )
 
 
-def _jailbroken_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
-    """Generate jailbroken target via refusal ablation.
-
-    Hard-fails (RuntimeError) if the ablated model emits a refusal or
-    degenerate output -- see ``_assert_valid_jailbroken_response``.
-    """
-    instruction_clean = (
-        instruction
+def _strip_optimized_trigger(text: str) -> str:
+    """Drop the {{OPTIMIZED_TRIGGER}} placeholder (and any adjacent ` `/`.`)."""
+    return (
+        text
         .replace(f" {OPTIMIZED_TRIGGER_PLACEHOLDER}.", "")
         .replace(f" {OPTIMIZED_TRIGGER_PLACEHOLDER}", "")
         .replace(OPTIMIZED_TRIGGER_PLACEHOLDER, "")
     )
-    source_layer = int(0.5 * model.n_layers)
-    jailbroken = generate_jailbroken_responses(
-        model=model,
-        prompts=[instruction_clean],
-        refusal_dirs=refusal_dirs,
-        source_layer=source_layer,
-        max_new_tokens=20,
+
+
+# Pre-populated by `_precompute_teacher_targets(...)` at the start of a run,
+# then read by `_jailbroken_targets` / `_flrt_distill_targets`. Keyed by the
+# placeholder-stripped instruction so the same teacher output is reused
+# across seeds / candidates / multi-instruction merges. The abliterated
+# model is unloaded immediately after these caches are populated, so the
+# only cost it incurs during optimization is the cached output tensors.
+_jailbroken_target_cache: dict[str, str] = {}
+_flrt_distill_target_cache: dict[str, tuple] = {}
+
+
+def _get_abliterated_model() -> LMHFModel:
+    """Load the pre-abliterated teacher fresh.
+
+    Not cached -- the caller is expected to load → use → unload via
+    ``_unload_abliterated_model`` so the teacher never coexists with the
+    victim during optimization. Override device with ``EXP2_ABLITERATED_DEVICE``
+    (e.g. ``cuda:1`` when you have a second GPU; ``cpu`` for offload).
+    """
+    device = os.environ.get("EXP2_ABLITERATED_DEVICE")
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Loading abliterated teacher {ABLITERATED_MODEL_NAME} on {device} ...")
+    return LMHFModel(
+        model_name=ABLITERATED_MODEL_NAME,
+        device=device,
+        use_prefix_cache=False,
+        dtype="bfloat16",
     )
-    response = jailbroken[0]
-    _assert_valid_jailbroken_response(response, instruction_clean)
-    return Targets(target_response_strs=[response])
+
+
+def _unload_abliterated_model(abl: Optional[LMHFModel]) -> None:
+    """Drop all references to the teacher and free its GPU/CPU memory."""
+    if abl is None:
+        return
+    print(f"Unloading {ABLITERATED_MODEL_NAME} ...")
+    # Explicitly drop the underlying HF weights before relying on GC -- the
+    # LMHFModel wrapper holds them via ``._model``, and Python's refcount
+    # alone doesn't always trigger CUDA caching allocator release in time.
+    if hasattr(abl, "_model"):
+        del abl._model
+    del abl
+    import gc
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+
+
+def _abliterated_chat_input_ids(abl: LMHFModel, prompt: str) -> torch.Tensor:
+    encoded = abl.tokenizer.apply_chat_template(
+        [{"role": "user", "content": prompt}],
+        return_tensors="pt",
+        add_generation_prompt=True,
+    )
+    if hasattr(encoded, "keys"):  # newer transformers returns BatchEncoding
+        encoded = encoded["input_ids"]
+    return encoded.to(abl.device)
+
+
+def _generate_abliterated_text(abl: LMHFModel, prompt: str, max_new_tokens: int = 20) -> str:
+    input_ids = _abliterated_chat_input_ids(abl, prompt)
+    with torch.no_grad():
+        out = abl._model.generate(
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            pad_token_id=abl.tokenizer.eos_token_id,
+        )
+    return abl.tokenizer.decode(out[0, input_ids.shape[1]:], skip_special_tokens=True)
+
+
+def _generate_abliterated_logits(abl: LMHFModel, prompt: str, max_new_tokens: int = 20):
+    """Greedy generation with per-step logits, on the abliterated teacher."""
+    input_ids = _abliterated_chat_input_ids(abl, prompt)
+    with torch.no_grad():
+        out = abl._model.generate(
+            input_ids,
+            max_new_tokens=max_new_tokens,
+            do_sample=False,
+            return_dict_in_generate=True,
+            output_scores=True,
+            pad_token_id=abl.tokenizer.eos_token_id,
+        )
+    gen_ids = out.sequences[0, input_ids.shape[1]:]                  # (gen_len,)
+    gen_logits = torch.stack(out.scores, dim=0).squeeze(1)            # (gen_len, vocab)
+    response_str = abl.tokenizer.decode(gen_ids, skip_special_tokens=True)
+    return gen_ids, gen_logits, response_str
+
+
+def _precompute_teacher_targets(
+    instructions: list[str],
+    selected: list["VariantConfig"],
+) -> None:
+    """Generate every teacher output for the run in one pass, then unload.
+
+    Strict no-overlap with the victim: this MUST be called BEFORE the victim
+    is loaded onto GPU. The abliterated weights take the GPU alone, generate
+    every teacher output the run will need, the cached tensors are pulled to
+    CPU, and the teacher is destroyed. Only after this returns should the
+    caller load the victim. Cached tensors are moved CPU→victim_device on
+    retrieval inside ``_jailbroken_targets`` / ``_flrt_distill_targets``.
+    """
+    needs_jailbroken = any(v.target_fn is _jailbroken_targets for v in selected)
+    needs_flrt = any(v.target_fn is _flrt_distill_targets for v in selected)
+    if not (needs_jailbroken or needs_flrt):
+        return
+
+    unique_instructions = sorted({_strip_optimized_trigger(i) for i in instructions})
+    print(
+        f"Precomputing teacher targets "
+        f"(jailbroken={needs_jailbroken}, flrt_distill={needs_flrt}) "
+        f"for {len(unique_instructions)} unique instruction(s) ..."
+    )
+
+    abl = _get_abliterated_model()
+    try:
+        for instr_clean in unique_instructions:
+            if needs_jailbroken and instr_clean not in _jailbroken_target_cache:
+                response = _generate_abliterated_text(abl, instr_clean, max_new_tokens=20)
+                _assert_valid_jailbroken_response(response, instr_clean)
+                _jailbroken_target_cache[instr_clean] = response
+            if needs_flrt and instr_clean not in _flrt_distill_target_cache:
+                gen_ids, gen_logits, response_str = _generate_abliterated_logits(
+                    abl, instr_clean, max_new_tokens=20
+                )
+                _assert_valid_jailbroken_response(response_str, instr_clean)
+                # CPU-only storage. The victim isn't loaded yet, so we can't
+                # park these on its device; per-call retrieval moves them
+                # over and the H2D cost (~20 MB / call) is negligible
+                # compared to a single optimizer step.
+                _flrt_distill_target_cache[instr_clean] = (
+                    gen_ids.cpu(),
+                    gen_logits.cpu(),
+                    response_str,
+                )
+    finally:
+        _unload_abliterated_model(abl)
+    print("  teacher targets cached on CPU; abliterated model fully unloaded")
+
+
+def _jailbroken_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
+    """Look up the precomputed jailbroken target.
+
+    The teacher response is generated upfront (load → generate → unload) by
+    ``_precompute_teacher_targets``; this function is a pure cache lookup so
+    the abliterated model never sits in memory during optimization.
+    """
+    del target, refusal_dirs  # unused; signature kept for unified target_fn shape
+    key = _strip_optimized_trigger(instruction)
+    if key not in _jailbroken_target_cache:
+        raise RuntimeError(
+            "Jailbroken teacher target was not precomputed for this instruction. "
+            "Did you call `_precompute_teacher_targets(...)` before optimization? "
+            f"key={key!r}"
+        )
+    return Targets(target_response_strs=[_jailbroken_target_cache[key]])
 
 
 def _random_trigger_fn(tokenizer, blacklist_ids, seed) -> str:
@@ -236,6 +384,8 @@ def _begging_trigger_fn(tokenizer, blacklist_ids, seed, max_tokens: int = TRIGGE
     #     blacklist = set(blacklist_ids)
     #     safe_id = tokenizer.encode("!", add_special_tokens=False)[0]
     #     ids = [(safe_id if i in blacklist else i) for i in ids]
+    # Re-encode after decode to match what the optimizer sees with use_retokenize=True.
+    ids = tokenizer.encode(tokenizer.decode(ids), add_special_tokens=False)[:max_tokens]
     return tokenizer.decode(ids)
 
 
@@ -249,28 +399,21 @@ def _steering_targets(model, instruction: str, target: str, refusal_dirs) -> Tar
 
 
 def _flrt_distill_targets(model, instruction: str, target: str, refusal_dirs) -> Targets:
-    """FLRT teacher = refusal-ablated victim. Generate K tokens + per-position logits.
+    """Look up the precomputed FLRT distillation target (token ids + logits).
 
-    Hard-fails (RuntimeError) if the teacher decoded text is degenerate -- same
-    failure mode as ``_jailbroken_targets``, since both use the same refusal
-    ablation. Better to crash than silently distill into garbage logits.
+    Same pattern as ``_jailbroken_targets``: the teacher logits are generated
+    upfront by ``_precompute_teacher_targets``, stored on the victim's device,
+    and the abliterated model is unloaded before optimization starts.
     """
-    instruction_clean = (
-        instruction
-        .replace(f" {OPTIMIZED_TRIGGER_PLACEHOLDER}.", "")
-        .replace(f" {OPTIMIZED_TRIGGER_PLACEHOLDER}", "")
-        .replace(OPTIMIZED_TRIGGER_PLACEHOLDER, "")
-    )
-    source_layer = int(0.5 * model.n_layers)
-    samples = generate_jailbroken_logits(
-        model=model,
-        prompts=[instruction_clean],
-        refusal_dirs=refusal_dirs,
-        source_layer=source_layer,
-        max_new_tokens=20,
-    )
-    teacher_ids, teacher_logits, response_str = samples[0]
-    _assert_valid_jailbroken_response(response_str, instruction_clean)
+    del target, refusal_dirs  # unused; signature kept for unified target_fn shape
+    key = _strip_optimized_trigger(instruction)
+    if key not in _flrt_distill_target_cache:
+        raise RuntimeError(
+            "FLRT distillation teacher target was not precomputed for this "
+            "instruction. Did you call `_precompute_teacher_targets(...)` before "
+            f"optimization? key={key!r}"
+        )
+    teacher_ids, teacher_logits, _ = _flrt_distill_target_cache[key]
     return Targets(
         target_response_toks=[teacher_ids.to(model.device)],
         target_response_logits=[teacher_logits.to(model.device)],
@@ -327,11 +470,12 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
 
         # 1b. Vanilla recipe with a longer (LONG_TRIGGER_LEN) trigger to study
         # the effect of trigger length in isolation.
-        VariantConfig(
-            name="gcg_long",
-            loss_factory=lambda m: PrefillCELoss(),
-            initial_trigger_fn=_long_random_trigger_fn,
-        ),
+        # TODO enable me when there's time
+        # VariantConfig(
+        #     name="gcg_long",
+        #     loss_factory=lambda m: PrefillCELoss(),
+        #     initial_trigger_fn=_long_random_trigger_fn,
+        # ),
 
         # 2. PrefillCE + Attention Hijacking (GCG-Hijack, middle layers).
         # Uses `_attn_hijack_template` to strip the trailing period after the
@@ -358,10 +502,17 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             needs_eager_attn=True,
         ),
 
-        # 3. Carlini-Wagner loss
+        # 3. Carlini-Wagner loss.
+        # Defaults `cw_margin=1e-3, first_token_weight=1.0` make the loss
+        # saturate as soon as the target token barely wins the argmax — fragile
+        # solutions, easily flipped back by perturbations elsewhere in the
+        # trigger. The diagnostic in `refusal_ablation_check.ipynb` (Stage 5)
+        # measured a per-position gap std of ~7.8 logits on Gemma-3-12b at
+        # random init, so we pick a margin (~0.6 σ) that keeps positions in
+        # the loss until they win robustly. Matches `recipe_hub/SoftGCG.py:65`.
         VariantConfig(
             name="gcg_cw",
-            loss_factory=lambda m: PrefillCWLoss(),
+            loss_factory=lambda m: PrefillCWLoss(cw_margin=5.0, first_token_weight=5.0),
         ),
 
         # 4. PrefillCE + PRS template
@@ -371,12 +522,13 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             template_fn=_prs_template,
         ),
 
-        # 5. PrefillCE + IRIS-style jailbroken target
+        # 5. PrefillCE + IRIS-style jailbroken target.
+        # Teacher is the abliterated Gemma-3-12b (`ABLITERATED_MODEL_NAME`),
+        # so this variant doesn't need refusal directions on the victim.
         VariantConfig(
             name="gcg_jailbroken_target",
             loss_factory=lambda m: PrefillCELoss(),
             target_fn=_jailbroken_targets,
-            needs_refusal_dirs=True,
         ),
 
         # 6. PrefillCE with begging-string initialization (seed-indexed from BEGGING_INITIAL_TRIGGERS)
@@ -412,12 +564,13 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             loss_factory=lambda m: PrefillCELoss(clamp_min_nll=-math.log(0.6)),
         ),
 
-        # 9. FLRT logits-distillation: teacher = refusal-ablated victim (§4.3.1)
+        # 9. FLRT logits-distillation: teacher = abliterated victim (§4.3.1).
+        # Teacher is `ABLITERATED_MODEL_NAME`; no in-process refusal-direction
+        # ablation needed on the victim.
         VariantConfig(
             name="gcg_flrt_distill",
             loss_factory=lambda m: PrefillDistillationLoss(),
             target_fn=_flrt_distill_targets,
-            needs_refusal_dirs=True,
         ),
 
         # ── Additional tricks (uncomment to include) ─────────────────────
@@ -646,14 +799,25 @@ def single(
     """Run single-instruction enhancement variants with fixed GCG."""
     df = pd.read_csv(CLEARHARM_PATH)
 
-    # Check if any variant needs eager attention
-    all_variants = _build_variants(n_layers=0, sweep_weights=sweep_weights)  # n_layers unused here
+    # Build the variant list (no model required yet -- the lambdas read
+    # n_layers from the model passed at loss-construction time, not from
+    # the function arg).
+    all_variants = _build_variants(n_layers=0, sweep_weights=sweep_weights)
     variant_map = {v.name: v for v in all_variants}
     selected_names = variants or [v.name for v in all_variants]
     selected = [variant_map[n] for n in selected_names]
 
     any_eager = any(v.needs_eager_attn for v in selected)
     any_refusal = any(v.needs_refusal_dirs for v in selected)
+
+    # ── PRECOMPUTE TEACHER TARGETS FIRST, BEFORE THE VICTIM TOUCHES GPU ──
+    # The abliterated teacher gets the GPU to itself, generates every
+    # output we need, caches them on CPU, then is destroyed. The victim is
+    # loaded only after this returns, so the two are never co-resident.
+    _precompute_teacher_targets(
+        instructions=[df.iloc[mid]["message_template"] for mid in msg_ids],
+        selected=selected,
+    )
 
     model = _load_model(model_name, needs_eager=any_eager)
 
@@ -735,6 +899,18 @@ def multi(
     any_eager = any(v.needs_eager_attn for v in selected)
     any_refusal = any(v.needs_refusal_dirs for v in selected)
 
+    # Collect all instructions and targets
+    rows = [df.iloc[mid] for mid in msg_ids]
+    instructions = [r["message_template"] for r in rows]
+    target_strs = [_maybe_prepend_thinking(model_name, r["target_response_prefix"]) for r in rows]
+
+    # ── PRECOMPUTE TEACHER TARGETS FIRST, BEFORE THE VICTIM TOUCHES GPU ──
+    # Same strict no-overlap policy as in `single()`.
+    _precompute_teacher_targets(
+        instructions=instructions,
+        selected=selected,
+    )
+
     model = _load_model(model_name, needs_eager=any_eager)
 
     all_variants = _build_variants(n_layers=model.n_layers, sweep_weights=sweep_weights)
@@ -748,11 +924,6 @@ def multi(
 
     finished = _finished_run_names() if skip_existing else set()
     print(f"Skipping {len(finished)} already-finished runs.")
-
-    # Collect all instructions and targets
-    rows = [df.iloc[mid] for mid in msg_ids]
-    instructions = [r["message_template"] for r in rows]
-    target_strs = [_maybe_prepend_thinking(model_name, r["target_response_prefix"]) for r in rows]
 
     for cfg in selected:
         for seed in seeds:

@@ -33,19 +33,22 @@ TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 class SliceKey(str, Enum):
     """
     Enum for standardized slice keys used in input embeddings.
-
-    These slices mark different regions in the tokenized input sequence:
-    - INPUT_BEFORE: Tokens before the trigger (formerly 'chat_template_before')
-    - TRIGGER: The optimized trigger tokens (formerly 'adv')
-    - INPUT_AFTER: Tokens after the trigger in the template (formerly 'chat_template_after')
-    - INPUT_LAST_TOKEN: The last token of the input sequence (formerly 'last_input_token')
-    - APPENDED: Optional tokens appended at the end (e.g., target outputs for LMs)
     """
     TRIGGER = "trigger"  # The optimized trigger tokens
+    """The optimized trigger tokens"""
+
     INPUT_BEFORE = "input_before"  # Tokens before the trigger
+    """Tokens before the trigger (including chat template, if exists)"""
+
     INPUT_AFTER = "input_after"  # Tokens after the trigger
+    """Tokens after the trigger (including chat template, if exists)"""
+
     INPUT_LAST_TOKEN = "input_last_token"  # Last input token
+    """The last token of the input sequence (e.g., typically the end of the chat template before generation starts)"""
+
     APPENDED = "appended"  # Appended tokens (if any); a.k.a. prefilled tokens
+    """Optional tokens appended (=prefilled) at the end (e.g., target outputs for LMs)"""
+
 
 class MessageTargets(pydantic.BaseModel):
     """Targets for a single selected message.

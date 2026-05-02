@@ -58,6 +58,8 @@ class ManualFlopCounter(FlopCounterBase):
 
     For MoE models, N_params is the *active* parameter count (shared params +
     expert params scaled by top-k / num_experts).
+
+    Note that this code may require adaptation once new models come out (e.g., MOE with slightly different API than it currently supports).
     """
 
     def __init__(self, model: "PreTrainedModel"):

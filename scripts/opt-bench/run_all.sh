@@ -84,8 +84,8 @@ fi
 #   - exp2 (single):   a=msgs 0-7, b=msgs 8-14            (two halves)
 if [[ -n "$MSG_ID_FILTER" ]]; then
     case "$EXP_FILTER:$MSG_ID_FILTER" in
-        2:a) MSG_IDS="0 1 2 3 4 5 6 7" ;;
-        2:b) MSG_IDS="8 9 10 11 12 13 14" ;;
+        2:a) MSG_IDS="0 1 2 3 4" ;;
+        2:b) MSG_IDS="5 6 7 8 9 10 11 12 13 14" ;;
         2:c)
             echo "ERROR: MSG_ID_FILTER=c is not valid for EXP_FILTER=2 (only a|b)" >&2
             exit 1
