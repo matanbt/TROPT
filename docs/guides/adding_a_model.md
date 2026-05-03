@@ -92,6 +92,16 @@ class ModelOutput:
 
 The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `ResponseLMScoreLoss`). The [loss resolution system](../../tropt/loss/resolution.py) validates this at runtime and raises clear errors if a required field is missing.
 
+### Model compatibility
+
+A model's compatibility with a given `(optimizer, loss)` pair is resolved at two independent points — keep both in mind when picking mixins and populating `ModelOutput`:
+
+1. **Optimizer side — mixin contract.** Each optimizer declares the method flow it needs via `model_requirements` (e.g. `LossTokenAccessMixin`, `GradientTokenAccessMixin` for token-flow white-box; `LossTextAccessMixin` for text-flow black-box). `BaseOptimizer.__init__` rejects any model that doesn't subclass the required mixins. Include a mixin only if your model genuinely implements its compute method for the corresponding flow — otherwise the optimizer will call a method that can't run.
+
+2. **Loss side — `ModelOutput` fields.** Each loss reads a specific set of fields from `ModelOutput` / `ModelInput` (plus target fields from `MessageTargets`). At runtime, [`resolve_and_compute_loss`](../../tropt/loss/resolution.py) inspects the loss's call signature and fails if any required field is missing. The fields your `invoke_from_tokens` / `invoke_from_texts` populate therefore determine which losses are admissible for each flow — e.g. a model that only returns `generated_response_strs` is limited to text-based losses; one that returns `full_logits` unlocks prefill/CE-style losses.
+
+A quick way to sanity-check a new model against the existing optimizer/loss set is the auto-generated [Optimizer-Model-Loss Compatibility Matrix](compatibility_matrix.md), produced by [`scripts/generate_compat_matrix.py`](../../scripts/generate_compat_matrix.py) via static analysis of `model_requirements`, loss signatures, and the `ModelOutput`/`ModelInput` fields each model populates in its invoke methods.
+
 ---
 
 ## Adding a Text-Access (Black-box) Model

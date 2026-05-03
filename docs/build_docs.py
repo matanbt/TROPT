@@ -100,6 +100,35 @@ def build_docs():
                     print(f"  Skipping {file}: {e}")
 
     # ---------------------------------------------------------
+    # 2.5. Inline tropt/recipe_hub/README.md into docs/api/recipe_hub.rst
+    # ---------------------------------------------------------
+    print("Inlining recipe_hub/README.md into recipe_hub.rst...")
+    recipe_hub_rst = os.path.join(docs_copy, "api", "recipe_hub.rst")
+    placeholder = (
+        ".. [[[ THIS WILL BE REPLACED WITH tropt/recipe_hub/README.md "
+        "AT BUILD TIME ]]]"
+    )
+    # myst_parser's :parser: option lets an .rst file include and parse a
+    # markdown file inline. Path is relative to recipe_hub.rst inside the
+    # temp build dir (docs_copy/api/ → ../../tropt/recipe_hub/README.md).
+    replacement = (
+        ".. include:: ../../tropt/recipe_hub/README.md\n"
+        "   :parser: myst_parser.sphinx_"
+    )
+    try:
+        with open(recipe_hub_rst, "r", encoding="utf-8") as f:
+            content = f.read()
+        if placeholder not in content:
+            print(f"  Warning: placeholder not found in {recipe_hub_rst}")
+        else:
+            content = content.replace(placeholder, replacement)
+            with open(recipe_hub_rst, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("  recipe_hub.rst inlined.")
+    except Exception as e:
+        print(f"  Warning: could not inline README: {e}")
+
+    # ---------------------------------------------------------
     # 3. Generate compatibility matrix
     # ---------------------------------------------------------
     print("Generating compatibility matrix...")
