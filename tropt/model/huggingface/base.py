@@ -684,6 +684,10 @@ class HuggingFaceBackendModel:
 
         device, dtype = self.device, self.dtype
         embedding_layer = self._embedding_layer
+        assert isinstance(embedding_layer, torch.nn.Embedding), (
+            "Expected a standard nn.Embedding layer for one-hot gradient computation."
+        )
+        vocab_size = embedding_layer.num_embeddings
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
 
@@ -713,7 +717,7 @@ class HuggingFaceBackendModel:
             if candidate_trigger_probs is None:
                 candidate_ids_onehot_detached = torch.nn.functional.one_hot(
                     candidate_trigger_ids,
-                    num_classes=embedding_layer.num_embeddings,
+                    num_classes=vocab_size,
                 ).to(device, dtype)
             else:
                 candidate_ids_onehot_detached = candidate_trigger_probs.to(device, dtype)
@@ -727,7 +731,7 @@ class HuggingFaceBackendModel:
 
                 # Backward each template immediately to avoid keeping n_templates graphs at once
                 accum_grad = torch.zeros(
-                    (cand_bsz, trigger_seq_len, embedding_layer.num_embeddings),
+                    (cand_bsz, trigger_seq_len, vocab_size),
                     device=device, dtype=dtype,
                 )
                 accum_loss = torch.zeros(cand_bsz, device=device, dtype=dtype)

@@ -53,6 +53,9 @@ def iris__huang2025(
         max_new_tokens=teacher_max_new_tokens,
         require_generation=True,
     )
+    assert out.generated_response_strs is not None, (
+        "Teacher generation must return response strs."
+    )
     target_output = out.generated_response_strs[0]
     logger.info(f"Using generated jailbroken target output: {target_output!r}")
     del out, teacher._model, teacher

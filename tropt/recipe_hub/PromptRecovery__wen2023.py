@@ -133,10 +133,12 @@ def prompt_recovery__wen2023(
 
     if initial_trigger is None:
         # Wen 2023 Algorithm 1: P ~ E^{|V|} (random vocab-embedded init).
-        initial_trigger = get_printable_random_trigger(
+        random_trigger = get_printable_random_trigger(
             trigger_len=trigger_len,
             tokenizer=model_obj.tokenizer,
         )
+        assert isinstance(random_trigger, str)
+        initial_trigger = random_trigger
 
     if optimizer_type == "mac":
         # MAC (momentum-accelerated GCG+, Wang 2024) with paper params.

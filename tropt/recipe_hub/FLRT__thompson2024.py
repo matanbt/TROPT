@@ -49,6 +49,11 @@ def flrt_distill(
         max_new_tokens=teacher_max_new_tokens,
         require_generation=True,
     )
+    assert (
+        out.generated_response_ids is not None
+        and out.generated_response_logits is not None
+        and out.generated_response_strs is not None
+    ), "Teacher generation must return ids, logits, and strs."
     teacher_ids = out.generated_response_ids[0].cpu()
     teacher_logits = out.generated_response_logits[0].cpu()
     logger.info(
