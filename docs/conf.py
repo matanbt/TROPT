@@ -10,8 +10,6 @@ sys.path.insert(0, os.path.abspath('..'))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Text-Trigger-Opt Toolbox'
-copyright = '2026, Matan Ben-Tov'
-author = 'Matan Ben-Tov'
 
 version = '0.1'
 release = '0.1'

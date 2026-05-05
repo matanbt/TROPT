@@ -8,14 +8,10 @@
 **Discrete text trigger optimization toward any goal, with any optimizer, for any NLP model**
 
 
-[![PyPI](https://img.shields.io/pypi/v/tropt?style=flat-square&color=blue)](https://pypi.org/project/tropt/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Transformers](https://img.shields.io/badge/transformers-%E2%89%A55.3-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Docs](https://img.shields.io/badge/docs-online-green?style=flat-square)](https://matanbt.github.io/tropt/)
-[![Tests](https://img.shields.io/github/actions/workflow/status/matanbt/tropt/test.yml?branch=main&style=flat-square&label=tests)](https://github.com/matanbt/tropt/actions/workflows/test.yml)
 [![Ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
-<!-- [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b?style=flat-square)](https://arxiv.org/) -->
 
 </div>
 
@@ -33,41 +29,19 @@ It supports any optimization approach that minimizes a quantifiable objective by
 - **Prompt Tuning**: Optimize discrete prompts to enhance desired model behaviors;
 - **Model Inspection**: Craft adversarial examples and counterfactuals for ML interpretability research.
 
+> Note: this repository is in *beta* stage; while largely stable, that are several minor code sections and documentations on which work is still in progress.
 
 ## Installation
 
-Install the core package (includes HuggingFace model support):
+For local development we use [uv](https://docs.astral.sh/uv/) for dependency management:
 
 ```sh
-# Install the core package dependencies:
-pip install tropt
-```
-
-It is possible to manually choose the desired optional dependencies (e.g., model integrations, tracking).
-
-For example, for only adding OpenAI support:
-
-```sh
-pip install tropt[openai]
-```
-
-Alternatively, it is possible to install all optional dependencies at once:
-
-```sh
-pip install tropt[all]
-```
-
-
-### Development Installation
-
-For contributing or local development, we use [uv](https://docs.astral.sh/uv/) for dependency management:
-
-```sh
-git clone https://github.com/matanbt/tropt.git
-cd tropt
+# From the repository root:
 pip install uv
 uv sync --extra dev
 ```
+
+Optional dependency groups (model integrations, tracking, etc.) can be selected via uv extras, e.g. `uv sync --extra openai` or `uv sync --extra all`.
 
 Then run commands via `uv run` (no need to activate the venv):
 
@@ -117,7 +91,7 @@ While the Recipe Hub provides predefined attacks for convenience, you can also m
 This allows you to choose what _model_ you would like to target, what _loss_ function to optimize against, and what specific existing _optimization strategy_ to use (along its hyperparameters), etc. 
 Notably, this programmatic composition also underlies the Recipe Hub implementations.
 
-See [quickstart.ipynb](quickstart.ipynb) for concrete examples covering the key features, including running LM jaibreak, embedding attacks, brewing new trigger objectives, and targeting black-box models.
+See [quickstart.ipynb](quickstart.ipynb) for concrete examples covering the key features, including running LM jailbreak, embedding attacks, brewing new trigger objectives, and targeting black-box models.
 
 
 ### 🔬 Research: Custom Optimizers

@@ -9,9 +9,6 @@ description = "A toolbox for optimizing discrete text triggers."
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
-authors = [
-  {name = "Matan Ben-Tov"}
-]
 
 # Core dependencies - minimal for basic HuggingFace model optimization
 dependencies = [
@@ -35,10 +32,6 @@ dependencies = [
   # "hydra-core>=1.3.0",
   # "omegaconf",
 ]
-
-[project.urls]
-Repository = "https://github.com/matanbt/tropt"
-Issues = "https://github.com/matanbt/tropt/issues"
 
 [project.optional-dependencies]
 # API model integrations (install separately as needed)

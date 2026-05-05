@@ -249,9 +249,5 @@ As emphasized above the first three pillars aimed to serve useful abstractions o
 
 It is recommended the optimizer will not share logic across each other, and will be implemented in a self-contained manner. This repository has already decoupled the logic that is *unrelated* to the optimization process. Keeping optimizers self-contained and explicit, allows that to be more easily read and hacked. This is loosely inspired by the HuggingFace's models *Modeling* approach ([Repeat Yourself principle](https://huggingface.co/blog/transformers-design-philosophy)).
 
-In a personal note, I hope that this repository will be useful for researchers gluing together discrete optimizers from different codebases, to perform defenses evaluation or develop more potent attacks. I encourage anyone who would like to contribute to this repository, including in criticizing its design, to reach out (or open an [issue]()).
-
-
-> Matan Ben-Tov. 2026.
-
+We hope that this repository will be useful for researchers gluing together discrete optimizers from different codebases, to perform defenses evaluation or develop more potent attacks. Contributions, including criticism of the design, are welcome via issues and pull requests.
 
