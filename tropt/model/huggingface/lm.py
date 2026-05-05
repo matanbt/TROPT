@@ -95,6 +95,7 @@ class LMHFModel(
         loaded_model: Optional[AutoModelForCausalLM] = None,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
+        # TODO resolve model name -- what's the convention, where should it be? does HF supposed to solve it?
         if loaded_model is not None:
             logger.info(f"Using provided loaded model for {model_name}.")
             assert isinstance(loaded_model, transformers.PreTrainedModel)
