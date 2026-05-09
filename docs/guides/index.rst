@@ -9,6 +9,8 @@ for further customizing recipes by creating new losses, optimizers, and even new
 
 .. TODO clealry map uses cases like https://github.com/criticalml-uw/TamperBench/tree/main
 
+[TODO refer to the quickstart notebook]
+
 This section provides guides for all. We additionally provide a Claude Code *skill* connected to these guides an additional instructions, to help TROPT users get started.
 
 .. toctree::
