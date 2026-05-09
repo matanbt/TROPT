@@ -47,6 +47,7 @@ WANDB_ENTITY = "matanbt"
 WANDB_PROJECT = "tropt-enhancebench"
 SEEDS = [42, 123, 777]
 MSG_IDS = list(range(15))
+N_MULTI_MSGS = 10  # multi-instruction sweep samples this many msg_ids per seed
 TRIGGER_LEN = 20
 LONG_TRIGGER_LEN = 50  # used by `gcg_long` to study trigger-length scaling
 CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
@@ -710,6 +711,7 @@ def _make_wandb_config(
     seed: int,
     loss_name: str,
     msg_id: Optional[int] = None,
+    msg_ids: Optional[list[int]] = None,
     instructions: Optional[list[str]] = None,
     targets: Optional[list[str]] = None,
 ) -> dict:
@@ -723,6 +725,8 @@ def _make_wandb_config(
     }
     if msg_id is not None:
         cfg["msg_id"] = msg_id
+    if msg_ids is not None:
+        cfg["msg_ids"] = msg_ids
     if instructions is not None:
         cfg["optimized_instruction"] = instructions[0] if len(instructions) == 1 else instructions
         cfg["optimized_target"] = targets[0] if len(targets) == 1 else targets
@@ -925,6 +929,8 @@ def multi(
     finished = _finished_run_names() if skip_existing else set()
     print(f"Skipping {len(finished)} already-finished runs.")
 
+    import random
+
     for cfg in selected:
         for seed in seeds:
             run_name = _run_name_multi(cfg.name, model_name, seed)
@@ -933,21 +939,32 @@ def multi(
                 continue
             print(f"  run   {run_name}")
 
+            # Sample N_MULTI_MSGS of the available msg_ids for this seed. Different
+            # seeds get different subsets, but the same seed always picks the same
+            # ones — keeps multi-instruction runs reproducible while reducing the
+            # per-seed workload from |msg_ids| down to N_MULTI_MSGS.
+            n_sample = min(N_MULTI_MSGS, len(msg_ids))
+            sampled_idx = sorted(random.Random(seed).sample(range(len(msg_ids)), n_sample))
+            sampled_msg_ids = [msg_ids[i] for i in sampled_idx]
+            sampled_instructions = [instructions[i] for i in sampled_idx]
+            sampled_target_strs = [target_strs[i] for i in sampled_idx]
+            print(f"    sampled msg_ids ({n_sample}/{len(msg_ids)}): {sampled_msg_ids}")
+
             # Resolve templates (per instruction)
             tmpl_fn = cfg.template_fn or _default_template
-            templates = [tmpl_fn(inst, tgt) for inst, tgt in zip(instructions, target_strs)]
+            templates = [tmpl_fn(inst, tgt) for inst, tgt in zip(sampled_instructions, sampled_target_strs)]
 
             # Resolve targets — build per-instruction then merge (supports all target fields).
             tgt_fn = cfg.target_fn or _default_targets
             per_template = [
                 tgt_fn(model, inst, tgt, refusal_dirs)
-                for inst, tgt in zip(instructions, target_strs)
+                for inst, tgt in zip(sampled_instructions, sampled_target_strs)
             ]
             targets = _merge_targets(per_template)
 
             # Fall back to the original target strings for logging when the loss
             # doesn't carry `target_response_strs` (e.g., FLRT distillation).
-            log_targets = targets.target_response_strs or target_strs
+            log_targets = targets.target_response_strs or sampled_target_strs
 
             tracker = WandbTracker(
                 run_name,
@@ -960,6 +977,7 @@ def multi(
                     model_name=model_name,
                     seed=seed,
                     loss_name=cfg.name,
+                    msg_ids=sampled_msg_ids,
                     instructions=templates,
                     targets=log_targets,
                 ),

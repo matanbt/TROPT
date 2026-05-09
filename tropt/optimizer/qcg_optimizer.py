@@ -145,6 +145,7 @@ class QCGOptimizer(BaseOptimizer):
             candidate_trigger_ids = candidate_trigger_ids[: self.n_proxy_candidates]
 
             # === Stage 2: Proxy filtering to n_target_candidates ===
+            # TODO what happens if proxy == target? shouldn't we skip it??
             if self.n_target_candidates < len(candidate_trigger_ids):
                 proxy_losses = proxy_model.compute_loss_from_tokens(
                     candidate_trigger_ids, loss_func=self.loss_func

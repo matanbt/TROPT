@@ -82,10 +82,12 @@ class RandomSearchOptimizer(BaseOptimizer):
         Args:
             num_steps: Total optimization steps.
             n_candidates: Number of mutated candidates per step.
-            mutation_mode: ``"block_random"`` for random contiguous block mutation
-                (original PRS), ``"single_cyclic"`` for single-token mutations
-                spread across positions (candidate ``i`` mutates position
-                ``i % trigger_len``).
+            mutation_mode: 
+                ``"block_random"`` for random contiguous block mutation
+                    (original PRS), 
+                ``"single_cyclic"`` for single-token mutations
+                    spread across positions (candidate ``i`` mutates position
+                    ``i % trigger_len``).
 
             schedule: Schedule for block size decay. Relevant for block mutation mode(s).
                 ``"fixed"`` for step-based coarse-to-fine decay,

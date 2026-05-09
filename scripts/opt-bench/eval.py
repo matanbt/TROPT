@@ -166,6 +166,7 @@ def build_csv_i(
             "loss_name": c.get("loss_name"),
             "is_soft": c.get("is_soft", False),
             "msg_id": c.get("msg_id"),
+            "msg_ids": c.get("msg_ids"),
             "seed": c.get("seed"),
             "optimized_instruction": c.get("optimized_instruction"),
             "optimized_target": c.get("optimized_target"),
