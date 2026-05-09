@@ -574,6 +574,95 @@ def _build_variants(n_layers: int, sweep_weights: bool = False) -> list[VariantC
             target_fn=_flrt_distill_targets,
         ),
 
+        # ── Combinations of the above ────────────────────────────────────
+        # Stack the most promising tricks pairwise (and one triple) to
+        # see whether their gains compose or just overlap.
+
+        # 10. JBTemplate + JBTarget: PRS wrapper + abliterated teacher target.
+        VariantConfig(
+            name="gcg_prs_jbtarget",
+            loss_factory=lambda m: PrefillCELoss(),
+            template_fn=_prs_template,
+            target_fn=_jailbroken_targets,
+        ),
+
+        # 11. JBTemplate + AttnHijack. The PRS template ends with the
+        # trigger placeholder (no trailing period), so the trigger is
+        # already a true suffix — no `_attn_hijack_template` needed on top.
+        VariantConfig(
+            name="gcg_prs_attn_hijack",
+            loss_factory=lambda m: CombinedLoss(
+                [
+                    PrefillCELoss(),
+                    AttentionEnhLoss(
+                        targeted_layers=slice(
+                            math.floor(0.1 * m.n_layers),
+                            math.ceil(0.9 * m.n_layers),
+                        ),
+                        src_slc_name=SliceKey.TRIGGER,
+                        dst_slc_name=SliceKey.INPUT_AFTER,
+                    ),
+                ],
+                weights=[1.0, 100],
+            ),
+            template_fn=_prs_template,
+            needs_eager_attn=True,
+        ),
+
+        # 12. JBTarget + AttnHijack.
+        VariantConfig(
+            name="gcg_jbtarget_attn_hijack",
+            loss_factory=lambda m: CombinedLoss(
+                [
+                    PrefillCELoss(),
+                    AttentionEnhLoss(
+                        targeted_layers=slice(
+                            math.floor(0.1 * m.n_layers),
+                            math.ceil(0.9 * m.n_layers),
+                        ),
+                        src_slc_name=SliceKey.TRIGGER,
+                        dst_slc_name=SliceKey.INPUT_AFTER,
+                    ),
+                ],
+                weights=[1.0, 100],
+            ),
+            template_fn=_attn_hijack_template,
+            target_fn=_jailbroken_targets,
+            needs_eager_attn=True,
+        ),
+
+        # 13. JBTemplate + JBTarget + HotInit. Same as `gcg_prs_jbtarget` but
+        # initialized from a begging string instead of a random trigger.
+        VariantConfig(
+            name="gcg_prs_jbtarget_hotinit",
+            loss_factory=lambda m: PrefillCELoss(),
+            template_fn=_prs_template,
+            target_fn=_jailbroken_targets,
+            initial_trigger_fn=_begging_trigger_fn,
+        ),
+
+        # 14. JBTarget + CW + AttnHijack. Same CW hyperparams as `gcg_cw`.
+        VariantConfig(
+            name="gcg_jbtarget_cw_attn_hijack",
+            loss_factory=lambda m: CombinedLoss(
+                [
+                    PrefillCWLoss(cw_margin=5.0, first_token_weight=5.0),
+                    AttentionEnhLoss(
+                        targeted_layers=slice(
+                            math.floor(0.1 * m.n_layers),
+                            math.ceil(0.9 * m.n_layers),
+                        ),
+                        src_slc_name=SliceKey.TRIGGER,
+                        dst_slc_name=SliceKey.INPUT_AFTER,
+                    ),
+                ],
+                weights=[1.0, 100],
+            ),
+            template_fn=_attn_hijack_template,
+            target_fn=_jailbroken_targets,
+            needs_eager_attn=True,
+        ),
+
         # ── Additional tricks (uncomment to include) ─────────────────────
         # CE + TriggerPerplexityLoss — penalizes non-fluent triggers,
         #   may improve transferability (see recipe_hub/GCG.py:run_gcg_perplexity)

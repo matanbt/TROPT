@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 import torch
@@ -12,7 +13,9 @@ from tropt.optimizer import OptimizerResult
 from tropt.optimizer.soft_optimizer import SoftPromptOptimizer
 from tropt.tracker import BaseTracker
 
-##TODO make sure we reprod here!
+logger = logging.getLogger(__name__)
+
+
 class SignSGD(torch.optim.Optimizer):
     """
     A simple implementation of the SignSGD optimizer, to be used in this attack.
@@ -44,6 +47,7 @@ def soft_prompt__schwinn2024(
     model_obj: Optional[LMHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     num_steps: int = 500,
+    path_result: str = "best_trigger_input_emb.pt",
 ) -> OptimizerResult:
     """Reproduces "Soft Prompt Threats" (Schwinn et al., 2024): SignSGD-based
     embedding-level optimization to elicit a target response.
@@ -52,6 +56,7 @@ def soft_prompt__schwinn2024(
 
     Args:
         num_steps: defaults to 500; paper uses 200.
+        path_result: path to save the best trigger input embedding (``.pt``) at the end of optimization.
     """
     if model_obj is None:
         model_obj = LMHFModel(
@@ -79,7 +84,8 @@ def soft_prompt__schwinn2024(
         initial_trigger=("! " * 20).strip(),
     )
 
-    # TODO save to result to pt file upon request / arg?
+    torch.save(result.best_trigger_emb, path_result)
+    logger.info(f"Saved best trigger input embedding to {path_result}")
 
     return result
 
@@ -142,6 +148,7 @@ def soft_prompt_encoder(
     target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
+    path_result: str = "best_trigger_input_emb.pt",
 ) -> OptimizerResult:
     """
 
@@ -151,6 +158,7 @@ def soft_prompt_encoder(
         target_vector (Tensor, (d_model)): The target vector the passage's embedding is aligned (the centroid of the target query set).
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
+        path_result: path to save the best trigger input embedding (``.pt``) at the end of optimization.
     """
     assert target_vector is not None, "target_vector is required."
 
@@ -179,7 +187,8 @@ def soft_prompt_encoder(
         initial_trigger=("! " * 20).strip(),
     )
 
-    # TODO save to result to pt file upon request / arg?
+    torch.save(result.best_trigger_emb, path_result)
+    logger.info(f"Saved best trigger input embedding to {path_result}")
 
     return result
 

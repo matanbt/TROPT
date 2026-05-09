@@ -108,8 +108,8 @@ class PALOptimizer(BaseOptimizer):
                 )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        # [TODO more informative name to use_token_eval; it should also reflect the its compute-loss and on the target model]
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)   # TODO find a more accurate way of comparing tokenizers
+        # [TODO more informative name to use_token_eval; it should also reflect the its compute-loss and on the target model] [TODONOW]
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         if model == proxy_model:
             n_candidates_after_proxy_filter = None  # disable proxy filtering if proxy and target are the same

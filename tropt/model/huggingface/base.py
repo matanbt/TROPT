@@ -485,7 +485,7 @@ class HuggingFaceBackendModel:
                 logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
             ## additional check that the model have input_embeds for forward pass
-            # [TODO: have this run optionally in debug mode for efficiency]
+            # [TODO: have this run optionally in debug mode for efficiency] [TODONOW]
 
             @torch.no_grad()
             def _requires_input_embeds() -> bool:
@@ -763,7 +763,7 @@ class HuggingFaceBackendModel:
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
                     candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
-                    # TODO move to this check to the tests, to avoid slowing down this function (keeping it for now for safety)
+                    # TODO move to this check to the tests, to avoid slowing down this function (keeping it for now for safety) [TODONOW - have a universal flag for testing]
                     # Only check when using discrete tokens (not soft probabilities)
                     if candidate_trigger_ids is not None:
                         assert torch.allclose(

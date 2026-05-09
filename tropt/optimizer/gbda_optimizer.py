@@ -66,7 +66,7 @@ class GBDAOptimizer(BaseOptimizer):
         learning_rate: float = 0.3,
         grad_clip_norm: Optional[float] = None,
     ):
-    # TODO rearrange and categorize the docstring parameters
+    # TODO rearrange and categorize the docstring parameters [TODONOW]
         """
         Args:
             num_steps: Number of optimization steps.

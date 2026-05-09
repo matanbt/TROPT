@@ -5,6 +5,8 @@ from collections import defaultdict
 from typing import Any, Dict, Optional
 
 import livelossplot
+import trackio
+
 import wandb
 
 from .base import DEFAULT_EXPERIMENT_NAME, BaseTracker
@@ -134,7 +136,67 @@ class DictTracker(BaseTracker):
         self.summary = summary or {}
 
 
-# TODO Add HF's trackio integration
+class TrackioTracker(BaseTracker):
+    """Logs to Hugging Face's Trackio.
+
+    Construction stores backend parameters (project, space_id, etc.) without starting a run.
+    The run is opened on ``init()`` and closed on ``finish()``.
+
+    Trackio has no per-run summary object (unlike WandB); ``finish(summary=...)`` records the
+    summary as a final ``trackio.log()`` entry whose keys are prefixed by ``"summary/"`` so it
+    can be recovered from the run history.
+
+    See https://huggingface.co/docs/trackio for backend details.
+    """
+
+    def __init__(
+        self,
+        experiment_name: str = DEFAULT_EXPERIMENT_NAME,
+        experiment_config: Optional[dict] = None,
+        project_name: str = DEFAULT_EXPERIMENT_NAME,
+        space_id: Optional[str] = None,
+        **trackio_kwargs,
+    ):
+        """
+        Args:
+            experiment_name: Run name in Trackio.
+            project_name: Trackio project name.
+            experiment_config: User-provided config merged with optimizer config on every run.
+            space_id: Optional HuggingFace Space identifier (``"user/space_name"``) for hosted
+                dashboards. If ``None``, Trackio persists locally to ``~/.trackio``.
+            **trackio_kwargs: Extra kwargs forwarded to ``trackio.init()``.
+        """
+        super().__init__(experiment_name, experiment_config)
+        self.project_name = project_name
+        self.space_id = space_id
+        self._trackio_kwargs = trackio_kwargs
+
+    def _init(self, config: Optional[dict] = None):
+        trackio.init(
+            project=self.project_name,
+            name=self.experiment_name,
+            config=config,
+            space_id=self.space_id,
+            **self._trackio_kwargs,
+        )
+
+    def _log(self, data: Dict[str, Any]):
+        import torch
+        sanitized = {}
+        for k, v in data.items():
+            if isinstance(v, torch.Tensor):
+                try:
+                    v = v.item()
+                except (ValueError, RuntimeError):
+                    continue
+            sanitized[k] = v
+        trackio.log(sanitized)
+
+    def _finish(self, summary: Optional[dict] = None):
+        if summary:
+            trackio.log({f"summary/{k}": v for k, v in summary.items()})
+        trackio.finish()
+
 
 class PrintTracker(BaseTracker):
     """Prints each optimisation step to stdout and accumulates history.

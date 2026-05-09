@@ -7,5 +7,6 @@ from .trackers import (
     JSONTracker,
     LiveLossPlotTracker,
     PrintTracker,
+    TrackioTracker,
     WandbTracker,
 )

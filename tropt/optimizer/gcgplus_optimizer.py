@@ -130,7 +130,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         assert candidate_oversample_factor >= 1.0, "candidate_oversample_factor must be >= 1.0"
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        # TODO BETTER NAMING!
+        # TODO BETTER NAMING! [TODONOW]
         use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         # Normalize sample_n_replace to tuple
@@ -277,7 +277,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 candidate_trigger_ids = self._sample_random_candidates(
                     trigger_ids=trigger_ids,
                     valid_token_ids=valid_token_ids,
-                    n_candidates=n_candidates_oversampled,  #TODO ->n_candidates
+                    n_candidates=n_candidates_oversampled,
                     n_replace=cur_n_replace,
                 )
 

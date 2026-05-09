@@ -93,9 +93,10 @@ class LMHFModel(
         set_model_to_eval: bool = True,
         use_eager_attention: bool = False,
         loaded_model: Optional[AutoModelForCausalLM] = None,
+        chat_template_kwargs: Optional[Dict[str, Any]] = None,
         **model_kwargs,  # to be handed to HuggingFace model init
     ):
-        # TODO resolve model name -- what's the convention, where should it be? does HF supposed to solve it?
+        # TODO resolve model name -- what's the convention, where should it be? does HF supposed to solve it? [TODONOW]
         if loaded_model is not None:
             logger.info(f"Using provided loaded model for {model_name}.")
             assert isinstance(loaded_model, transformers.PreTrainedModel)
@@ -125,6 +126,7 @@ class LMHFModel(
         assert embedding_layer is not None, f"Model {model_name} has no input embeddings"
         self._embedding_layer: torch.nn.Module = embedding_layer
         self._use_prefix_cache = use_prefix_cache
+        self.chat_template_kwargs = chat_template_kwargs or {}
 
 
         if not self._tokenizer.chat_template:
@@ -199,7 +201,7 @@ class LMHFModel(
                 [{"role": "user", "content": template}],
                 tokenize=True,
                 add_generation_prompt=True,
-                # TODO add self.chat_template_kwargs (such as "enable_thinking")
+                **self.chat_template_kwargs,
             )["input_ids"]
             for template in templates
         ]  # type: ignore[assignment]  (`tokenize` returns List[List[int]])
@@ -325,11 +327,11 @@ class LMHFModel(
 
     def invoke_from_tokens(
         self,
-        input_embeds: Float[Tensor, "bsz seq_len embd_dim"],
+        input_embeds: Optional[Float[Tensor, "bsz seq_len embd_dim"]] = None,
+        input_ids: Optional[Int[Tensor, "bsz seq_len"]] = None,
         input_attention_mask: Optional[Float[Tensor, "bsz seq_len"]] = None,
         input_prefix_cache_kwargs: Optional[Dict[str, Any]] = None,
         input_slices: Optional[Dict[str, slice]] = None,
-        # TODO make input_ids a second-priority option
 
         # computation flags:
         require_target_prefill: bool = False,
@@ -347,7 +349,9 @@ class LMHFModel(
         Performs a forward pass through the model given input embeddings and attention mask.
 
         Args:
-            input_embeds: Input embeddings tensor of shape (bsz, seq_len, embd_dim).
+            input_embeds: Input embeddings tensor of shape (bsz, seq_len, embd_dim). Primary input.
+            input_ids: Token IDs tensor of shape (bsz, seq_len). Used as a fallback when
+                `input_embeds` is not provided; embedded internally via the model's embedding layer.
             input_attention_mask: Attention mask tensor of shape (bsz, seq_len).
             input_prefix_cache_kwargs: Optional dict of prefix cache kwargs to pass to the model.
             input_slices: Optional dict mapping slice keys to slices for extracting specific parts of the output.
@@ -371,10 +375,14 @@ class LMHFModel(
             raise ValueError(
                 "Attention-based losses are incompatible with prefix caching; initialize model with `use_prefix_cache=False`. "
             )
+
+        # Resolve input: input_embeds takes priority; fall back to input_ids.
+        if input_embeds is None:
+            assert input_ids is not None, "Either `input_embeds` or `input_ids` must be provided to HF's invoke_from_tokens."
+            input_embeds = self._embedding_layer(input_ids)
+
         if input_attention_mask is None:
             input_attention_mask = torch.ones(input_embeds.shape[:2], device=input_embeds.device)
-
-        assert input_embeds is not None, "input_embeds must be provided in HF's invoke_from_tokens."
 
         outputs = self._model(
             inputs_embeds=input_embeds,
@@ -502,6 +510,7 @@ class LMHFModel(
                     [{"role": "user", "content": text}],
                     tokenize=True,
                     add_generation_prompt=True,
+                    **self.chat_template_kwargs,
                 )["input_ids"]
             )
 

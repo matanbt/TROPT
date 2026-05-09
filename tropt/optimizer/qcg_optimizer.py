@@ -79,7 +79,7 @@ class QCGOptimizer(BaseOptimizer):
         )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)    # TODO find a more accurate way of comparing tokenizers
+        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         self.num_steps = num_steps
         self.n_proxy_candidates = n_proxy_candidates
@@ -145,7 +145,7 @@ class QCGOptimizer(BaseOptimizer):
             candidate_trigger_ids = candidate_trigger_ids[: self.n_proxy_candidates]
 
             # === Stage 2: Proxy filtering to n_target_candidates ===
-            # TODO what happens if proxy == target? shouldn't we skip it??
+            # TODO what happens if proxy == target? shouldn't we skip it?? [TODONOW]
             if self.n_target_candidates < len(candidate_trigger_ids):
                 proxy_losses = proxy_model.compute_loss_from_tokens(
                     candidate_trigger_ids, loss_func=self.loss_func

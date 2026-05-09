@@ -162,9 +162,8 @@ class BeamSearchOptimizer(BaseOptimizer):
             next_token_logits = next_token_logits.squeeze(1)  # (beam, vocab_size)
 
             # 2. Sample candidate next trigger tokens using multinomial sampling
+            next_token_logits[:, util_blacklist_ids] = float("-inf")  # Block disallowed tokens before softmax
             probs = torch.softmax(next_token_logits / self.temperature, dim=-1)
-            probs[:, util_blacklist_ids] = 0  # Block out disallowed tokens [TODO should we block before the softmax w/ -inf?]
-            probs = probs / probs.sum(dim=-1, keepdim=True)  # Renormalize
 
             # Sample branching_factor candidates per beam using multinomial sampling (without replacement)
             candidate_next_tokens = self._sample_multinomial(

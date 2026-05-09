@@ -180,7 +180,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
                 dim=0,
             )
 
-        return _batched()  # TODO make sure the callers `to.device & dtype` !!!!!!!!!!
+        return _batched()  # TODO make sure the callers `to.device & dtype` !!!!!!!!!! [TODONOW]
 
     @abstractmethod
     def __call__(

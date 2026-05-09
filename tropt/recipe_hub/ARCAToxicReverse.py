@@ -123,7 +123,6 @@ def arca_toxic_reverse(
 
     # Loss setup: PrefillCE for gradients (proxy_loss), optionally combined
     # with ExternalTriggerPerplexityLoss for candidate evaluation.
-    # TODO use tricks found in exp2.py
     eval_loss = PrefillCELoss(clamp_min_nll=clamp_min_nll)
     if perplexity_weight > 0.0:
         eval_loss = CombinedLoss(
