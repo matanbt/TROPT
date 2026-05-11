@@ -1,6 +1,9 @@
-# Adding a New Loss
+# Building a New Loss
 
 This guide walks you through implementing a new loss function, whether you create it in your own separate script, or you intend to contibute to the package (for the latter, also see [Adding to TROPT](#adding-to-tropt) section).
+
+If you would like to contribute a new loss to TROPT, make sure you followed this guide, and refer to CONTRIBUTING.md [TODO link contributing.md].
+
 
 > For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 3: Losses). For the full API reference, see the [loss API docs](../api/loss.html).
 
@@ -173,10 +176,3 @@ If no existing base class fits, create one inheriting from `BaseLoss` with an ab
 4. **Test** — Output shape, known input/output pairs, edge cases. See `tests/loss/`.
 
 ---
-
-## Adding to TROPT
-
-If you want to contribute the loss to the package (not just use it in your own script):
-
-1. **Register** — Export from [`tropt/loss/__init__.py`](../../tropt/loss/__init__.py).
-2. **Test** — Add tests under `tests/loss/`.

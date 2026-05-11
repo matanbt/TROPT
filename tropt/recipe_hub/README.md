@@ -2,6 +2,10 @@
 
 This directory contains self-contained recipes for various optimization methods on text models. These scripts are meant to serve as reproduction and "hacking" entry points.
 
+[
+    TODONOW: edit me
+]
+
 ## Naming convention
 
 Function names and `RECIPES` dict keys are identical and follow `{method}[_{variant}][_{task}][__{paperYYYY}]`. The `__{paperYYYY}` reproduction tag is reserved for recipes that precisely reproduce a published method's algorithm and hyperparameters. See [`docs/guides/adding_a_recipe.md`](../../docs/guides/adding_a_recipe.md) for the full convention.

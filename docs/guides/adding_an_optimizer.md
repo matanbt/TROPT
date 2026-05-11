@@ -1,4 +1,4 @@
-# Adding a New Optimizer
+# Building a New Optimizer
 
 This guide walks you through implementing a new optimizer. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss. 
 Optimizers can be implemented in a standalone script. For contributing new optimizers to to TROPT also see  [Adding to TROPT](#adding-to-tropt) section.

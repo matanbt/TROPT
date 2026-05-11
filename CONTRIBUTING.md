@@ -71,6 +71,13 @@ When a single paper introduces multiple variants and the recipe hub exposes them
 
 ## Contributing a loss
 
+If you want to contribute the loss to the package (not just use it in your own script):
+
+1. **Register** — Export from [`tropt/loss/__init__.py`](../../tropt/loss/__init__.py).
+2. **Test** — Add tests under `tests/loss/`.
+
 
 ## Contributing an optimzier
+
+
 
