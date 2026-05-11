@@ -332,6 +332,18 @@ class BaseOptimizer(ABC):
                 In optimizers that accomodate multiple models (e.g., proxy models), this may be critical choice.
                 ``"all"``, sums the metric across all models found on ``self``. 
                 ``"target"`` only considers the primary target model (``self.model``), which is useful if we only care about the target model API token usage.
+        
+        Usage:
+        ```python
+        # Whitebox: cap compute by FLOPs (across target + any proxy LM)
+        optimizer = GCGOptimizer(model=model_obj, loss=PrefillCELoss(), num_steps=10_000)
+        optimizer.set_budget(1e17, metric="total_flops")
+
+        # Blackbox: cap by target-model tokens (FLOPs aren't observable on API models)
+        optimizer = RandomSearchOptimizer(model=model_obj, loss=PrefillCELoss(), num_steps=10_000)
+        optimizer.set_budget(1_000_000, metric="total_tokens", scope="target")
+        ```
+
         """
         assert scope in ("all", "target"), "scope must be 'all' or 'target'"
         assert metric in ("total_flops", "total_tokens"), "currently only 'total_flops' and 'total_tokens' metrics are supported"

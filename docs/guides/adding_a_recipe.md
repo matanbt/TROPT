@@ -1,23 +1,19 @@
 # Composing a Recipe
 
-Going one level of abstraction down from executing Recipe Hub instnaces, the next guide shows how once an build their _own_ custom recipes.
+Going one level of abstraction down from running existing Recipe Hub entries, this guide shows how to build your *own* custom recipe.
 
-A TROPT recipe is a script that combines TROPT's four core components into a single function: a **Model**, **Loss**, **Optimizer**, and a **Input Setup**.
-Importantly, as we discuss below, TROPT recipes must reflect a _valid_ combination of these componenets; for example, some optimziers may require gradient computation, so models that have only black-box API access are automatically incompatible with these.
+A TROPT recipe is a script that combines TROPT's four core components into a single function: a **Model**, a **Loss**, an **Optimizer**, and an **Input Setup**. As we discuss below, a recipe must reflect a *valid* combination of these components — for example, some optimizers require gradient computation, so models that have only black-box API access are automatically incompatible with them.
 
-This guide in effect explains how each recipe in TROPT's Recipe Hub is implemented; so referring to existing recipes in `tropt/recipe_hub/` can provide helpful examples.
+This guide effectively explains how every recipe in TROPT's Recipe Hub is implemented; browsing existing recipes in [`tropt/recipe_hub/`](../../tropt/recipe_hub/) can provide helpful concrete examples.
 
-If you would like to contribute a recipe to the Recipe Hub, make sure you followed this guide, and refer to CONTRIBUTING.md [TODO link contributing.md].
+> If you would like to *contribute* a recipe back to the Recipe Hub itself, see [CONTRIBUTING.md](../../CONTRIBUTING.md). This guide focuses on building recipes for your own use.
 
-[TODO make sure that each recipe here runs]
-[TODO make sure our docs support the visualization of this diff with python snippet:]
-[TODO combine links to the API reference when appropriate]
 
 ## A Minimal Recipe
 
-We'll start with a minimal recipe that implements the [GCG](https://arxiv.org/abs/2307.15043) LLM jailbreaks against an HuggingFace model.
+We'll start with a minimal recipe that implements the [GCG](https://arxiv.org/abs/2307.15043) LLM jailbreak against a HuggingFace model.
 
-Our recipe function will accept the target method, a harmful instruction template (w/ a placeholder for the trigger), and a target response; it will then return the optimized trigger.
+The recipe function accepts the target model, a harmful instruction template (with a placeholder for the trigger), and a target response; it returns the optimized trigger as a string.
 
 ```python
 from tropt.model.huggingface.lm import LMHFModel
@@ -25,13 +21,14 @@ from tropt.loss import PrefillCELoss
 from tropt.optimizer import GCGOptimizer, OptimizerResult
 from tropt.common import Targets
 
+
 def my_recipe(
     model_name: str = "google/gemma-3-270m-it",
     instruction: str = "How to pick a lock. {{OPTIMIZED_TRIGGER}}",
     target_response: str = "Sure, here's how:",
-) -> :
+) -> str:
     """Implements GCG's LLM Jailbreak."""
-    # Define model & loss componenets, and wire them with the optimizer
+    # Define model & loss components, and wire them with the optimizer
     model = LMHFModel(model_name=model_name, use_prefix_cache=True)
     loss = PrefillCELoss()
     optimizer = GCGOptimizer(
@@ -55,94 +52,25 @@ def my_recipe(
     return result.best_trigger_str  # return the string of the best trigger found
 ```
 
-A few things we should note from the implementation:
-- The model and loss are initialized are registered in the optimizer before the optimization.
-    - Any selection of these three componenets from TROPT's respective subpackages (`from tropt.{loss,optimizer,model} import [...]`) works; this is up to compatability limitations (below).
-- The input setup enables multiple templates (and, accordingly, targets); we only use a single templte-target pair.
-- The templates provided to the optimizer must include the trigger location with a placeholder. 
-    - This placeholder string is `{{OPTIMIZED_TRIGGER}}` (defined as a constant under `tropt.common.OPTIMIZED_TRIGGER_PLACEHOLDER`).
-- The optimization returns the result in a `OptimizerResult` object, where the best trigger string can be found and returned.
+A few things to note from this implementation:
+
+- The model and loss are instantiated and registered with the optimizer before the run begins.
+    - Any selection of these three components from TROPT's respective subpackages (`from tropt.{loss,optimizer,model} import [...]`) works, subject to the compatibility limitations discussed below.
+- The input setup supports multiple templates (and accordingly, multiple targets); here we use a single template-target pair.
+- The templates passed to the optimizer must include the trigger location as a placeholder.
+    - The placeholder string is `{{OPTIMIZED_TRIGGER}}` (also exported as the constant [`tropt.common.OPTIMIZED_TRIGGER_PLACEHOLDER`](../api/common.html)).
+- The optimization returns an [`OptimizerResult`](../api/optimizer.html) object, from which the best trigger string can be extracted.
 
 
-## Enhancing the recipe
+## Enhancing the Recipe
 
-The recipe can be further enhanced with TROPT-supported primitives and tools, such as third-party monitoring. 
-We add these to our example recipe as follows:
+The recipe can be further enhanced with TROPT-supported primitives and tools, such as third-party experiment monitoring. The version below adds a tracker, token constraints, a reproducible seed, and a smarter trigger initializer.
 
+> *Highlighted lines* below are new or changed compared to the minimal recipe. The previous `initial_trigger="! ! ! ! ! ! ! ! ! ! !"` is replaced by the random initializer on line 35.
 
-```python
-from tropt.model.huggingface.lm import LMHFModel
-from tropt.loss import PrefillCELoss
-from tropt.optimizer import GCGOptimizer, OptimizerResult
-from tropt.common import Targets
+```{code-block} python
+:emphasize-lines: 6, 7, 8, 15, 21, 22, 27, 28, 31, 35, 36, 37, 38, 39, 47
 
-+ from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
-+ from tropt.optimizer.utils.token_constraints import TokenConstraints
-+ from tropt.tracker import WandbTracker
-
-def my_recipe(
-    model_name: str = "google/gemma-3-270m-it",
-    instruction: str = "How to pick a lock. {{OPTIMIZED_TRIGGER}}",
-    target_response: str = "Sure, here's how:",
-    + seed: int = 42,
-) -> :
-    """Implements GCG's LLM Jailbreak."""
-    # Define model & loss componenets, and wire them with the optimizer
-    model = LMHFModel(model_name=model_name, use_prefix_cache=True)
-    loss = PrefillCELoss()
-
-    + # Define a tracker for the optimization
-    + tracker = WandbTracker()
-
-    + # Define token constraints on the trigger
-    + token_constraints = TokenConstraints()
-
-    optimizer = GCGOptimizer(
-        model=model,
-        loss=loss,
-    +   seed=seed,  # define a reproducible seed
-    +   tracker=tracker,  # register the tracker
-        num_steps=500,
-        n_candidates=512,
-    +   token_constraints=token_constraints,
-    )
-
-    # Define the input setup (single instruction and its target response)
-    templates = [instruction]
-    targets = Targets(target_response_strs=[target_response])
-    + initial_trigger = get_printable_random_trigger(
-    +    trigger_len=20, tokenizer=model.tokenizer, token_constraints=token_constraints
-    +)
-    
-    # Run optimization
-    result: OptimizerResult = optimizer.optimize_trigger(
-        templates=templates,
-        targets=targets,
-    -    initial_trigger="! ! ! ! ! ! ! ! ! ! !",
-    +    initial_trigger=initial_trigger,
-    )
-
-    return result.best_trigger_str  # return the string of the best trigger found
-```
-
-Let's break down the additions:
-
-**Tracker.** Trackers can be attached to the optimizer to track per-step metrics. In the example, we attach a Wandb tracker, that will be fed with the loss per-step, as well as other metrics (e.g., token usage). TROPT support several other trackers such as `LiveLossPlotTracker` (useful for notebook loss plotting), `JSONTracker`(records metrics to a JSON), etc.
-
-**Token blacklist.** Like `GCGOptimizer`, most optimizer accept, a series of constraints on the tokens used to craft the trigger. By default (i.e.,  by initializing `TokenConstraints()`) it will black-list non-ascii and special tokens, to make a printable token.
-
-**Seed.** To enable reproducible optimization run, it is possible to pass a seed to the optimizer; internally we use `transformers.set_seed`, which fixes the seed for torch/numpy/random for the whole run. No manual seeding needed.
-
-**Trigger Inintialization.** Most optimizer also accept an initial trigger. Here, we use an auxiliry funciton of TROPT to initialize a random trigger, sampled from our allowed token constrinats.
-
-
-
-## Even further enhacning the recipe
-
-We further enhance the recipe by altering the loss and swapping the optimizer. These changes imply certain instantiation of the componenets as we detail later.
-
-
-```python
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.loss import PrefillCELoss
 from tropt.optimizer import GCGOptimizer, OptimizerResult
@@ -152,145 +80,198 @@ from tropt.optimizer.utils.token_initializers import get_printable_random_trigge
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import WandbTracker
 
-+ from tropt.common import SliceKey
-+ from tropt.loss import AttentionEnhLoss, CombinedLoss
 
 def my_recipe(
     model_name: str = "google/gemma-3-270m-it",
-    instruction: str = "How to pick a lock. {{OPTIMIZED_TRIGGER}}",  # "<think>\n\n</think>\n\n"
+    instruction: str = "How to pick a lock. {{OPTIMIZED_TRIGGER}}",
     target_response: str = "Sure, here's how:",
     seed: int = 42,
-    + flop_budget: float = 3e17,
-) -> :
+) -> str:
     """Implements GCG's LLM Jailbreak."""
-    # Define model & loss componenets, and wire them with the optimizer
-    model = LMHFModel(
-        model_name=model_name, 
-        use_prefix_cache=True, 
-        + dtype="bfloat16",  # for efficiency
-        + # required by the loss:
-        + use_eager_attention=True,
-        + use_prefix_cache=False,
-    )
-    - loss = PrefillCELoss()
-    + # combines the PrefillCE loss with attention-based penalty
-    + loss = CombinedLoss( 
-    +    [
-    +        PrefillCELoss(),
-    +        AttentionEnhLoss(
-    +            targeted_layers=slice(
-    +                math.floor(0.1 * model.n_layers),
-    +                math.ceil(0.9 * model.n_layers),
-    +            ),
-    +            src_slc_name=SliceKey.TRIGGER,
-    +            dst_slc_name=SliceKey.INPUT_AFTER,
-    +        ),
-    +    ],
-    +    weights=[1.0, 100.0],
-    +)
+    # Define model & loss components, and wire them with the optimizer
+    model = LMHFModel(model_name=model_name, use_prefix_cache=True)
+    loss = PrefillCELoss()
 
     # Define a tracker for the optimization
-    - tracker = WandbTracker()
-    + tracker = WandbTracker("myattack_maximal", project_name="tropt-demo")
+    tracker = WandbTracker()
 
     # Define token constraints on the trigger
-    token_constraints = TokenConstraints(
-        + disallow_custom_token_ids=[9653, 6235],  # block custom tokens
-    )
+    token_constraints = TokenConstraints()
 
-    + # Enable FLOP calculation and tracking 
-    + model.set_flop_counting("manual")
-
-    - optimizer = GCGOptimizer(
-    + optimizer = PALOptimizer(
+    optimizer = GCGOptimizer(
         model=model,
         loss=loss,
-        seed=42,  # define a reproducible seed
-        tracker=tracker,  # register the tracker
-        - num_steps=500,
-        + num_steps=50_000,  # generous step count to allow FLOP-based limit
+        seed=seed,                              # reproducible seed
+        tracker=tracker,                        # register the tracker
+        num_steps=500,
         n_candidates=512,
         token_constraints=token_constraints,
-        + proxy_model=model,  # can be any surroagte model 
     )
-    + optimizer.set_budget(flop_budget, metric="total_flops")
 
-    # Define the input setup (single instruction and its target response)
     templates = [instruction]
-
-    + # special handling Qwen's target, as it emits thinking tokens by default
-    + if "qwen3" in model_name.lower():
-    +    target_response = "<think>\n\n</think>\n\n" + target_response
     targets = Targets(target_response_strs=[target_response])
     initial_trigger = get_printable_random_trigger(
-        trigger_len=20, tokenizer=model.tokenizer, token_constraints=token_constraints
+        trigger_len=20,
+        tokenizer=model.tokenizer,
+        token_constraints=token_constraints,
     )
-    
-    # Run optimization
+
     result: OptimizerResult = optimizer.optimize_trigger(
         templates=templates,
         targets=targets,
         initial_trigger=initial_trigger,
     )
 
-    return result.best_trigger_str  # return the string of the best trigger found
+    return result.best_trigger_str
 ```
 
+Breaking down the additions:
 
-<!-- To cover additional recipe patterns possible in TROPT, in our next gather all of the additional, optional components together to demonstrate an inclusive example — covering the conventions, special cases, and budgeting features from the previous sections: `PALOptimizer` (proxy-guided) under a `CombinedLoss` of `PrefillCELoss` + `AttentionEnhLoss`, with `TokenConstraints`, a seeded random initial trigger, `bfloat16`, FLOP counting, a FLOP budget, and `WandbTracker`. -->
+**Tracker.** Trackers attach to the optimizer to record per-step metrics. In the example we attach a Wandb tracker, fed with per-step loss, token usage, and other diagnostics. TROPT supports several other trackers — `LiveLossPlotTracker` (useful for inline notebook plotting), `JSONTracker` (records metrics to a JSON file), etc. See [`tropt.tracker`](../api/optimizer.html) for the full list.
 
+**Token constraints.** Like `GCGOptimizer`, most optimizers accept a set of constraints on the tokens that may appear in the trigger. By default (`TokenConstraints()`) non-ASCII and special tokens are blocked, producing a printable trigger.
 
-**Model Loading.** First, it's reccomended to prefer the target model would be loaded in FP16, as opposed FP32, for accelerated and memory-efficient optimziationj. Second, since we intend to use attention-based loss, we need to ensure our model _expliclty_ computes the attention matrices; to this end, we pass `use_eager_attention=True` as a keyword arg that will be used for initializing the wrapped HuggingFace model.
+**Seed.** To make the optimization run reproducible, pass a `seed` to the optimizer. Internally TROPT uses `transformers.set_seed`, which fixes the seed for torch / numpy / random for the whole run — no manual seeding needed.
 
-**Combining Losses.** The new recipe _combines_ the PrefillCE loss with an attention-based penalty, using the `CombinedLoss`, which provides a weighted sum of the two. The attention-based loss, `AttentionEnhLoss`, average the attention scores from the specified layers and token subsequences (see the API reference on `common.SliceKey` [TODO hyperref]).
-
-**Customizing the tracker.** You can always define the experiment name, as well as the bigger project it should be recorded under, when defining the tracker.
-
-**Model-specific targets.** Some models behave differently, and require adjusting their target strings. For instance, Qwen3 (e.g., `Qwen/Qwen3-8B`) was trained to emit the opening thinking token (`<think>`) at the beginning of the response. As a result, an appropriate target response must take this into account, for instnace, by immediately forcing the close this thinking chain (`<think></think>Sure, here's [...]`). Note that not all thinking models emit this thinking token by default, but it _is_ a good practice to inspect / read on  the model behavior upon defining the target. 
+**Trigger initialization.** Most optimizers also accept an explicit initial trigger. Here we use a TROPT auxiliary function to sample a random trigger from the allowed token set.
 
 
-**FLOPs tracking and capping.** It is also possible to track and limit the FLOPs used throughout hte optimization. In this example recipe we use the `"manual"` FLOP counter (which computes the FLOPs from the parameter count; see [Boreiko et al. 2024](https://arxiv.org/html/2410.16222v1)), though there may be other methods for such counting we can add in the future.
+## Even Further Enhancing the Recipe
 
-By using `model.set_flop_counting("manual")` we attached a FLOP calculation to the computations of the model, which will then be streamed to the optimizer's tracker per optimization step. 
+Below we additionally swap the loss and the optimizer. These changes have implications on how the components are instantiated, which we detail afterwards.
 
-By further setting the optimizer's budget `optimizer.set_budget` we can use many atteibutes (FLOP count, token count, etc.) to early-stop the optimizer run; read more on possible attributes in the set_budget API ref [TODO simplify with a link]. Here we specifically use `optimizer.set_budget(flop_budget, metric="total_flops")` which limits the total FLOPs used throughout the optimzier run (either by the target model or by any auxiliary/proxy model employed by the optimzier), and stops the optimization when the limit is reached.
-To ensure the FLOP limit is exhausted, it is reccomended to set the number of step to be sufficiently high.
+> *Highlighted lines* below are new or changed compared to the previous version. Notable swaps: `GCGOptimizer` → `PALOptimizer`, plain `PrefillCELoss()` → `CombinedLoss([PrefillCELoss(), AttentionEnhLoss(...)])`, and `use_prefix_cache=True` → `use_prefix_cache=False` (forced by `AttentionEnhLoss`).
 
-[TODO link to the API ref of both `model.set_flop_counting` and `optimizer.set_budget`]
+```{code-block} python
+:emphasize-lines: 1, 4, 6, 8, 13, 23, 26, 27, 28, 29, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 53, 56, 60, 67, 75, 76, 77
 
+import math
 
-**Swapping optimizer.** It is also possible to swap the optimzier. While all optimizer are initialized with the `model`, `loss`, `seed`, and `tracker` parameters, the rest are optimizer-specific parameters that may vary. For example, `PALOptimizer` accepts `proxy_model`, which can be any model that can serve as a surrogate gradient-access model to the target one; here, for simplicity, we simply hand the original model. Other optimizer also rely on auxiliary, such as `BeamSearchOptimizer` which samples the trigger from an auxiliary LM.
+from tropt.model.huggingface.lm import LMHFModel
+from tropt.loss import PrefillCELoss, AttentionEnhLoss, CombinedLoss
+from tropt.optimizer import OptimizerResult
+from tropt.optimizer.pal_optimizer import PALOptimizer
+from tropt.common import SliceKey, Targets
 
-
-
-## Recipe Components Compatability
-
-To enable maximum flexability of recipes, TROPT a-priori enables the combination of any four components, _but_ will dynamically rasie an error throughtout the optimization in the case of incompatable combination of cpompoents.
-
-To ensure your component combination is expected to be valid, you may refer to the API reference of each componenet, where their requriements are specified.
-**Since _any component mismatch will be reported by TROPT_, the best way to handle compatability is to try your component selection and see if it fails.**
-In practice, in the common case of targeting the permissive HuggingFace models, invalid combination are not so common.
-
-Generally, your choice of model should comply with the optimzier requriements (e.g., if it requires gradients) and with the losses' input requriement (e.g., if it requires logits). And your choice of loss should comply with the targets you provide (e.g., a target response).
-
-In more details, below we provide the full considerations for valid componenet selection, while discussing their implementation details:
-
-**Model.** The model must satisfy the optimizer access requirements of the chosen optimizer. Some optimizers rely on access tokenizer
-- These requirements, including tokenizer access and gradient computation, are listed in the class field `YourOptimizer.model_requirements`. TROPT reflects model requirements by the model implementation of certain _mixins_ (e.g., ).
-- The optimizer will enforce these requirements w.r.t. the model, upon the optimizer initialization.
-- In our example recipe, `GCGOptimizer` will enforce a gradient access of the target model, by looking for its `GradientTokenAccessMixin` mixins; this is indeed the case for HuggingFace's LMs (`LMHFModel`).
-- Optimizers documentation include these requrements, so you can find them there.
-
-**Loss.** Loss computation requires certain input/output information of the model, and sometimes also definition of a target. 
-Concretely, in the case of `PrefillCELoss`, the loss expects:
-- The model output to provide `prefill_response_logits`. This means the logits ontop of the prefilled target response, so the model backend must implement this interface. This is indeed the case for HuggingFace LMs that we use (`LMHFModel`). 
-- Importantly, computing the logits on a prefilled target response, and then compute the loss w.r.t. it. This means that such target response must be provided. 
-This is indeed the case, as we provide the `Targets` object to the optimizer, and include the field `target_response_strs`, which is used by this loss.
-- Some losses, such as LLM-as-a-Judge, as not differentiable; thus if we try and run `GCGOptimzier`, for example, on these losses, we will encounter an error (as it will try to backpropagate through this non-differentaible loss).
-- Losses requirements of models and target can be found in the losses documentaiton.
-
-It is also possible to to refer to the [Compatability Matrix](TODO LINK), for a _rough_ list of all the compatible combinations.
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.tracker import WandbTracker
 
 
+def my_recipe(
+    model_name: str = "google/gemma-3-270m-it",
+    instruction: str = "How to pick a lock. {{OPTIMIZED_TRIGGER}}",
+    target_response: str = "Sure, here's how:",
+    seed: int = 42,
+    flop_budget: float = 3e17,
+) -> str:
+    """Implements GCG's LLM Jailbreak."""
+    model = LMHFModel(
+        model_name=model_name,
+        dtype="bfloat16",                       # for efficiency
+        # required by AttentionEnhLoss:
+        use_eager_attention=True,
+        use_prefix_cache=False,
+    )
+    # combines the PrefillCE loss with an attention-based penalty
+    loss = CombinedLoss(
+        [
+            PrefillCELoss(),
+            AttentionEnhLoss(
+                targeted_layers=slice(
+                    math.floor(0.1 * model.n_layers),
+                    math.ceil(0.9 * model.n_layers),
+                ),
+                src_slc_name=SliceKey.TRIGGER,
+                dst_slc_name=SliceKey.INPUT_AFTER,
+            ),
+        ],
+        weights=[1.0, 100.0],
+    )
+
+    tracker = WandbTracker("myattack_maximal", project_name="tropt-demo")
+
+    token_constraints = TokenConstraints(
+        disallow_custom_token_ids=[9653, 6235],  # block custom tokens
+    )
+
+    # Enable FLOP calculation and tracking
+    model.set_flop_counting("manual")
+
+    optimizer = PALOptimizer(
+        model=model,
+        loss=loss,
+        seed=seed,
+        tracker=tracker,
+        num_steps=50_000,                       # generous, will be capped by FLOP budget
+        n_candidates=512,
+        token_constraints=token_constraints,
+        proxy_model=model,                      # any surrogate model works
+    )
+    optimizer.set_budget(flop_budget, metric="total_flops")
+
+    templates = [instruction]
+
+    # special handling for Qwen3, which emits thinking tokens by default
+    if "qwen3" in model_name.lower():
+        target_response = "<think>\n\n</think>\n\n" + target_response
+    targets = Targets(target_response_strs=[target_response])
+    initial_trigger = get_printable_random_trigger(
+        trigger_len=20,
+        tokenizer=model.tokenizer,
+        token_constraints=token_constraints,
+    )
+
+    result: OptimizerResult = optimizer.optimize_trigger(
+        templates=templates,
+        targets=targets,
+        initial_trigger=initial_trigger,
+    )
+
+    return result.best_trigger_str
+```
+
+Breaking down the changes:
+
+**Model loading.** First, prefer loading the target model in BF16/FP16 rather than FP32 — optimization is much faster and more memory-efficient. Second, since we now use an attention-based loss, the model must *explicitly* compute attention matrices; we pass `use_eager_attention=True` (forwarded to the wrapped HuggingFace model). `AttentionEnhLoss` is also incompatible with prefix caching, so we set `use_prefix_cache=False`.
+
+**Combining losses.** The new recipe *combines* the prefill CE loss with an attention-based penalty using [`CombinedLoss`](../api/loss.html), which produces a weighted sum. `AttentionEnhLoss` averages the attention scores from the specified layers and token subsequences (see the [`SliceKey` API reference](../api/common.html)).
+
+**Customizing the tracker.** When defining the tracker you can set the experiment name and the parent project under which it should be recorded.
+
+**Model-specific targets.** Some models behave differently and need adjusted target strings. For example, Qwen3 (e.g. `Qwen/Qwen3-8B`) was trained to begin its response with the opening thinking token `<think>`. An appropriate target therefore must take this into account — for instance by immediately closing the thinking chain (`<think></think>Sure, here's [...]`). Not every "thinking" model emits this token by default, but it is good practice to inspect or read up on the model's behavior before defining the target.
+
+**FLOP tracking and capping.** It is also possible to track and cap the FLOPs used throughout the optimization. This recipe uses the `"manual"` FLOP counter (which estimates FLOPs from the parameter count, following [Boreiko et al. 2024](https://arxiv.org/html/2410.16222v1)); other counters can be added in the future.
+
+`model.set_flop_counting("manual")` attaches FLOP accounting to the model's compute calls, with the per-step total streamed into the optimizer's tracker. `optimizer.set_budget(flop_budget, metric="total_flops")` then converts this into an early-stop budget — the optimizer halts as soon as the cumulative FLOPs (summed across the target model and any auxiliary/proxy models) reach `flop_budget`. To make sure the FLOP budget is exhausted (rather than the step count), set `num_steps` to a generous value. Other supported metrics include `"forward_calls"` and `"total_tokens"` — see [`BaseOptimizer.set_budget`](../api/optimizer.html) and [`BaseModel.get_usage_stats`](../api/models.html) for the full list.
+
+**Swapping the optimizer.** The optimizer can also be swapped freely. All optimizers share the same `model`, `loss`, `seed`, `tracker` arguments, while the rest are optimizer-specific. For example, [`PALOptimizer`](../api/optimizer.html) accepts `proxy_model`, which can be any model that serves as a surrogate gradient-access model for the target — here for simplicity we pass the original model. Other optimizers rely on their own auxiliary models; e.g. `BeamSearchOptimizer` samples the trigger from an auxiliary LM.
 
 
+## Recipe Component Compatibility
+
+To enable maximum flexibility, TROPT does **not** restrict component combinations a priori — instead, it dynamically raises an error during optimization if you pick an incompatible combination.
+
+To get a sense of whether your component combination is expected to be valid, refer to the API reference for each component — [models](../api/models.html), [optimizers](../api/optimizer.html), [losses](../api/loss.html) — where their requirements are documented. **Since any component mismatch is reported by TROPT at initialization or first run, the most pragmatic way to validate a combination is to try it and see.** In practice, when targeting permissive HuggingFace models, invalid combinations are uncommon.
+
+In short: your choice of model should comply with the optimizer's access requirements (e.g., gradients) and with the losses' input requirements (e.g., logits). And your choice of loss should match the targets you provide (e.g., a target response).
+
+In more detail, the considerations for valid component selection are:
+
+**Model.** The model must satisfy the optimizer's access requirements.
+
+- These are listed on the optimizer class as `YourOptimizer.model_requirements` — a tuple of *mixin* classes the model must implement (e.g. `GradientTokenAccessMixin`, `LossTokenAccessMixin`, `LossTextAccessMixin`).
+- The optimizer enforces these requirements at initialization.
+- In our example, `GCGOptimizer` requires gradient access, so it looks for the `GradientTokenAccessMixin` mixin on the model — which `LMHFModel` (HuggingFace LMs) does implement.
+- Each optimizer's documentation lists its requirements.
+
+**Loss.** Loss computation requires certain fields from the model output, and may require fields from the targets too.
+
+For `PrefillCELoss`, for instance, the loss needs:
+
+- `prefill_response_logits` on the model output — i.e., the logits over the prefilled target response. The model backend must populate this, which `LMHFModel` does.
+- A target response, since it computes the loss on the prefilled tokens. This is provided as `target_response_strs` on the [`Targets`](../api/common.html) object passed to the optimizer.
+- Some losses (e.g. LLM-as-a-Judge) are not differentiable. Trying to use them with `GCGOptimizer` (which requires gradients) raises an error during the backward pass.
+- Each loss's documentation lists its model-output and target requirements.
+
+It is also possible to consult the [Compatibility Matrix](compatibility_matrix.md) for a *rough* automated list of compatible combinations.

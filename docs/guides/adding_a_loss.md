@@ -1,8 +1,6 @@
 # Building a New Loss
 
-This guide walks you through implementing a new loss function, whether you create it in your own separate script, or you intend to contibute to the package (for the latter, also see [Adding to TROPT](#adding-to-tropt) section).
-
-If you would like to contribute a new loss to TROPT, make sure you followed this guide, and refer to CONTRIBUTING.md [TODO link contributing.md].
+This guide walks you through implementing a new loss function in your own script. The same pattern applies if you ultimately want to contribute it back to the TROPT package — for that path, follow this guide first, then see [CONTRIBUTING.md](../../CONTRIBUTING.md) for registration and testing requirements.
 
 
 > For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 3: Losses). For the full API reference, see the [loss API docs](../api/loss.html).

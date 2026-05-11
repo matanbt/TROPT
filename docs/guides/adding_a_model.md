@@ -428,12 +428,4 @@ You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`,
 2. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.
 3. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
 
----
-
-## Adding to TROPT
-
-If you want to contribute the model to the package (not just use it in your own script):
-
-1. **File placement** — Create a directory under `tropt/model/` for your backend (e.g., `tropt/model/my_backend/`).
-2. **Export** — Add your class to [`tropt/model/__init__.py`](../../tropt/model/__init__.py).
-3. **Test** — Add tests under `tests/models/`.
+> Want to contribute your model backend back to the TROPT package? See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the file placement, export, and testing steps.

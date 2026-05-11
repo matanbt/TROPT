@@ -26,7 +26,8 @@ _UAT_TOKEN_CONSTRAINTS = TokenConstraints(
 def uat_classifier(
     templates: List[str],
     target_class_idx: int,
-    model_obj: ClassifierHFModel,
+    model_name: Optional[str]=None,
+    model_obj: Optional[ClassifierHFModel]=None,
     tracker: Optional[BaseTracker] = None,
     seed: int = 42,
     trigger_len: int = 5,
@@ -43,6 +44,10 @@ def uat_classifier(
         trigger_len: Number of trigger tokens to optimize.
         template_batch_size: Templates sampled per optimization step (UAT-style).
     """
+    if model_obj is None:
+        model_obj = ClassifierHFModel(model_name=model_name)
+    assert model_obj is not None
+
     loss = MisclassCELoss(targeted=True)
     initial_trigger = get_printable_random_trigger(
         trigger_len=trigger_len,

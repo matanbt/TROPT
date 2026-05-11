@@ -1,7 +1,8 @@
 # Building a New Optimizer
 
-This guide walks you through implementing a new optimizer. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss. 
-Optimizers can be implemented in a standalone script. For contributing new optimizers to to TROPT also see  [Adding to TROPT](#adding-to-tropt) section.
+This guide walks you through implementing a new optimizer. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss.
+
+Everything below applies whether you write the optimizer in your own standalone script or eventually contribute it back to the TROPT package. For the contribution path see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
 
 > For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 4: Optimizers). For the full API reference, see the [optimizer API docs](../api/optimizer.html).
@@ -220,14 +221,6 @@ Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start o
 
 1. **`model_requirements`** — Declare the exact mixins your optimizer calls.
 2. **Cleanup** — `reset_inputs_from_*`, final logging, and `tracker.finish()` are handled automatically by `BaseOptimizer`; no need to call them in your implementation.
-3. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/`.
+3. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/` for examples.
 
----
-
-## Adding to TROPT
-
-If you want to contribute the optimizer to the package (not just use it in your own script):
-
-1. **Register** — Export from [`tropt/optimizer/__init__.py`](../../tropt/optimizer/__init__.py).
-2. **Test** — Add tests under `tests/optimizer/`.
-3. **Recipe hub entry** (optional) — Add a recipe in `tropt/recipe_hub/` for published attacks.
+> Want to contribute your optimizer back to the TROPT package? See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the registration, testing, and (optional) Recipe Hub steps.

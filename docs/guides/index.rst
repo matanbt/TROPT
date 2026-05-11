@@ -1,17 +1,14 @@
 Guides
 ======
 
-TODO: [TODONOW] include all these guides in the Claude skill, and publish it how it's common
+TROPT can be used at three levels of customization:
 
-TROPT can be used for running existing recipes from the recipe hub;
-for customizing  new recipes;
-for further customizing recipes by creating new losses, optimizers, and even new model backends. 
+1. **Run an existing recipe** from the Recipe Hub: a single function call that runs an end-to-end attack (jailbreak, corpus poisoning, prompt recovery, etc.).
+2. **Compose your own recipe**: wire a *Model* + *Loss* + *Optimizer* + *Input Setup* of your choice into a custom function, with optional trackers, token constraints, and FLOP budgets.
+3. **Extend TROPT with new components** — write a new loss, optimizer, or model backend in your own script. Anything new component you build can be simply dropped into an existing recipe.
 
-.. TODO clealry map uses cases like https://github.com/criticalml-uw/TamperBench/tree/main
-
-[TODO refer to the quickstart notebook]
-
-This section provides guides for all. We additionally provide a Claude Code *skill* connected to these guides an additional instructions, to help TROPT users get started.
+The guides below cover all three levels. For an end-to-end notebook walkthrough with examples see ``quickstart.ipynb`` at the repository root. 
+If you want to *contribute* a component back to the TROPT package itself, see ``CONTRIBUTING.md``.
 
 .. toctree::
    :maxdepth: 2
