@@ -66,9 +66,7 @@ def advdecoding_retrieval__zhang2024(
         AdvDecoding paper (Retrieval experiment): https://arxiv.org/abs/2410.02163
         Original implementation: https://github.com/collinzrj/adversarial_decoding/blob/main/adversarial_decoding/strategies/retrieval_decoding.py
 
-    Notes:
-    - AdvDecoding is a variant of BEAST, but uses specific set of params, a combined loss with "scorers",
-      and a util LM to filter the beam candidates. Thus, we use BEASTOptimizer here.
+    Note: AdvDecoding is a variant of BEAST, but uses specific set of params, a combined loss with "scorers", and a util LM to filter the beam candidates. Thus, we use BEASTOptimizer here.
     """
     assert target_vector is not None, "target_vector is required."
 

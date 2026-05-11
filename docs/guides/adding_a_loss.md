@@ -1,9 +1,9 @@
 # Building a New Loss
 
-This guide walks you through implementing a new loss function in your own script. The same pattern applies if you ultimately want to contribute it back to the TROPT package — for that path, follow this guide first, then see [CONTRIBUTING.md](../../CONTRIBUTING.md) for registration and testing requirements.
+This guide walks you through implementing a new loss function in your own script. The same pattern applies if you ultimately want to contribute it back to the TROPT package — for that path, follow this guide first, then see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for registration and testing requirements.
 
 
-> For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 3: Losses). For the full API reference, see the [loss API docs](../api/loss.html).
+> For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 3: Losses). For the full API reference, see the [loss API docs](../api/loss).
 
 ---
 

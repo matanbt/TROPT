@@ -1,3 +1,5 @@
+TODONOW
+
 # Contributing to TROPT
 
 This document covers contributions back to the **TROPT package itself**: registering new components, naming conventions, tests, and Recipe Hub entries.
@@ -13,7 +15,7 @@ After implementing your loss per [`docs/guides/adding_a_loss.md`](docs/guides/ad
 1. **File placement**: Add the loss to the appropriate file under [`tropt/loss/`](tropt/loss/) (or create a new module if it's a new category).
 2. **Register / export**: Export the loss class from [`tropt/loss/__init__.py`](tropt/loss/__init__.py).
 3. **Tests**: Add unit tests under `tests/loss/`. Cover output shape, sign convention, and at least one known input/output pair (numerical correctness matters).
-4. **Compatibility matrix**: Re-run `python scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
+4. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
 
 ---
 
@@ -25,7 +27,7 @@ After implementing your optimizer per [`docs/guides/adding_an_optimizer.md`](doc
 2. **Register / export**: Export the optimizer class from [`tropt/optimizer/__init__.py`](tropt/optimizer/__init__.py).
 3. **Tests**: Add tests under `tests/optimizer/`. Cover `model_requirements` validation, basic optimization, and any optimizer-specific features (schedulers, restarts, buffers, etc.). Use `tests/optimizer/` as a template.
 4. **Recipe Hub entry** *(optional but recommended for published methods)*: Add a recipe in `tropt/recipe_hub/` that exposes the optimizer with paper-faithful defaults (see "Contributing a Recipe" below).
-5. **Compatibility matrix**: Re-run `python scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
+5. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
 
 ---
 
@@ -36,7 +38,7 @@ After implementing your model per [`docs/guides/adding_a_model.md`](docs/guides/
 1. **File placement**: Create a directory under [`tropt/model/`](tropt/model/) for your backend (e.g. `tropt/model/my_backend/`), with one file per concrete model class.
 2. **Register / export**: Export the model class from [`tropt/model/__init__.py`](tropt/model/__init__.py).
 3. **Tests**: Add tests under `tests/models/`. Cover initialization, the inference method, and each mixin method, in both single- and multi-template cases.
-4. **Compatibility matrix**: Re-run `python scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
+4. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
 
 ---
 

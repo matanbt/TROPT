@@ -8,10 +8,10 @@ TROPT can be used at three levels of customization:
 3. **Extend TROPT with new components** — write a new loss, optimizer, or model backend in your own script. Anything new component you build can be simply dropped into an existing recipe.
 
 The guides below cover all three levels. For an end-to-end notebook walkthrough with examples see ``quickstart.ipynb`` at the repository root. 
-If you want to *contribute* a component back to the TROPT package itself, see ``CONTRIBUTING.md``.
+If you want to *contribute* a component back to the TROPT package itself, see `CONTRIBUTING.md <https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md>`_.
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
 
    running_a_recipe
    adding_a_recipe

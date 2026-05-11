@@ -2,10 +2,10 @@
 
 This guide walks you through implementing a new optimizer. Optimizers implement the search algorithm that finds a text trigger minimizing a given loss.
 
-Everything below applies whether you write the optimizer in your own standalone script or eventually contribute it back to the TROPT package. For the contribution path see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+Everything below applies whether you write the optimizer in your own standalone script or eventually contribute it back to the TROPT package. For the contribution path see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md).
 
 
-> For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 4: Optimizers). For the full API reference, see the [optimizer API docs](../api/optimizer.html).
+> For the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (Pillar 4: Optimizers). For the full API reference, see the [optimizer API docs](../api/optimizer).
 
 ---
 
@@ -223,4 +223,4 @@ Always call `set_inputs_from_tokens` (or `set_inputs_from_texts`) at the start o
 2. **Cleanup** — `reset_inputs_from_*`, final logging, and `tracker.finish()` are handled automatically by `BaseOptimizer`; no need to call them in your implementation.
 3. **Test** — Requirements validation, basic optimization, optimizer-specific features. See `tests/optimizer/` for examples.
 
-> Want to contribute your optimizer back to the TROPT package? See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the registration, testing, and (optional) Recipe Hub steps.
+> Want to contribute your optimizer back to the TROPT package? See [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for the registration, testing, and (optional) Recipe Hub steps.

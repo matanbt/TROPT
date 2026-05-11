@@ -266,9 +266,9 @@ def generate_markdown() -> str:
         }
 
     lines: List[str] = []
-    lines.append("# Optimizer-Model-Loss Compatibility Matrix")
+    lines.append("# Compatibility Matrix")
     lines.append("")
-    lines.append("> **Auto-generated** by `scripts/generate_compat_matrix.py` — do not edit manually.")
+    lines.append("> **Auto-generated** by `docs/scripts/generate_compat_matrix.py` — do not edit manually.")
     lines.append("> Since it is based on rough dynamic evaluation **it may include some errors---but is useful for quick reference**.")
     lines.append("")
     lines.append("Each cell lists the concrete loss functions supported for the given optimizer-model pair,")

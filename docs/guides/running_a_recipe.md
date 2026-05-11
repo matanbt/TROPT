@@ -1,10 +1,10 @@
 # Running a Recipe from _Recipe Hub_
 
-The Recipe Hub hosts dozens of optimization recipes that are instantly runnable.
+The ***Recipe Hub*** hosts dozens of optimization recipes that are instantly runnable.
 Each recipe is a single function that wires together a _Model_, a _Loss_, an _Optimizer_, and an _Input Setup_ for a specific application: LLM jailbreaks, corpus poisoning attacks against retrievers, adversarial examples against classifiers, prompt recovery from images, and more.
 
 The full registry lives in [`tropt/recipe_hub/`](../../tropt/recipe_hub/).
-A complete table of available recipes (organised by task and access level) is included [below](#available-recipes); you can also enumerate the registry programmatically with `list_recipes()`:
+A complete list of available recipes (organised by task and access level) is included in the [API reference](../api/recipe_hub); you can also enumerate the registry programmatically with `list_recipes()`:
 
 ```python
 from tropt.recipe_hub import list_recipes
@@ -12,7 +12,18 @@ from tropt.recipe_hub import list_recipes
 print(list_recipes())   # all registered recipe keys
 ```
 
+Every recipe returns an {py:class}`~tropt.optimizer.OptimizerResult` with the optimized trigger, its loss trajectory, and the full reconstituted prompt:
+
+```python
+result.best_trigger_str   # the optimized trigger as a string
+result.best_trigger_ids   # the optimized trigger as token IDs
+result.best_loss          # the best loss reached
+result.losses             # full per-step loss trajectory
+```
+
 ## Example Recipes
+
+The following demonstrates the simple execution of selected Recipe Hub recipes.
 
 ### LLM Jailbreak
 
@@ -78,9 +89,9 @@ result = gaslite__bentov2024(
 print(result.best_trigger_str)
 ```
 
-### Corpus Poisoning Against ***Black-Box*** Dense Retrievers
+### Corpus Poisoning Against *Black-Box* Dense Retrievers
 
-For black-box retrievers (e.g. OpenAI embeddings) there are no gradients. We instead use the random-search recipe `rs_emb`, which mirrors the loss-minimization driver of [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
+For black-box retrievers (e.g. OpenAI embeddings) there are no gradients. We instead use the random-search recipe `rs_emb`, which mirrors the optimization of the originally LLM jailbreak optimizer by [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
 
 ```python
 from tropt.model.openai.encoder import EncoderOpenAIModel
@@ -91,7 +102,7 @@ target_vector = oai_encoder(target_queries).mean(dim=0, keepdim=True)  # (1, d_m
 
 result = rs_emb(
     model_obj=oai_encoder,
-    template="Malicious passage. {{OPTIMIZED_TRIGGER}}",
+    template="Voldemort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector=target_vector,
 )
 print(result.best_trigger_str)
@@ -153,17 +164,6 @@ regenerated.save("regenerated.png")
 ```
 
 
-## Inspecting an `OptimizerResult`
 
-Every recipe returns an [`OptimizerResult`](../api/optimizer.html) with the optimized trigger, its loss trajectory, and the full reconstituted prompt:
 
-```python
-result.best_trigger_str   # the optimized trigger as a string
-result.best_trigger_ids   # the optimized trigger as token IDs
-result.best_loss          # the best loss reached
-result.losses             # full per-step loss trajectory
-```
 
-## Available Recipes
-
-The full table of recipes — keys, target models, required access level, and source papers — lives in [`tropt/recipe_hub/README.md`](../../tropt/recipe_hub/README.md) and is mirrored into the [Recipe Hub API page](../api/recipe_hub.html) at build time. Recipes are grouped by task (jailbreak / corpus poisoning / classifier evasion / soft-prompt / other applications) and by access level (white-box / grey-box / black-box).

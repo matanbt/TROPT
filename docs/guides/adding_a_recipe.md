@@ -6,7 +6,7 @@ A TROPT recipe is a script that combines TROPT's four core components into a sin
 
 This guide effectively explains how every recipe in TROPT's Recipe Hub is implemented; browsing existing recipes in [`tropt/recipe_hub/`](../../tropt/recipe_hub/) can provide helpful concrete examples.
 
-> If you would like to *contribute* a recipe back to the Recipe Hub itself, see [CONTRIBUTING.md](../../CONTRIBUTING.md). This guide focuses on building recipes for your own use.
+> If you would like to *contribute* a recipe back to the Recipe Hub itself, see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md). This guide focuses on building recipes for your own use.
 
 
 ## A Minimal Recipe
@@ -58,18 +58,17 @@ A few things to note from this implementation:
     - Any selection of these three components from TROPT's respective subpackages (`from tropt.{loss,optimizer,model} import [...]`) works, subject to the compatibility limitations discussed below.
 - The input setup supports multiple templates (and accordingly, multiple targets); here we use a single template-target pair.
 - The templates passed to the optimizer must include the trigger location as a placeholder.
-    - The placeholder string is `{{OPTIMIZED_TRIGGER}}` (also exported as the constant [`tropt.common.OPTIMIZED_TRIGGER_PLACEHOLDER`](../api/common.html)).
-- The optimization returns an [`OptimizerResult`](../api/optimizer.html) object, from which the best trigger string can be extracted.
+    - The placeholder string is `{{OPTIMIZED_TRIGGER}}` (also exported as the constant {py:data}`tropt.common.OPTIMIZED_TRIGGER_PLACEHOLDER`).
+- The optimization returns an {py:class}`~tropt.optimizer.OptimizerResult` object, from which the best trigger string can be extracted.
 
 
 ## Enhancing the Recipe
 
 The recipe can be further enhanced with TROPT-supported primitives and tools, such as third-party experiment monitoring. The version below adds a tracker, token constraints, a reproducible seed, and a smarter trigger initializer.
 
-> *Highlighted lines* below are new or changed compared to the minimal recipe. The previous `initial_trigger="! ! ! ! ! ! ! ! ! ! !"` is replaced by the random initializer on line 35.
 
 ```{code-block} python
-:emphasize-lines: 6, 7, 8, 15, 21, 22, 27, 28, 31, 35, 36, 37, 38, 39, 47
+:emphasize-lines: 6, 7, 8, 15, 22, 23, 25, 26, 31, 32, 35, 40, 41, 42, 43, 44, 49
 
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.loss import PrefillCELoss
@@ -124,10 +123,12 @@ def my_recipe(
 
     return result.best_trigger_str
 ```
+(*Highlighted lines* below are new or changed compared to the minimal recipe.) 
+
 
 Breaking down the additions:
 
-**Tracker.** Trackers attach to the optimizer to record per-step metrics. In the example we attach a Wandb tracker, fed with per-step loss, token usage, and other diagnostics. TROPT supports several other trackers — `LiveLossPlotTracker` (useful for inline notebook plotting), `JSONTracker` (records metrics to a JSON file), etc. See [`tropt.tracker`](../api/optimizer.html) for the full list.
+**Tracker.** Trackers attach to the optimizer to record per-step metrics. In the example we attach a Wandb tracker, fed with per-step loss, token usage, and other diagnostics. TROPT supports several other trackers — {py:class}`~tropt.tracker.LiveLossPlotTracker` (useful for inline notebook plotting), {py:class}`~tropt.tracker.JSONTracker` (records metrics to a JSON file), etc. See {py:mod}`tropt.tracker` for the full list.
 
 **Token constraints.** Like `GCGOptimizer`, most optimizers accept a set of constraints on the tokens that may appear in the trigger. By default (`TokenConstraints()`) non-ASCII and special tokens are blocked, producing a printable trigger.
 
@@ -140,10 +141,8 @@ Breaking down the additions:
 
 Below we additionally swap the loss and the optimizer. These changes have implications on how the components are instantiated, which we detail afterwards.
 
-> *Highlighted lines* below are new or changed compared to the previous version. Notable swaps: `GCGOptimizer` → `PALOptimizer`, plain `PrefillCELoss()` → `CombinedLoss([PrefillCELoss(), AttentionEnhLoss(...)])`, and `use_prefix_cache=True` → `use_prefix_cache=False` (forced by `AttentionEnhLoss`).
-
 ```{code-block} python
-:emphasize-lines: 1, 4, 6, 8, 13, 23, 26, 27, 28, 29, 31, 32, 33, 34, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 53, 56, 60, 67, 75, 76, 77
+:emphasize-lines: 1, 4, 5, 6, 7, 19, 24, 25, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 45, 48, 51, 52, 54, 59, 62, 64, 68, 69, 70
 
 import math
 
@@ -230,12 +229,13 @@ def my_recipe(
 
     return result.best_trigger_str
 ```
+(*Highlighted lines* below are new or changed compared to the minimal recipe.) 
 
 Breaking down the changes:
 
 **Model loading.** First, prefer loading the target model in BF16/FP16 rather than FP32 — optimization is much faster and more memory-efficient. Second, since we now use an attention-based loss, the model must *explicitly* compute attention matrices; we pass `use_eager_attention=True` (forwarded to the wrapped HuggingFace model). `AttentionEnhLoss` is also incompatible with prefix caching, so we set `use_prefix_cache=False`.
 
-**Combining losses.** The new recipe *combines* the prefill CE loss with an attention-based penalty using [`CombinedLoss`](../api/loss.html), which produces a weighted sum. `AttentionEnhLoss` averages the attention scores from the specified layers and token subsequences (see the [`SliceKey` API reference](../api/common.html)).
+**Combining losses.** The new recipe *combines* the prefill CE loss with an attention-based penalty using {py:class}`~tropt.loss.CombinedLoss`, which produces a weighted sum. {py:class}`~tropt.loss.AttentionEnhLoss` averages the attention scores from the specified layers and token subsequences (see {py:class}`~tropt.common.SliceKey`).
 
 **Customizing the tracker.** When defining the tracker you can set the experiment name and the parent project under which it should be recorded.
 
@@ -243,16 +243,16 @@ Breaking down the changes:
 
 **FLOP tracking and capping.** It is also possible to track and cap the FLOPs used throughout the optimization. This recipe uses the `"manual"` FLOP counter (which estimates FLOPs from the parameter count, following [Boreiko et al. 2024](https://arxiv.org/html/2410.16222v1)); other counters can be added in the future.
 
-`model.set_flop_counting("manual")` attaches FLOP accounting to the model's compute calls, with the per-step total streamed into the optimizer's tracker. `optimizer.set_budget(flop_budget, metric="total_flops")` then converts this into an early-stop budget — the optimizer halts as soon as the cumulative FLOPs (summed across the target model and any auxiliary/proxy models) reach `flop_budget`. To make sure the FLOP budget is exhausted (rather than the step count), set `num_steps` to a generous value. Other supported metrics include `"forward_calls"` and `"total_tokens"` — see [`BaseOptimizer.set_budget`](../api/optimizer.html) and [`BaseModel.get_usage_stats`](../api/models.html) for the full list.
+`model.set_flop_counting("manual")` attaches FLOP accounting to the model's compute calls, with the per-step total streamed into the optimizer's tracker. `optimizer.set_budget(flop_budget, metric="total_flops")` then converts this into an early-stop budget — the optimizer halts as soon as the cumulative FLOPs (summed across the target model and any auxiliary/proxy models) reach `flop_budget`. To make sure the FLOP budget is exhausted (rather than the step count), set `num_steps` to a generous value. Other supported metrics include `"forward_calls"` and `"total_tokens"` — see {py:meth}`~tropt.optimizer.BaseOptimizer.set_budget` and {py:meth}`~tropt.model.BaseModel.get_usage_stats` for the full list.
 
-**Swapping the optimizer.** The optimizer can also be swapped freely. All optimizers share the same `model`, `loss`, `seed`, `tracker` arguments, while the rest are optimizer-specific. For example, [`PALOptimizer`](../api/optimizer.html) accepts `proxy_model`, which can be any model that serves as a surrogate gradient-access model for the target — here for simplicity we pass the original model. Other optimizers rely on their own auxiliary models; e.g. `BeamSearchOptimizer` samples the trigger from an auxiliary LM.
+**Swapping the optimizer.** The optimizer can also be swapped freely. All optimizers share the same `model`, `loss`, `seed`, `tracker` arguments, while the rest are optimizer-specific. For example, {py:class}`~tropt.optimizer.PALOptimizer` accepts `proxy_model`, which can be any model that serves as a surrogate gradient-access model for the target — here for simplicity we pass the original model. Other optimizers rely on their own auxiliary models; e.g. `BeamSearchOptimizer` samples the trigger from an auxiliary LM.
 
 
 ## Recipe Component Compatibility
 
 To enable maximum flexibility, TROPT does **not** restrict component combinations a priori — instead, it dynamically raises an error during optimization if you pick an incompatible combination.
 
-To get a sense of whether your component combination is expected to be valid, refer to the API reference for each component — [models](../api/models.html), [optimizers](../api/optimizer.html), [losses](../api/loss.html) — where their requirements are documented. **Since any component mismatch is reported by TROPT at initialization or first run, the most pragmatic way to validate a combination is to try it and see.** In practice, when targeting permissive HuggingFace models, invalid combinations are uncommon.
+To get a sense of whether your component combination is expected to be valid, refer to the API reference for each component — [models](../api/models), [optimizers](../api/optimizer), [losses](../api/loss) — where their requirements are documented. **Since any component mismatch is reported by TROPT at initialization or first run, the most pragmatic way to validate a combination is to try it and see.** In practice, when targeting permissive HuggingFace models, invalid combinations are uncommon.
 
 In short: your choice of model should comply with the optimizer's access requirements (e.g., gradients) and with the losses' input requirements (e.g., logits). And your choice of loss should match the targets you provide (e.g., a target response).
 
@@ -270,7 +270,7 @@ In more detail, the considerations for valid component selection are:
 For `PrefillCELoss`, for instance, the loss needs:
 
 - `prefill_response_logits` on the model output — i.e., the logits over the prefilled target response. The model backend must populate this, which `LMHFModel` does.
-- A target response, since it computes the loss on the prefilled tokens. This is provided as `target_response_strs` on the [`Targets`](../api/common.html) object passed to the optimizer.
+- A target response, since it computes the loss on the prefilled tokens. This is provided as `target_response_strs` on the {py:class}`~tropt.common.Targets` object passed to the optimizer.
 - Some losses (e.g. LLM-as-a-Judge) are not differentiable. Trying to use them with `GCGOptimizer` (which requires gradients) raises an error during the backward pass.
 - Each loss's documentation lists its model-output and target requirements.
 

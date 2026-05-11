@@ -1,3 +1,4 @@
+TODONOW
 
 # Design Principles
 This repository is aimed at easing the implementation, run, and research of discrete text optimizers. The core logic of this repo is provided in its three pillars. These would require heavy engineering from anyone who would venture writing such implementations; moreover, prior research has pointed at small implementation details as critical  [GCG,GASLITE] (such as retokenization, or slightly modifying candidate sampling), and the recurring attempt to implement such from scratch—although useful \[PRS,Scaling,obfuscated]—is prone to include certain fail points.

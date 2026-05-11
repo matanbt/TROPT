@@ -6,7 +6,7 @@ This guide walks you through wrapping a new model backend. Pick the section that
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
 - **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `HuggingFaceBackendModel` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
 
-> This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (especially "Pillar 1: Target Model"). For full API reference, see the [models API docs](../api/models.html).
+> This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (especially "Pillar 1: Target Model"). For full API reference, see the [models API docs](../api/models).
 
 ---
 
@@ -100,7 +100,7 @@ A model's compatibility with a given `(optimizer, loss)` pair is resolved at two
 
 2. **Loss side — `ModelOutput` fields.** Each loss reads a specific set of fields from `ModelOutput` / `ModelInput` (plus target fields from `MessageTargets`). At runtime, [`resolve_and_compute_loss`](../../tropt/loss/resolution.py) inspects the loss's call signature and fails if any required field is missing. The fields your `invoke_from_tokens` / `invoke_from_texts` populate therefore determine which losses are admissible for each flow — e.g. a model that only returns `generated_response_strs` is limited to text-based losses; one that returns `full_logits` unlocks prefill/CE-style losses.
 
-A quick way to sanity-check a new model against the existing optimizer/loss set is the auto-generated [Optimizer-Model-Loss Compatibility Matrix](compatibility_matrix.md), produced by [`scripts/generate_compat_matrix.py`](../../scripts/generate_compat_matrix.py) via static analysis of `model_requirements`, loss signatures, and the `ModelOutput`/`ModelInput` fields each model populates in its invoke methods.
+A quick way to sanity-check a new model against the existing optimizer/loss set is the auto-generated [Optimizer-Model-Loss Compatibility Matrix](compatibility_matrix.md), produced by [`docs/scripts/generate_compat_matrix.py`](https://github.com/matanbt/TROPT/blob/main/docs/scripts/generate_compat_matrix.py) via static analysis of `model_requirements`, loss signatures, and the `ModelOutput`/`ModelInput` fields each model populates in its invoke methods.
 
 ---
 
@@ -428,4 +428,4 @@ You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`,
 2. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.
 3. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
 
-> Want to contribute your model backend back to the TROPT package? See [CONTRIBUTING.md](../../CONTRIBUTING.md) for the file placement, export, and testing steps.
+> Want to contribute your model backend back to the TROPT package? See [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for the file placement, export, and testing steps.

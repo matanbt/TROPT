@@ -2,13 +2,6 @@
 
 This directory contains self-contained recipes for various optimization methods on text models. These scripts are meant to serve as reproduction and "hacking" entry points.
 
-[
-    TODONOW: edit me
-]
-
-## Naming convention
-
-Function names and `RECIPES` dict keys are identical and follow `{method}[_{variant}][_{task}][__{paperYYYY}]`. The `__{paperYYYY}` reproduction tag is reserved for recipes that precisely reproduce a published method's algorithm and hyperparameters. See [`docs/guides/adding_a_recipe.md`](../../docs/guides/adding_a_recipe.md) for the full convention.
 
 ## Usage
 
@@ -33,9 +26,14 @@ jailbreak_prompt = prompt_template.replace("{{OPTIMIZED_TRIGGER}}", result.best_
 
 See `list_recipes()` for all available recipe keys.
 
+**Naming convention.** Function names and `RECIPES` dict keys are identical and follow `{method}[_{variant}][_{task}][__{paperYYYY}]`. The `__{paperYYYY}` reproduction tag is reserved for recipes that precisely reproduce a published method's algorithm and hyperparameters. See [`docs/guides/adding_a_recipe.md`](../../docs/guides/adding_a_recipe.md) for the full convention.
+
+
+
+
 ## Available Recipes
 
-The first column is the exact registry key (== function name). Rows whose key carries a `__paperYYYY` tag are paper reproductions per the convention above; bare keys are variants, extensions, or task-specific applications without a one-paper match.
+
 
 ---
 

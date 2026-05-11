@@ -29,7 +29,7 @@ It supports any optimization approach that minimizes a quantifiable objective by
 **Use Cases:**
 - **Red-teaming & Defense Evaluation**: Generate adversarial triggers (jailbreaks, text attacks) to evaluate model and defense robustness at scale;
 - **Attack Benchmarking**: Fair, reproducible comparison of optimization methods using shared infrastructure and standardized evaluation;
-- **Research & Development**: Rapidly prototype new attacks by composing existing components or writing custom optimizers with reusable infrastructure;
+- **Develop new optimizers**: Rapidly prototype new attacks by composing existing components or writing custom optimizers with reusable infrastructure;
 - **Prompt Tuning**: Optimize discrete prompts to enhance desired model behaviors;
 - **Model Inspection**: Craft adversarial examples and counterfactuals for ML interpretability research.
 
@@ -80,7 +80,7 @@ uv run ruff check .
 
 TROPT offers multiple usage levels: (1) pre-configured attacks from the Recipe Hub, (2) manual composition of attack components for granular control, and (3) custom components (write your own optimizer, and, optionally, also loss, or model wrapper).
 
-### 🦁 [Quick Start] Via the Recipe Hub
+### [Quick Start] Via the Recipe Hub
 
 The simplest way to start is by using a predefined attack. These include, though not limited to, common optimizers for LLM jailbreak. Here is an example using the **GCG (Greedy Coordinate Gradient)** attack to optimize a trigger for a specific target behavior.
 
