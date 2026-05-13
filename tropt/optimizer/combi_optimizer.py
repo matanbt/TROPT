@@ -9,9 +9,9 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
 from tqdm.auto import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
 from tropt.loss.base import BaseLoss
-from tropt.models import BaseModel, TargetsDict, LossTextAccessMixin, TokenAccessMixin
+from tropt.model import BaseModel, LossTextAccessMixin, TokenAccessMixin
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker.base import BaseTracker
 
@@ -340,7 +340,7 @@ class CombiOptimizer(BaseOptimizer):
         self,
         texts: List[str],
         initial_trigger: Optional[str] = "! " * 20,
-        targets: TargetsDict = None,
+        targets: Optional[Targets] = None,
         target_text: Optional[str] = None,
     ) -> OptimizerResult:
         """
