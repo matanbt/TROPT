@@ -1,12 +1,25 @@
 __pycache__
 
 .env
+.venv/
 dist/
 *.slurm
 .pypirc
 
+.vscode/
 internal.md
 site/
 
 docs/_build/
 docs/build/
+docs/compatibility_matrix.md
+docs/guides/compatibility_matrix.md
+
+# Not ready for public yet
+runner/
+tests/
+misc/
+tropt/recipe_hub/SoftGCG.py
+tropt/recipe_hub/PGD.py
+tropt/recipe_hub/PGD__geisler2024.py
+tropt/optimizer/pgd_optimizer.py

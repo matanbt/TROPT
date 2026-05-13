@@ -1,16 +1,12 @@
 .. Text-Trigger-Opt Toolbox documentation master file.
 
-Welcome to Text-Trigger-Opt Toolbox's documentation!
+Welcome to TROPT's documentation!
 ====================================================
 
-This is the documentation for the Text-Trigger-Opt Toolbox.
+This is the documentation for the Text Trigger Optimization Toolbox (TROPT).
 
 .. toctree::
    :maxdepth: 2
-   :caption: API Reference
 
-   api/models
-   api/optimizer
-   api/loss
-   api/attack_zoo
-   api/runner
+   guides/index
+   api/index

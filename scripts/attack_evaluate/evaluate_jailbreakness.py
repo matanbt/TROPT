@@ -1,29 +1,34 @@
 """
 Evaluating safety of responses to harmful instructions, using StrongReject's API and different methods.
 https://strong-reject.readthedocs.io/en/latest/api/index.html
-`pip install git+https://github.com/dsbowen/strong_reject.git@main`
+
+Requires the `evaluate` extra: ``uv sync --extra evaluate``
 """
-from typing import Any, Dict, List
+
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import pandas as pd
 import torch
+import wandb
 from datasets import Dataset
 from strong_reject.evaluate import evaluate_dataset
+from transformers import pipeline
 
-import wandb
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.models import LMBaseModel
-from tropt.models.huggingface.lm import LMHFModel
-from tropt.optimizer.base import OptimizerResult
 
 
 def evaluate_jailbreakness_of_responses(
         instructions: List[str], responses: List[str],
         override_evaluators: List[str] = None,
-        batch_size: int = 8
+        batch_size: int = 8,
+        judge_models: List[str] = None,
     ) -> Dict[str, List[float]]:
     """
     Returns: a DataFrame with the evaluation results; column for `score` (between 0.0 to 1.0) and `evaluator` name.
+
+    `judge_models` is forwarded to LLM-judge evaluators (`strongreject_rubric`, `gpt4_judge`)
+    as their `models=` kwarg in LiteLLM format, e.g. `["openai/gpt-4o-mini"]`. Requires
+    `OPENAI_API_KEY` set. Ignored by HF-based evaluators (e.g. `strongreject_finetuned`).
     """
     assert len(instructions) == len(responses), "instructions-responses mismatch"
 
@@ -36,19 +41,26 @@ def evaluate_jailbreakness_of_responses(
     evaluators = override_evaluators or [
         # "string_matching",
         "strongreject_finetuned",  # https://huggingface.co/qylu4156/strongreject-15k-v1
+        # "strongreject_rubric",  # paper-validated LLM judge; pass judge_models=["openai/gpt-4o-mini"]
         # "harmbench"  # https://huggingface.co/cais/HarmBench-Llama-2-13b-cls; https://github.com/centerforaisafety/HarmBench/blob/main/docs/evaluation_pipeline.md#%EF%B8%8F-step-3---evaluate-completions
         # gpt4_judge
     ]
+
+    extra_kwargs = {}
+    if judge_models is not None:
+        extra_kwargs["models"] = judge_models
+
     eval_dataset = evaluate_dataset(
         dataset,
         evaluators=evaluators,
         empty_model_cache=False,
         batch_size=batch_size,
+        **extra_kwargs,
     )
 
     eval_dataset = eval_dataset.to_pandas()
     eval_dataset = eval_dataset.sort_values(by="id")
-    
+
     ## Map each evaluator name to a list of scores, sorted by id
     eval_dataset = eval_dataset.pivot_table(index=["id", "forbidden_prompt", "response"],
                                             columns="evaluator", values="score").reset_index()
@@ -66,25 +78,90 @@ def evaluate_jailbreakness_of_responses(
     #     "jailbreakness_per_evaluator": evaluator_to_score_list
     # }
 
+ADVBENCH_PLUS_PATH = "scripts/attack_evaluate/advbench_plus.csv"
+CLEARHARM_PATH = "scripts/attack_evaluate/clearharm-shuffled.csv"
+
+def _generate_responses_litellm(
+    messages_list: List[List[dict]], model_name: str, max_new_tokens: int,
+) -> List[str]:
+    """Generate responses via LiteLLM for API-based models."""
+    from tropt.model.litellm_proxy.lm import LiteLLMModel
+
+    model = LiteLLMModel(model_name=model_name)
+    texts = [msgs[0]["content"] for msgs in messages_list]
+    output = model.invoke_from_texts(
+        input_texts=texts,
+        require_generation=True,
+        max_new_tokens=max_new_tokens,
+        temperature=0.0,
+    )
+    return output.generated_response_strs
+
 
 def evaluate_triggers(
-    model: LMBaseModel,
+    model_name: str,
     trigger_strs: List[str],
-    trigger_ids: List[Any]=None,
-    eval_dataset_path: str="scripts/attack_evaluate/advbench_plus.csv",
+    trigger_ids: List[Any] = None,
+    harmful_dataset: Literal["advbench_plus", "clearharm"] = "clearharm",
     batch_size: int = 128,
+    greedy_decode: bool = True,
+    max_new_tokens: int = 256,
+    model_backend: Literal["hf_pipeline", "litellm"] = "hf_pipeline",
+    evaluators: List[str] = None,
+    eval_batch_size: int = 8,
+    judge_models: List[str] = None,
+    template_fns: Optional[List[Optional[Callable[[str, str], str]]]] = None,
 ) -> pd.DataFrame:
     """
     Evaluate a list of triggers on a behavior dataset, returning a DataFrame with jailbreakness scores.
 
     Args:
-        model (LMBaseModel): The language model to evaluate.
-        trigger_strs (List[str]): List of trigger strings to evaluate.
-
+        model_name: Model name/path to evaluate (HF identifier or LiteLLM model string).
+        trigger_strs: List of trigger strings to evaluate.
+        model_backend: "hf_pipeline" for local HuggingFace, "litellm" for API-based generation.
+        evaluators: StrongReject evaluator names (default: ["strongreject_finetuned"]).
+        eval_batch_size: Batch size for the StrongReject evaluator.
+        judge_models: LiteLLM-format model list for LLM-judge evaluators (e.g.
+            `["openai/gpt-4o-mini"]` for `strongreject_rubric`/`gpt4_judge`). Needs OPENAI_API_KEY.
+        template_fns: Optional per-trigger `(message_template, target_response_prefix) -> str`
+            wrappers applied before trigger substitution. Aligned with `trigger_strs`;
+            use `None` for an entry to skip wrapping. Used to reproduce attacks that
+            modify the prompt (e.g. PRS). Affects only the target-model prompt;
+            the judge always receives the clean `message` column.
     """
+    if template_fns is not None:
+        assert len(template_fns) == len(trigger_strs), \
+            "template_fns must align with trigger_strs"
+    evaluators = evaluators or ["strongreject_finetuned"]
+
+    # Load HF model directly via pipeline (isolated, no TROPT wrapping)
+    pipe = None
+    if model_backend == "hf_pipeline":
+        pipe = pipeline(
+            "text-generation",
+            model=model_name,
+            dtype=torch.bfloat16,
+            device_map="auto",
+        )
+        tok = pipe.tokenizer
+        if tok.pad_token_id is None:
+            eos = pipe.model.config.eos_token_id
+            tok.pad_token_id = eos[0] if isinstance(eos, list) else eos
+        tok.padding_side = "left"
+
     # Load behavior dataset
     # with columns: 'message', 'target_response_prefix', 'source', 'template_message'
-    base_df = pd.read_csv(eval_dataset_path)
+    if harmful_dataset == "advbench_plus":
+        base_df = pd.read_csv(ADVBENCH_PLUS_PATH)
+    elif harmful_dataset == "clearharm":
+        base_df = pd.read_csv(CLEARHARM_PATH)
+    elif harmful_dataset == "clearharm[:50]":
+        base_df = pd.read_csv(CLEARHARM_PATH).head(50)
+    elif harmful_dataset == "clearharm[:100]":
+        base_df = pd.read_csv(CLEARHARM_PATH).head(115)  #+15 to ensure test set
+    else:
+        raise ValueError(f"Unsupported harmful_dataset: {harmful_dataset}")
+
     base_df['message_id'] = range(len(base_df))
 
     if trigger_ids is None:
@@ -92,7 +169,7 @@ def evaluate_triggers(
 
     all_results = []
 
-    for trigger_id, trigger_str in zip(trigger_ids, trigger_strs):
+    for i, (trigger_id, trigger_str) in enumerate(zip(trigger_ids, trigger_strs)):
         # Create a copy for this specific trigger to avoid modifying base_df
         df = base_df.copy()
 
@@ -100,24 +177,43 @@ def evaluate_triggers(
         df['trigger_id'] = trigger_id
         df['trigger_str'] = trigger_str
 
+        # Optionally wrap the template (e.g. PRS) before trigger substitution.
+        # Judge still receives `df['message']` (clean) below.
+        template_fn = template_fns[i] if template_fns is not None else None
+        if template_fn is not None:
+            df['message_template'] = df.apply(
+                lambda r: template_fn(r['message_template'], r['target_response_prefix']),
+                axis=1,
+            )
+
         # Create triggered messages
         df['triggered_message'] = df['message_template'].apply(
             lambda x: x.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, trigger_str)
         )
 
-        # Get model responses in batches
-        responses = []
-        for idx in range(0, len(df), batch_size):
-            batch_df = df.iloc[idx: idx + batch_size]
-            responses.extend(model(batch_df['triggered_message'].tolist()))
-        df['response'] = responses
+        # Get model responses
+        messages = [[{"role": "user", "content": t}] for t in df['triggered_message']]
+        if model_backend == "litellm":
+            df['response'] = _generate_responses_litellm(
+                messages, model_name, max_new_tokens,
+            )
+        else:
+            outputs = pipe(
+                messages,
+                max_new_tokens=max_new_tokens,
+                do_sample=not greedy_decode,
+                batch_size=batch_size,
+                return_full_text=False,
+            )
+            df['response'] = [out[0]["generated_text"] for out in outputs]
 
         # Evaluate jailbreakness
         metric_to_scores = evaluate_jailbreakness_of_responses(
             instructions=df['message'].tolist(),
             responses=df['response'].tolist(),
-            override_evaluators=["strongreject_finetuned"],  # TODO make configurable
-            batch_size=32,  # TODO make configurable
+            override_evaluators=evaluators,
+            batch_size=eval_batch_size,
+            judge_models=judge_models,
         )
 
         # Add metrics to df (one column per metric)
@@ -132,7 +228,7 @@ def evaluate_triggers(
     return final_df
 
 #### Helper scripts to run evaluation from Wandb runs ####
-WANDB_ENTITY = "my_username_or_team"
+WANDB_ENTITY = "my_username_or_team"  # modify to your wandb entity (username or team name)
 WANDB_PROJECT = "tropt-runs"
 DATASET_PATH = "scripts/attack_evaluate/advbench_plus.csv"
 def wandb_to_trigger_eval_pipeline(
@@ -165,20 +261,13 @@ def wandb_to_trigger_eval_pipeline(
     metadata_df = pd.DataFrame(metadata_df)
     metadata_df['trigger_id'] = range(len(metadata_df))
 
-    # Load Model
-    print(f"Loading model {model_name} for evaluation...")
-    model = LMHFModel(
-        model_name=model_name,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-    )
-
     # Run Evaluation
-    eval_df = evaluate_triggers(  # TODO get from tropts
-        model=model,
+    eval_df = evaluate_triggers(
+        model_name=model_name,
         trigger_strs=metadata_df['trigger'].tolist(),
         trigger_ids=metadata_df['trigger_id'].tolist(),
-        eval_dataset_path=DATASET_PATH,
-        batch_size=8
+        harmful_dataset="clearharm",
+        batch_size=8,
     )
     eval_df['eval_model'] = model_name
 

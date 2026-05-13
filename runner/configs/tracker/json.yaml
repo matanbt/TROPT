@@ -1,6 +1,0 @@
-defaults:
-  - base@_here_
-  - _self_
-
-_target_: tropt.tracker.base.JSONTracker
-log_file_path: "logs.json"

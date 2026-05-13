@@ -1,25 +1,26 @@
 import logging
-import math
 import time
-from typing import Any, List, Optional
+from typing import Optional
 
-import numpy as np
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
-from tropt.loss.base import BaseLoss
-from tropt.models import (
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    Targets,
+    TextTemplates,
+)
+from tropt.loss import BaseLoss
+from tropt.model import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TargetsDict,
 )
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.scheduler import (
     ConstantScheduler,
     LinearScheduler,
@@ -27,7 +28,7 @@ from tropt.optimizer.utils.scheduler import (
 )
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
-from tropt.tracker.base import BaseTracker
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +149,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
     def _get_trigger_variations(
         self,
         trigger_ids: Float[Tensor, "trigger_seq_len"],
-        vocab_size: int,
+        valid_token_ids: Float[Tensor, "n_valid"],
     ) -> Float[Tensor, "n_grad trigger_seq_len"]:
         """
         Creates a list of `n_grad` trigger variations. The first is the
@@ -163,42 +164,38 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         for idx in range(1, self.n_grad):  # (keep the first intact)
             # select a random position and a random token
             pos_to_flip = torch.randint(0, trigger_seq_len, (1,), device=device).item()
-            tok_to_flip_to = torch.randint(0, vocab_size, (1,), device=device).item()
-            # apply the flip
+            tok_to_flip_to = valid_token_ids[
+                torch.randint(0, len(valid_token_ids), (1,), device=device)
+            ].item()  # apply the flip
+            assert isinstance(pos_to_flip, int) and isinstance(tok_to_flip_to, int)
+
             trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
 
         return trigger_vars_ids
 
     def optimize_trigger(
         self,
-        texts: List[str],
+        templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        targets: TargetsDict = None,
+        targets: Optional[Targets] = None,
     ) -> OptimizerResult:
+
         # Initialization:
-        inputs, trigger_ids = self.model.prepare_token_inputs(
-            texts=texts,
-            initial_trigger=initial_trigger,
-            targets=targets,
-        )
-        trigger_ids = trigger_ids.squeeze(0)  # take the only trigger
-        vocab_size, tokenizer = inputs.vocab_size, self.model.tokenizer
-        blacklist_ids = self.token_constraints.get_blacklist_ids(
-            tokenizer, vocab_size
-        )
+        self.model.set_inputs_from_tokens(templates=templates, targets=targets)
+        tokenizer = self.model.tokenizer
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
+        vocab_size = self.model.vocab_size
+        blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
+        valid_token_ids = self.token_constraints.get_whitelist_ids(tokenizer, vocab_size, return_tensor=True).to(self.model.device)
 
         trigger_ids: Float[Tensor, "trigger_seq_len"] = trigger_ids.to(self.model.device)
         trigger_seq_len = len(trigger_ids)
         trigger_str = initial_trigger
 
-        loss_per_step = []
-        trigger_strings = []
-        trigger_ids_per_step = []
+        best = RunningBest()
         current_loss = float("inf")
 
         start_time = time.time()
-        pbar = tqdm(range(self.num_steps), desc="Optimizing with GASLITE...")
-
         # Form buffer_size initial triggers
         triggers_for_buffer = [trigger_ids]
         for _ in range(self.buffer_size - 1):
@@ -210,7 +207,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         # Compute losses for initial triggers
         losses = self.model.compute_loss_from_tokens(
             torch.stack(triggers_for_buffer),
-            inputs,
             self.loss_func,
         ) # (n_cands,)
 
@@ -220,18 +216,16 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             losses=[losses[i].item() for i in range(self.buffer_size)],
         )
 
-        self.tracker.log({"loss": buffer.get_lowest_loss()})
+        trigger_str = tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
+        self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
-        for step in pbar:
+        for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE..."):
             n_flip = self.n_flip_scheduler.get_n_flip(step)
 
-            pbar.set_description(
-                f"Step {step+1}/{self.num_steps} | loss={current_loss: .4f} | trigger={trigger_str}..."
-            )
 
             # Get the best trigger from the buffer
             trigger_ids = buffer.get_best_trigger()
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # --- Gradient and candidate selection step ---
             if self.use_random_gradient:
@@ -241,11 +235,11 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 )
             else:
                 # Compute grad over a list of `n_grad` triggers one-flip away from the current
-                trigger_vars = self._get_trigger_variations(trigger_ids, vocab_size)
+                trigger_vars = self._get_trigger_variations(trigger_ids, valid_token_ids)
                 grads = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
-                    inputs=inputs,
                     loss_func=self.loss_func,
+                    normalize_grads=True,
                 )  # (n_trigger_vars, trigger_seq_len, vocab_size)
 
                 # Average the gradients to get the final approximation
@@ -316,7 +310,6 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 # Compute losses on candidate flips
                 losses = self.model.compute_loss_from_tokens(
                     candidate_triggers,
-                    inputs,
                     self.loss_func,
                     keep_message_dim=True,  # Get per-message loss
                 ).mean(
@@ -342,13 +335,11 @@ class GASLITEPlusOptimizer(BaseOptimizer):
 
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
             trigger_ids = current_trigger_ids
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # Logging:
-            self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
-            loss_per_step.append(current_loss)
-            trigger_strings.append(trigger_str)
-            trigger_ids_per_step.append(trigger_ids)
+            self.log(loss=current_loss, trigger_str=trigger_str)
+            best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
 
             if self.time_limit is not None:
                 if time.time() - start_time > self.time_limit:
@@ -379,21 +370,5 @@ class GASLITEPlusOptimizer(BaseOptimizer):
                 best_loss_global = min(best_loss_global, current_loss)
 
 
-        # Return the best trigger found
-        best_loss_idx = np.argmin(loss_per_step)
-        best_trigger_str = trigger_strings[best_loss_idx]
-        best_trigger_ids = trigger_ids_per_step[best_loss_idx]
-
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
-
-        result = OptimizerResult(
-            best_loss=loss_per_step[best_loss_idx],
-            best_trigger_str=best_trigger_str,
-            best_trigger=best_trigger_ids,
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        return result
+        return best.to_result()
 

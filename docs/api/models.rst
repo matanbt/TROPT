@@ -1,10 +1,10 @@
-.. module:: tropt.models
+.. module:: tropt.model
 
 Models
 ======
 
 
-Base Models
+Models Interface
 -----------
 .. autoclass:: BaseModel
    :members:
@@ -84,7 +84,7 @@ Input Managers
 --------------
 Input Managers are responsible for streamlining the repeated combination of new triggers into text templates. They depend on the input type and are strongly linked to the model's key methods. For instance, `LMHFTokenInputsManager` specializes in combining trigger tokens within user text templates and providing them as model input for loss computation.
 
-.. automodule:: tropt.models.inputs
+.. automodule:: tropt.model.inputs
    :members:
    :undoc-members:
    :show-inheritance:
@@ -96,7 +96,7 @@ Input Managers are responsible for streamlining the repeated combination of new 
 Model Implementations
 ---------------------
 
-.. automodule:: tropt.models
+.. automodule:: tropt.model
    :members:
    :exclude-members: BaseModel, LMBaseModel, EncoderBaseModel, BaseTokenizer, TokenAccessMixin, LossTokenAccessMixin, LogitsTokenAccessMixin, GradientTokenAccessMixin, TextAccessMixin, LossTextAccessMixin, BatchedTargetsDict, InputsManager, MessageBatchedTargetsDict, TargetsDict, TargetsDictPlus, TextInputsManager, TokenInputsManager, TokenTrigger, TokenTriggerCandidates
    :undoc-members:

@@ -3,7 +3,7 @@ Optimizers
 
 .. module:: tropt.optimizer
 
-Base Optimizer
+Optimizer Interface
 --------------
 
 .. autoclass:: BaseOptimizer
@@ -12,6 +12,7 @@ Base Optimizer
    :show-inheritance:
 
 .. raw:: html
+
    <hr class="hr-major">
 
 Optimizers Implementations

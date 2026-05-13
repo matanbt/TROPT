@@ -1,8 +1,0 @@
-_target_: tropt.models.huggingface.lm.LMHFModel
-device: "cuda"
-model_name: ???
-forward_pass_batch_size: 128
-backward_pass_batch_size: 4
-dtype: bfloat16
-
-

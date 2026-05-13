@@ -1,5 +1,0 @@
-_target_: tropt.models.huggingface.encoder.EncoderHFModel
-model_name: ???
-device: "cuda"
-forward_pass_batch_size: 128
-backward_pass_batch_size: 4

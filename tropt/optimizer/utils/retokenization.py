@@ -1,20 +1,23 @@
 """
-Allows filtering of candidate token sequences based on retokenization.
+Retokenization utilities for token-level optimization.
+
+Provides both filtering (keep only candidates that survive round-trip)
+and transformation (produce the retokenized version of a token sequence).
 """
 
 import logging
-from typing import Any, List, Tuple
+from typing import List
 
 import torch
 import transformers
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
 
 logger = logging.getLogger(__name__)
 
-# TODO need to profile whether these functions are bottlenecks, and if so parallelize them. 
+# TODO need to profile whether these functions are bottlenecks, and if so parallelize them. (e.g., `retokenize_filtering` loop over the vocab can be parallelized)
 
 def retokenize_filtering(
         ids: Float[Tensor, "bsz n_ids"],
@@ -39,7 +42,6 @@ def retokenize_filtering(
     ids_decoded = tokenizer.batch_decode(ids)
     filtered_ids = []
 
-    # TODO multi-thread this loop if becomes a bottleneck / batch encode in advance
     for i in range(len(ids_decoded)):
         # Retokenize the decoded token ids
         ids_encoded = tokenizer(
@@ -55,17 +57,46 @@ def retokenize_filtering(
         # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
         raise RuntimeError(
             "No token sequences are the same after decoding and re-encoding. "
-            "Consider setting `filter_ids=False` or trying a different `optim_str_init`"
+            "Consider disabling retokenization filtering by setting `use_retokenize=False` or trying a different initial trigger string."
         )
     logger.debug(f"Retokenization filtering: {len(filtered_ids)}/{len(ids)} = {100 * len(filtered_ids) / len(ids):.2f}% candidates kept.")
 
     return torch.stack(filtered_ids)
 
 
+def retokenize_transform(
+    ids: Float[Tensor, "n_ids"],
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> Float[Tensor, "n_ids"]:
+    """Retokenize a token sequence: decode then re-encode.
+
+    Handles length mismatches by truncating or padding (with original ids)
+    to preserve the original sequence length.
+
+    Args:
+        ids: Token ids to retokenize, shape (n_ids,).
+        tokenizer: The model's tokenizer.
+
+    Returns:
+        Retokenized ids with the same length as input.
+    """
+    text = tokenizer.decode_trigger(ids)
+    retok_ids = tokenizer.encode_trigger(text).to(ids.device, dtype=ids.dtype)
+
+    trigger_len = ids.shape[0]
+    if retok_ids.shape[0] >= trigger_len:
+        return retok_ids[:trigger_len]
+    else:
+        # Pad with original ids if retokenization shortened the sequence
+        result = ids.clone()
+        result[: retok_ids.shape[0]] = retok_ids
+        return result
+
+
 def full_messages_retokenize_filtering(
     candidate_trigger_ids: Float[Tensor, "n_candidates trigger_seq_len"],
     tokenizer: transformers.PreTrainedTokenizer,
-    text_templates: List[str],
+    templates: TextTemplates,
     trigger_placeholder: str = OPTIMIZED_TRIGGER_PLACEHOLDER,
 ):
     """
@@ -80,7 +111,7 @@ def full_messages_retokenize_filtering(
         than the one in `retokenize_filtering` (i.e. the following function also enforces the
         former condition), which only requires successful retokenization of the trigger.
         Subsequenctly, for some tokenizers, this function may leave very few to no valid
-        candidates, in which case the user should consider disabling. Notably, empirically, 
+        candidates, in which case the user should consider disabling. Notably, empirically,
         optimizations were shown to perform well with the `retokenize_filtering` alone.
 
     Args:
@@ -88,11 +119,11 @@ def full_messages_retokenize_filtering(
             candidate trigger token ids
         tokenizer : ~transformers.PreTrainedTokenizer
             the model's tokenizer
-        text_templates : List[str] (length = n_messages)
+        templates : List[str] (length = n_templates)
             list of user message templates, each containing the `trigger_placeholder`
             where the trigger will be inserted.
         trigger_placeholder : str
-            the placeholder string in `text_templates` to be replaced by the trigger
+            the placeholder string in `templates` to be replaced by the trigger
 
     Returns:
         filtered_ids : Tensor, shape = (new_n_candidates, trigger_seq_len)
@@ -103,8 +134,8 @@ def full_messages_retokenize_filtering(
 
     # Split the user templates into before/after the trigger parts
     before_texts, after_texts = [], []
-    for text_template in text_templates:
-        bef, aft = text_template.split(trigger_placeholder)
+    for template in templates:
+        bef, aft = template.split(trigger_placeholder)
         before_texts.append(bef)
         after_texts.append(aft)
 
@@ -117,24 +148,24 @@ def full_messages_retokenize_filtering(
         # We take each trigger, combine it with each user template, and check if retokenization matches
         is_curr_trigger_valid = True
 
-        for text_template, curr_before_ids, curr_after_ids in zip(text_templates, before_ids, after_ids):
+        for template, curr_before_ids, curr_after_ids in zip(templates, before_ids, after_ids):
             # 1. Build the triggeted template text:
-            triggered_text_template: str = text_template.replace(trigger_placeholder, cand_trigger_text)
+            triggered_template: str = template.replace(trigger_placeholder, cand_trigger_text)
 
             # 2.a. Build the concat of the original ids:
             # (this is what the optimization sees)
-            triggered_text_template_ids: List[int] = curr_before_ids + cand_trigger_ids.tolist() + curr_after_ids
+            triggered_template_ids: List[int] = curr_before_ids + cand_trigger_ids.tolist() + curr_after_ids
             # 2.b. Get the (re)tokenization of the triggered text template:
             # (this is what the model input will see at inference time)
-            triggered_text_template_new_ids: List[int] = tokenizer(
-                triggered_text_template, add_special_tokens=False
+            triggered_template_new_ids: List[int] = tokenizer(
+                triggered_template, add_special_tokens=False
             ).input_ids
 
-            print("old texts:", tokenizer.decode(triggered_text_template_ids))
-            print("new texts:", tokenizer.decode(triggered_text_template_new_ids))
+            print("old texts:", tokenizer.decode(triggered_template_ids))
+            print("new texts:", tokenizer.decode(triggered_template_new_ids))
 
             # 3. We want the original to match the (re)tokenization:
-            if triggered_text_template_ids != triggered_text_template_new_ids:
+            if triggered_template_ids != triggered_template_new_ids:
                 is_curr_trigger_valid = False
                 break
 
@@ -144,7 +175,7 @@ def full_messages_retokenize_filtering(
     if not filtered_ids:
         raise RuntimeError(
             "[Full Message Retokenization] No token sequences are the same after retokenization "
-            "in full context. Consider setting `filter_ids=False` or trying a different `optim_str_init`"
+            "in full context. Consider disabling retokenization filtering by setting `use_retokenize=False` or trying a different initial trigger string."
         )
     logger.debug(f"Full-template Retokenization filtering: {len(filtered_ids)}/{len(candidate_trigger_ids)} = {100 * len(filtered_ids) / len(candidate_trigger_ids):.2f}% candidates kept.")
 

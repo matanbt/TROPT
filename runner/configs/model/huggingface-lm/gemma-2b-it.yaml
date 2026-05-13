@@ -1,5 +1,0 @@
-defaults:
-  - huggingface-lm/default@_here_
-  - _self_
-
-model_name: "google/gemma-2b-it"

@@ -1,2 +1,0 @@
-_partial_: true  # awaiting the full config for instantiation
-experiment_name: "${now:%Y-%m-%d}_${now:%H-%M-%S}"

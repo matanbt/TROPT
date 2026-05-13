@@ -1,24 +1,26 @@
 import logging
-from typing import Any, List, Optional
+from typing import List, Optional
 
 import torch
 from jaxtyping import Float, Int
 from torch import Tensor
-from tqdm import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, DEFAULT_INIT_TRIGGER
-from tropt.loss.base import BaseLoss
-from tropt.models import (
+from tropt.common import (
+    DEFAULT_INIT_TRIGGER,
+    Targets,
+    TextTemplates,
+)
+from tropt.loss import BaseLoss
+from tropt.model import (
     BaseModel,
     GradientTokenAccessMixin,
     LossTokenAccessMixin,
-    TargetsDict,
-    TokenInputsManager,
 )
-from tropt.optimizer.base import BaseOptimizer, OptimizerResult
+from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.tracker.base import BaseTracker
+from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ class GCGOptimizer(BaseOptimizer):
         self,
         model: BaseModel,
         loss: BaseLoss,
-        tracker: Optional[BaseTracker] = None,  # TODO tracker should be required initialized per RUN not per optimizer!
+        tracker: Optional[BaseTracker] = None,
         seed: Optional[int] = None,
         # attack parameters:
         num_steps: int = 500,
@@ -49,6 +51,8 @@ class GCGOptimizer(BaseOptimizer):
         Args:
             model (BaseModel): The language model to be attacked.
             loss (BaseLoss): The loss function to be optimized.
+            tracker (BaseTracker, optional): An optional tracker for logging optimization progress.
+            seed (int, optional): Random seed for reproducibility.
 
             # Attack parameters:
             num_steps (int): Number of optimization steps to perform.
@@ -65,6 +69,64 @@ class GCGOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
+
+    def optimize_trigger(
+        self,
+        templates: TextTemplates,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
+        # objective-specific args:
+        targets: Optional[Targets] = None,  # depends on the objective
+    ) -> OptimizerResult:
+
+        # Initialization:
+        self.model.set_inputs_from_tokens(templates=templates, targets=targets)
+        tokenizer = self.model.tokenizer
+        trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
+        vocab_size = self.model.vocab_size
+        blacklist_ids = self.token_constraints.get_blacklist_ids(tokenizer, vocab_size)
+        best = RunningBest()
+
+        # Compute loss before optimization
+        current_loss = self.model.compute_loss_from_tokens(
+            trigger_ids.unsqueeze(0), loss_func=self.loss_func
+        ).item()
+        self.log(loss=current_loss, trigger_str=initial_trigger)
+
+        for _ in self.track_steps(range(self.num_steps)):
+            # Compute the trigger gradient
+            trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
+                self.model.compute_grad_from_tokens(
+                    candidate_trigger_ids=trigger_ids.unsqueeze(0),
+                    loss_func=self.loss_func,
+                    normalize_grads=True,
+                ).squeeze(0)  # take the only trigger
+            )  # shape: (trigger_seq_len, vocab_size)
+            # Sample candidate token sequences based on the token gradient
+            candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"] = (
+                self._sample_ids_from_grad(
+                    trigger_ids=trigger_ids,
+                    trigger_grad=trigger_grad,
+                    blacklist_ids=blacklist_ids,
+                )
+            )
+
+            if self.use_retokenize:
+                candidate_trigger_ids = retokenize_filtering(
+                    candidate_trigger_ids, tokenizer
+                )
+
+            # Compute loss on all candidate sequences
+            losses = self.model.compute_loss_from_tokens(
+                candidate_trigger_ids, loss_func=self.loss_func
+            )  # shape: (n_templates, n_candidates)
+            current_loss = losses.min().item()
+            trigger_ids = candidate_trigger_ids[losses.argmin()]
+            trigger_str = tokenizer.decode_trigger(trigger_ids)
+            self.log(loss=current_loss, trigger_str=trigger_str)
+            best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
+
+        return best.to_result()
+
 
     def _sample_ids_from_grad(
         self,
@@ -125,97 +187,3 @@ class GCGOptimizer(BaseOptimizer):
         )
 
         return candidate_trigger_ids
-
-    def optimize_trigger(
-        self,
-        texts: List[str],
-        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
-        # objective-specific args:
-        targets: TargetsDict = None,  # depends on the objective
-    ) -> OptimizerResult:
-        # Initialization:
-        inputs: TokenInputsManager
-        trigger_ids: Int[Tensor, "1 trigger_seq_len"]
-        inputs, trigger_ids = (
-            self.model.prepare_token_inputs(
-                texts=texts,
-                initial_trigger=initial_trigger,
-                targets=targets,
-            )
-        )
-        tokenizer = self.model.tokenizer
-        vocab_size = inputs.vocab_size
-        blacklist_ids = self.token_constraints.get_blacklist_ids(
-            tokenizer, vocab_size
-        )
-
-        trigger_ids: Int[Tensor, "trigger_seq_len"] = trigger_ids.squeeze(0)  # take the only trigger
-        trigger_str: str = initial_trigger
-
-        loss_per_step = []
-        trigger_strings = []
-        trigger_ids_per_step = []
-
-        # Compute loss before optimization
-        current_loss = self.model.compute_loss_from_tokens(
-            trigger_ids.unsqueeze(0), inputs, loss_func=self.loss_func
-        ).item()
-        self.tracker.log({"loss": current_loss, **self.model.get_usage_stats()})
-
-        pbar = tqdm(range(self.num_steps))
-
-        for _ in pbar:
-            # Compute the trigger gradient
-            trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"] = (
-                self.model.compute_grad_from_tokens(
-                    trigger_ids.unsqueeze(0),
-                    inputs,
-                    loss_func=self.loss_func,
-                ).squeeze(0)  # take the only trigger
-            )  # shape: (trigger_seq_len, vocab_size)
-            # Sample candidate token sequences based on the token gradient
-            candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"] = (
-                self._sample_ids_from_grad(
-                    trigger_ids,
-                    trigger_grad,
-                    blacklist_ids,
-                )
-            )
-
-            if self.use_retokenize:
-                candidate_trigger_ids = retokenize_filtering(
-                    candidate_trigger_ids, tokenizer
-                )
-
-            # Compute loss on all candidate sequences
-            losses = self.model.compute_loss_from_tokens(
-                candidate_trigger_ids, inputs, loss_func=self.loss_func
-            )  # shape: (n_messages, n_candidates)
-            current_loss = losses.min().item()
-            self.tracker.log({"loss": current_loss,**self.model.get_usage_stats()})
-            trigger_ids = candidate_trigger_ids[losses.argmin()]
-
-            # Update the buffer based on the loss
-            loss_per_step.append(current_loss)
-            trigger_ids_per_step.append(trigger_ids)
-
-            trigger_str = tokenizer.decode(trigger_ids, skip_special_tokens=True)
-            trigger_strings.append(trigger_str)
-
-            pbar.set_description(f"loss={current_loss: .4f}, trigger={trigger_str}")
-
-        min_loss_index = loss_per_step.index(min(loss_per_step))
-        best_trigger_str = trigger_strings[min_loss_index]
-
-        full_prompt = [t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, best_trigger_str) for t in texts]
-
-        result = OptimizerResult(
-            best_loss=loss_per_step[min_loss_index],
-            best_trigger_str=best_trigger_str,
-            best_trigger=trigger_ids_per_step[min_loss_index],
-            losses=loss_per_step,
-            trigger_strs=trigger_strings,
-            full_prompt=full_prompt,
-        )
-        self.tracker.log({"best_loss": result.best_loss, "best_trigger_str": result.best_trigger_str})
-        return result

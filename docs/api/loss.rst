@@ -3,7 +3,23 @@
 Losses
 ======
 
-Base Loss Classes
+Loss Resolution
+---------------
+
+The unified entry point for computing any loss — models call this instead of invoking loss functions directly. See :doc:`common` for ``ModelInput`` / ``ModelOutput``.
+
+.. autofunction:: tropt.loss.resolution.resolve_and_compute_loss
+
+.. autoclass:: tropt.loss.resolution.LossResolutionError
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. raw:: html
+
+   <hr class="hr-major">
+
+Loss Classes Interfaces
 -----------------
 
 .. autoclass:: BaseLoss

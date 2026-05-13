@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -100,7 +101,95 @@ def build_docs():
                     print(f"  Skipping {file}: {e}")
 
     # ---------------------------------------------------------
-    # 3. Run Sphinx
+    # 2.5. Inline tropt/recipe_hub/README.md into docs/api/recipe_hub.rst
+    # ---------------------------------------------------------
+    print("Inlining recipe_hub/README.md into recipe_hub.rst...")
+    recipe_hub_rst = os.path.join(docs_copy, "api", "recipe_hub.rst")
+    placeholder = (
+        ".. [[[ THIS WILL BE REPLACED WITH tropt/recipe_hub/README.md "
+        "AT BUILD TIME ]]]"
+    )
+    # myst_parser's :parser: option lets an .rst file include and parse a
+    # markdown file inline. Path is relative to recipe_hub.rst inside the
+    # temp build dir (docs_copy/api/ → ../../tropt/recipe_hub/README.md).
+    replacement = (
+        ".. include:: ../../tropt/recipe_hub/README.md\n"
+        "   :parser: myst_parser.sphinx_"
+    )
+    try:
+        with open(recipe_hub_rst, "r", encoding="utf-8") as f:
+            content = f.read()
+        if placeholder not in content:
+            print(f"  Warning: placeholder not found in {recipe_hub_rst}")
+        else:
+            content = content.replace(placeholder, replacement)
+            with open(recipe_hub_rst, "w", encoding="utf-8") as f:
+                f.write(content)
+            print("  recipe_hub.rst inlined.")
+    except Exception as e:
+        print(f"  Warning: could not inline README: {e}")
+
+    # ---------------------------------------------------------
+    # 2.6. Sanitize the inlined README so it renders cleanly under Sphinx
+    # ---------------------------------------------------------
+    # The README at tropt/recipe_hub/README.md is authored to render on GitHub,
+    # where relative links like [GCG__zou2023.py](GCG__zou2023.py) work. When
+    # included via myst_parser in a Sphinx build, those same links become
+    # cross-references to nonexistent doc targets (~40 broken hrefs in the
+    # rendered tables). We rewrite them to inline code to avoid the warnings
+    # and broken links. Also strip the very first horizontal-rule divider
+    # which lands at a section boundary and triggers a "transition" warning.
+    print("Sanitizing recipe_hub/README.md for Sphinx include...")
+    readme_path = os.path.join(src_copy, "recipe_hub", "README.md")
+    try:
+        with open(readme_path, "r", encoding="utf-8") as f:
+            readme = f.read()
+
+        # Rewrite [TEXT](TARGET) -> `TARGET` whenever TARGET is a relative
+        # *.py or *.md file (no scheme, no leading slash). Handles both
+        # `[FOO.py](FOO.py)` and `[\`FOO.py\`](FOO.py)` (backticks in link text).
+        def _strip_self_link(match):
+            text, target = match.group(1), match.group(2)
+            text_stripped = text.strip("`").strip()
+            if text_stripped == target:
+                return f"`{target}`"
+            return match.group(0)
+
+        readme = re.sub(
+            r"\[([^\]]+)\]\((?!https?:|/|#)([^)]+\.(?:py|md))\)",
+            _strip_self_link,
+            readme,
+        )
+
+        # Strip the first standalone "---" divider (causes a transition
+        # warning when the README lands inside a Sphinx section).
+        readme = re.sub(r"\n---\n", "\n\n", readme, count=1)
+
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(readme)
+        print("  README.md sanitized.")
+    except Exception as e:
+        print(f"  Warning: could not sanitize README: {e}")
+
+    # ---------------------------------------------------------
+    # 3. Generate compatibility matrix
+    # ---------------------------------------------------------
+    print("Generating compatibility matrix...")
+    try:
+        from docs.scripts.generate_compat_matrix import generate_markdown
+        md = generate_markdown()
+        compat_path = os.path.join(docs_copy, "guides", "compatibility_matrix.md")
+        with open(compat_path, "w", encoding="utf-8") as f:
+            f.write(md)
+        # Also write to original docs so it's available outside builds
+        with open(os.path.join(docs_original, "guides", "compatibility_matrix.md"), "w", encoding="utf-8") as f:
+            f.write(md)
+        print("  Compatibility matrix generated.")
+    except Exception as e:
+        print(f"  Warning: Could not generate compatibility matrix: {e}")
+
+    # ---------------------------------------------------------
+    # 4. Run Sphinx
     # ---------------------------------------------------------
     print("Running Sphinx...")
     build_cmd = [
@@ -117,7 +206,7 @@ def build_docs():
         return
 
     # ---------------------------------------------------------
-    # 4. Copy Artifacts Back
+    # 5. Copy Artifacts Back
     # ---------------------------------------------------------
     print(f"Copying build artifacts to {final_build_dir}...")
     
@@ -135,7 +224,7 @@ def build_docs():
         print(f"You can find the raw build at: {os.path.join(docs_copy, '_build', 'html')}")
 
     # ---------------------------------------------------------
-    # 5. Cleanup Temp Dir
+    # 6. Cleanup Temp Dir
     # ---------------------------------------------------------
     robust_cleanup(temp_root)
     
@@ -144,7 +233,7 @@ def build_docs():
         robust_cleanup(path)
 
     # ---------------------------------------------------------
-    # 6. Open in Browser (Optional)
+    # 7. Open in Browser (Optional)
     # ---------------------------------------------------------
     index_path = os.path.join(final_build_dir, "index.html")
     if os.path.exists(index_path):
