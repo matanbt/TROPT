@@ -145,7 +145,7 @@ class QCGOptimizer(BaseOptimizer):
             candidate_trigger_ids = candidate_trigger_ids[: self.n_proxy_candidates]
 
             # === Stage 2: Proxy filtering to n_target_candidates ===
-            # TODO what happens if proxy == target? shouldn't we skip it?? [TODONOW]
+            proxy_losses = None
             if self.n_target_candidates < len(candidate_trigger_ids):
                 proxy_losses = proxy_model.compute_loss_from_tokens(
                     candidate_trigger_ids, loss_func=self.loss_func
@@ -154,9 +154,14 @@ class QCGOptimizer(BaseOptimizer):
                     self.n_target_candidates, largest=False
                 ).indices
                 candidate_trigger_ids = candidate_trigger_ids[topk_indices]
+                proxy_losses = proxy_losses[topk_indices]
 
             # === Stage 3: Evaluate on target and update buffer ===
-            losses = self._evaluate_candidates_on_target_model(candidate_trigger_ids)
+            if proxy_model is target_model and proxy_losses is not None:
+                # Self-proxy: target loss == proxy loss; skip the redundant forward.
+                losses = proxy_losses
+            else:
+                losses = self._evaluate_candidates_on_target_model(candidate_trigger_ids)
 
             for idx in range(len(candidate_trigger_ids)):
                 buffer.add_if_better(

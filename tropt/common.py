@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 from typing import Annotated, Any, Dict, List, Optional
 
@@ -12,7 +13,6 @@ OPTIMIZED_TRIGGER_PLACEHOLDER: str = "{{OPTIMIZED_TRIGGER}}"
 
 # Default initial trigger
 DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
-
 
 
 # ======================= Common input types =======================
@@ -446,3 +446,9 @@ class ModelOutput(pydantic.BaseModel):
 
 
     #----------------------------------------------------------------------------
+
+# ======================= Other Utilities =======================
+
+def is_debug_mode() -> bool:
+    """Whether developer debug mode is enabled (extra asserts/probes). Opt-in via `TROPT_DEBUG=1`."""
+    return os.environ.get("TROPT_DEBUG", "").lower() in ("1", "true", "yes")

@@ -20,6 +20,7 @@ from tropt.common import (
     ModelOutput,
     SliceKey,
     Targets,
+    is_debug_mode,
 )
 from tropt.loss import BaseLoss
 from tropt.loss.resolution import resolve_and_compute_loss
@@ -485,8 +486,6 @@ class HuggingFaceBackendModel:
                 logger.warning("Model is on the CPU. Use a hardware accelerator for faster optimization.")
 
             ## additional check that the model have input_embeds for forward pass
-            # [TODO: have this run optionally in debug mode for efficiency] [TODONOW]
-
             @torch.no_grad()
             def _requires_input_embeds() -> bool:
                 """Returns True if the model requires input_ids even when inputs_embeds are provided."""
@@ -502,7 +501,7 @@ class HuggingFaceBackendModel:
                 except Exception:
                     return True
 
-            if not getattr(self, "_handles_input_embeds_manually", False) and _requires_input_embeds():
+            if is_debug_mode() and not getattr(self, "_handles_input_embeds_manually", False) and _requires_input_embeds():
                 logger.warning(
                     f"Model `{self._model_name}` seems to not support `inputs_embeds` as forward pass input."
                     "Gradient-based optimization (GradientTokenAccessMixin / invoke_from_tokens) will not work with this model. Only text-level access (invoke_from_texts) is supported."
@@ -763,9 +762,8 @@ class HuggingFaceBackendModel:
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
                     candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
-                    # TODO move to this check to the tests, to avoid slowing down this function (keeping it for now for safety) [TODONOW - have a universal flag for testing]
                     # Only check when using discrete tokens (not soft probabilities)
-                    if candidate_trigger_ids is not None:
+                    if is_debug_mode() and candidate_trigger_ids is not None:
                         assert torch.allclose(
                             candidate_embeds,
                             input_manager.embed_func(

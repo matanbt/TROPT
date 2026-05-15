@@ -130,8 +130,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         assert candidate_oversample_factor >= 1.0, "candidate_oversample_factor must be >= 1.0"
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        # TODO BETTER NAMING! [TODONOW]
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
+        # (otherwise, if tokenizer are not shared, or we don't have access to the target model's tokenzier, we simply use text-level loss compuation)
+        use_token_input_for_loss = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         # Normalize sample_n_replace to tuple
         if isinstance(sample_n_replace, int):
@@ -147,7 +147,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.use_retokenize = use_retokenize
         self.candidate_oversample_factor = candidate_oversample_factor
         self.momentum = momentum
-        self.use_token_eval = use_token_eval
+        self.use_token_input_for_loss = use_token_input_for_loss
         self.buffer_size = buffer_size
         self.n_grad_avg = n_grad_avg
         self.template_batch_size = template_batch_size
@@ -171,7 +171,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         )
 
         proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
-        if not self.use_token_eval:
+        if not self.use_token_input_for_loss:
             target_model.set_inputs_from_texts(templates=templates, targets=targets)
         else:
             target_model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -219,7 +219,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 proxy_model.set_inputs_from_tokens(
                     templates=batch_templates, targets=batch_targets,
                 )
-                if not self.use_token_eval:
+                if not self.use_token_input_for_loss:
                     target_model.set_inputs_from_texts(
                         templates=batch_templates, targets=batch_targets,
                     )
@@ -518,9 +518,9 @@ class GCGPlusOptimizer(BaseOptimizer):
     ) -> Float[Tensor, "n_candidates"]:
         """Evaluate candidates on the target model. Returns per-candidate loss.
 
-        When use_token_eval is False, decodes candidates via proxy_model.tokenizer.
+        When use_token_input_for_loss is False, decodes candidates via proxy_model.tokenizer.
         """
-        if self.use_token_eval:
+        if self.use_token_input_for_loss:
             losses = self.model.compute_loss_from_tokens(
                 candidate_trigger_ids, loss_func=self.loss_func
             )
