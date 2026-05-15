@@ -329,7 +329,6 @@ class CombiOptimizer(BaseOptimizer):
         templates: TextTemplates,
         initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
-        target_text: Optional[str] = None,
     ) -> OptimizerResult:
         """
         Runs the full optimization process combining random search and Square Attack.
@@ -339,10 +338,9 @@ class CombiOptimizer(BaseOptimizer):
         3. Runs `square_attack` to refine the trigger by perturbing blocks of tokens.
 
         Args:
-           texts (List[str]): The input texts/prompts to attack.
+           templates (List[str]): The input texts/prompts to attack.
            initial_trigger (Optional[str]): A starting trigger string (used if hot_start is False or fails).
            targets (TargetsDict): Target configuration for the loss calculation.
-           target_text (Optional[str]): The specific target text string to influence the hot start generation.
 
         Returns:
             OptimizerResult: An object containing the best loss, best trigger string, and history of optimization.
@@ -353,9 +351,13 @@ class CombiOptimizer(BaseOptimizer):
 
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
 
-        # TODO better way to pass hot_start
-        if target_text is not None and self.hot_start:
-            self.target_text = target_text
+        # TODO hot start without target texts?
+        if (
+            targets.target_texts is not None
+            and len(targets.target_texts) > 0
+            and self.hot_start
+        ):
+            self.target_text = targets.target_texts[0]
             self._get_hot_start()
 
         self.pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")

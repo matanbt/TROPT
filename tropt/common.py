@@ -14,13 +14,8 @@ OPTIMIZED_TRIGGER_PLACEHOLDER: str = "{{OPTIMIZED_TRIGGER}}"
 DEFAULT_INIT_TRIGGER = ("! " * 20).strip()
 
 
-
 # ======================= Common input types =======================
-TextTemplates = Annotated[
-    List[str],
-    pydantic.Field(min_length=1),
-    "n_templates"
-]
+TextTemplates = Annotated[List[str], pydantic.Field(min_length=1), "n_templates"]
 """List of text templates, one per optimization target. Each must contain the trigger placeholder (`{{OPTIMIZED_TRIGGER}}`).
 Length: n_templates.
 """
@@ -30,10 +25,12 @@ TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 
 # ======================= Slice Keys Enum =======================
 
+
 class SliceKey(str, Enum):
     """
     Enum for standardized slice keys used in input embeddings.
     """
+
     TRIGGER = "trigger"  # The optimized trigger tokens
     """The optimized trigger tokens"""
 
@@ -51,8 +48,8 @@ class SliceKey(str, Enum):
 
 
 class MessageTargets(pydantic.BaseModel):
-    """Targets for a single selected message.
-    """
+    """Targets for a single selected message."""
+
     model_config = pydantic.ConfigDict(arbitrary_types_allowed=True)
 
     # ── LM response targets ────────────────────────────────────────────────
@@ -122,7 +119,10 @@ class Targets(pydantic.BaseModel):
       suppress reasoning before the desired prefix.
     """
 
-    target_response_toks: Optional[Int[Tensor, "n_templates target_seq_len"] | Annotated[List[Int[Tensor, "target_seq_len"]], "n_templates"]] = None
+    target_response_toks: Optional[
+        Int[Tensor, "n_templates target_seq_len"]
+        | Annotated[List[Int[Tensor, "target_seq_len"]], "n_templates"]
+    ] = None
     """Tokenized target outputs, one per template.
 
     Shape: (n_templates, target_seq_len) OR List of length n_templates,
@@ -130,7 +130,9 @@ class Targets(pydantic.BaseModel):
     Used by: Language models for computing cross-entropy loss.
     """
 
-    target_response_logits: Optional[Annotated[List[Float[Tensor, "target_seq_len vocab_size"]], "n_templates"]] = None
+    target_response_logits: Optional[
+        Annotated[List[Float[Tensor, "target_seq_len vocab_size"]], "n_templates"]
+    ] = None
     """Target logits from a reference (e.g., jailbroken) model, one per target position.
 
     Used by distillation-style losses (e.g., FLRT, https://arxiv.org/abs/2407.17447); one tensor per template.
@@ -155,6 +157,13 @@ class Targets(pydantic.BaseModel):
     Used by: Steering losses (e.g., refusal suppression).
     Note: if you need per-layer directions, store as (n_templates, n_layers, d_model)
     and update this annotation accordingly.
+    """
+
+    target_texts: Optional[Annotated[List[str], "n_templates"]] = None
+    """Target texts for embedding attack, one per template.
+
+    Shape: (n_templates, d_model)
+    Used by: Encoder attacks for hot-start.
     """
 
     # ── Classifier targets ─────────────────────────────────────────────────
@@ -191,9 +200,7 @@ class Targets(pydantic.BaseModel):
 
     def select_message(self, idx: int) -> "MessageTargets":
         """Return a MessageTargets instance for the selected template index."""
-        return MessageTargets(
-            **{k: v[idx] for k, v in self if v is not None}
-        )
+        return MessageTargets(**{k: v[idx] for k, v in self if v is not None})
 
     def select_indices(self, indices: List[int]) -> "Targets":
         """Return a new Targets with only the selected template indices."""
@@ -217,8 +224,8 @@ class Targets(pydantic.BaseModel):
         return self.model_copy(update=updates)
 
 
-
 # ======================= Model Input Wrapper =======================
+
 
 class ModelInput(pydantic.BaseModel):
     """Standardized input container returned by InputsManager.get_triggered_inputs().
@@ -266,7 +273,6 @@ class ModelInput(pydantic.BaseModel):
     input_ids: Optional[Int[Tensor, "bsz seq_len"]] = None
     """Token IDs of the full input sequence (prompt + trigger), plus optionally target tokens.
     """
-
 
     input_trigger_ids: Optional[Int[Tensor, "bsz trigger_seq_len"]] = None
     """Token IDs of the trigger candidates. Shape: (batch_size, trigger_sequence_length).
@@ -328,6 +334,7 @@ class ModelInput(pydantic.BaseModel):
 
 # ======================= Model Output Wrapper =======================
 
+
 class ModelOutput(pydantic.BaseModel):
     """Standardized output container for all model types in TROPT.
 
@@ -377,7 +384,9 @@ class ModelOutput(pydantic.BaseModel):
     """Full sequence logits from language models; including both inputs and outputs (prefilled and generated).
     """
 
-    prefill_response_logits: Optional[Float[Tensor, "bsz response_seq_len vocab_size"]] = None
+    prefill_response_logits: Optional[
+        Float[Tensor, "bsz response_seq_len vocab_size"]
+    ] = None
     """Logits corresponding to the *prefilled* response portion of the sequence.
     """
 
@@ -407,7 +416,10 @@ class ModelOutput(pydantic.BaseModel):
     """Generated text strings from language model generation.
     """
 
-    generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]] | Float[Tensor, "bsz response_len vocab_size"]] = None
+    generated_response_logits: Optional[
+        List[Float[Tensor, "response_len vocab_size"]]
+        | Float[Tensor, "bsz response_len vocab_size"]
+    ] = None
     """Logits for generated tokens from language model generation.
     Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
     Response lengths may vary across samples.
@@ -444,5 +456,4 @@ class ModelOutput(pydantic.BaseModel):
 
     # TODO add validators to check shapes?
 
-
-    #----------------------------------------------------------------------------
+    # ----------------------------------------------------------------------------
