@@ -74,7 +74,9 @@ notebooks = [
 ]
 
 # All optional features (convenience installer)
-all = []
+all = [
+  "tropt[openai,google,litellm,vision,tracking,notebooks]",
+]
 
 # Development tools
 dev = [

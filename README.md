@@ -100,6 +100,11 @@ TROPT is designed as a **factory for new optimizers**. Each optimizer is a self-
 See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
 
 
+## 🤖 Use TROPT with a Coding Agent
+
+TROPT ships an with "agentic" usage guide at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that prompts any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Point your coding agent at it.
+
+
 ## 🔗 Quick Links
 
 | [Usage Guides](https://matanbt.github.io/TROPT/guides/index.html) | [Quick Notebook](quickstart.ipynb) | [API Reference](https://matanbt.github.io/TROPT/api/index.html) | [Contributing](CONTRIBUTING.md) |
