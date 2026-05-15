@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 import livelossplot
 import trackio
+from livelossplot.outputs import MatplotlibPlot
 
 import wandb
 
@@ -255,7 +256,9 @@ class LiveLossPlotTracker(BaseTracker):
         self._plotlosses: Optional[livelossplot.PlotLosses] = None
 
     def _init(self, config: Optional[dict] = None):
-        self._plotlosses = livelossplot.PlotLosses()
+        self._plotlosses = livelossplot.PlotLosses(
+            outputs=[MatplotlibPlot(figsize=(7, 3))],
+        )
 
     def _log(self, data: Dict[str, Any]):
         self._plotlosses.update({
