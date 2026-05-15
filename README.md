@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <strong>Unifying discrete text-trigger optimizers under a single interface — optimize text toward any goal, with any optimizer, for any NLP model.</strong>
+  <strong>Optimize text-triggers toward any goal, with any optimizer, for any NLP model, under a unified framework</strong>
 </p>
 
 <p align="center">
@@ -53,12 +53,11 @@ uv sync --extra dev
 pre-commit install
 ```
 
-### 🚀 Quick Start: Run a recipe
+### Quick Start: Run a Recipe 🥗
 
-TROPT enable you to run instantly optimization schemes, a.k.a. _recipes_, within a single function call. Currently 30+ recipes are available to run from the [Recipe Hub](TODO). These recipes cover LLM jailbreak (including black-box ones), embedding attacks, interpretability studies.
+TROPT lets you instantly run an optimization scheme — a _recipe_ — in a single function call. 30+ recipes ship out of the box in the [Recipe Hub](https://matanbt.github.io/TROPT/api/recipe_hub.html), covering LLM jailbreaks (white- and black-box), embedding attacks, and interpretability studies.
 
-
-For instnace, you can import the GCG jailbreak [(Zou et al., 2023)](https://arxiv.org/abs/2307.15043) and reproduce it on `gemma-3-1b-it` in a few lines:
+For instance, you can import the GCG jailbreak [(Zou et al., 2023)](https://arxiv.org/abs/2307.15043) and reproduce it on `gemma-3-1b-it` in a few lines:
 
 ```python
 from tropt.recipe_hub.GCG import gcg__zou2023
@@ -73,7 +72,7 @@ print("Lowest loss:", result.best_loss)
 ```
 
 
-### 🫴 Compose Your Own Recipe
+### Compose Your Own Recipe 🫴
 
 Pick any model, loss, and optimizer and assemble them directly — this is how recipes are built underneath:
 
@@ -95,10 +94,9 @@ result = optimizer.optimize_trigger(
 
 See [quickstart.ipynb](quickstart.ipynb) for end-to-end examples. See the [adding a recipe](docs/guides/adding_a_recipe.md) guide for the full walkthrough, including how to package your composition as a reusable recipe in the Hub.
 
-### 🔬 Adapt with New Objectives & Build New Optimizers [TODO more concise title, that reflect the framing]
+### Build New Optimizers & Losses 🔬
 
-[TODO this paragraph should apply to both loss and optimizer together; indeed emphasis should be on optimziers (so we can start with them)]
-TROPT is designed as a **factory for new optimizers**. Each optimizer is a self-contained module exposing a compact, standardized interface — implement only the search algorithm, and the backend handles model integration, tokenization, batching, and gradients. Your optimizer then composes with every existing model and loss. New losses follow the same pattern.
+TROPT is designed as a **factory for new optimizers and losses**. Each is a self-contained module behind a compact, standardized interface: implement only the search algorithm or objective, and the backend handles model integration, tokenization, batching, and gradients. Your new optimizer or loss then composes automatically with every existing model and counterpart component.
 
 See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
 
