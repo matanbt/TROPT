@@ -53,3 +53,29 @@ html_theme_options = {
         "image_dark": "_static/logo.png",
     },
 }
+
+
+# -- LLM-friendly artifacts --------------------------------------------------
+# Expose raw Markdown sources alongside rendered HTML so coding agents can
+# fetch the source-of-truth Markdown without a lossy HTML→MD round-trip.
+# Also publish docs/llms.txt at the docs root per https://llmstxt.org/.
+def _copy_llm_artifacts(app, exception):
+    if exception is not None:
+        return
+    import shutil
+    # Raw guide markdown: docs/guides/*.md -> _build/html/guides/*.md
+    guides_src = os.path.join(app.srcdir, 'guides')
+    guides_dst = os.path.join(app.outdir, 'guides')
+    if os.path.isdir(guides_src) and os.path.isdir(guides_dst):
+        for fname in os.listdir(guides_src):
+            if fname.endswith('.md'):
+                shutil.copy2(os.path.join(guides_src, fname),
+                             os.path.join(guides_dst, fname))
+    # llms.txt at the docs root
+    llms_src = os.path.join(app.srcdir, 'llms.txt')
+    if os.path.isfile(llms_src):
+        shutil.copy2(llms_src, os.path.join(app.outdir, 'llms.txt'))
+
+
+def setup(app):
+    app.connect('build-finished', _copy_llm_artifacts)
