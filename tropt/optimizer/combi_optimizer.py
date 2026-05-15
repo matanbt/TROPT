@@ -119,12 +119,12 @@ class CombiOptimizer(BaseOptimizer):
                 hot_start_str, add_special_tokens=False
             )
 
-        base_sim = -self.model.compute_loss_from_texts(
+        base_score = -self.model.compute_loss_from_texts(
             candidate_trigger_strs=[curr_p],
             loss_func=self.loss_func,
         ).item()
         no_improve = 0
-        # print(f"initial similarity: {base_sim}")
+        # print(f"initial similarity: {base_score}")
 
         iter_best_score = 0
         valid_vocab_ids = self._get_valid_vocab_ids()
@@ -132,7 +132,7 @@ class CombiOptimizer(BaseOptimizer):
         self._update_history(
             pbar=pbar,
             history=history,
-            best_score=base_sim,
+            best_score=base_score,
             trigger_str=curr_p,
             trigger=tokens,
         )
@@ -163,16 +163,16 @@ class CombiOptimizer(BaseOptimizer):
                 # build candidate prompts
                 check_ps = [curr_p + " " + t for t in batch_tokens]
 
-                # vectorized cosine similarity against q_emb
+                # loss against q_emb
                 losses = self.model.compute_loss_from_texts(
                     candidate_trigger_strs=check_ps,
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
-                prop_best_sim = -min_loss.item()
+                prop_best_score = -min_loss.item()
                 best_idx = min_idx.item()
-                if prop_best_sim > iter_best_score:
-                    iter_best_score = prop_best_sim
+                if prop_best_score > iter_best_score:
+                    iter_best_score = prop_best_score
                     best_id = batch_ids[best_idx][0]
                     best_token = batch_tokens[best_idx]
 
@@ -246,7 +246,7 @@ class CombiOptimizer(BaseOptimizer):
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
-            curr_sim = -self.model.compute_loss_from_texts(
+            curr_score = -self.model.compute_loss_from_texts(
                 candidate_trigger_strs=[current_prompt],
                 loss_func=self.loss_func,
             ).item()
@@ -254,7 +254,7 @@ class CombiOptimizer(BaseOptimizer):
         self._update_history(
             pbar=pbar,
             history=history,
-            best_score=curr_sim,
+            best_score=curr_score,
             trigger_str=current_prompt,
             trigger=appended_tokens,
         )
@@ -300,11 +300,11 @@ class CombiOptimizer(BaseOptimizer):
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
-                prop_best_sim = -min_loss.item()
+                prop_best_score = -min_loss.item()
                 best_idx = min_idx.item()
 
-            if prop_best_sim > curr_sim:
-                curr_sim = prop_best_sim
+            if prop_best_score > curr_score:
+                curr_score = prop_best_score
                 best_tokens = proposals_tokens[best_idx]
                 current_prompt = batch_prompts[best_idx]
                 no_improve = 0
@@ -314,7 +314,7 @@ class CombiOptimizer(BaseOptimizer):
             self._update_history(
                 pbar=pbar,
                 history=history,
-                best_score=curr_sim,
+                best_score=curr_score,
                 trigger_str=current_prompt,
                 trigger=best_tokens,
             )
@@ -325,7 +325,7 @@ class CombiOptimizer(BaseOptimizer):
                 and no_improve >= self.square_early_stop_patience
             ):
                 break
-            if best_sim is not None and curr_sim > best_sim:
+            if best_sim is not None and curr_score > best_sim:
                 break
 
     def optimize_trigger(
