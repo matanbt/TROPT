@@ -236,6 +236,9 @@ isinstance(model, LossTokenAccessMixin)       # Can compute loss from tokens?
 
 ## Important Notes
 
+### Scripts: separate repo
+The `scripts/` directory is **not tracked by TROPT** (gitignored) and is maintained as a standalone repo at <https://github.com/matanbt/tropt-scripts>. Files live in `scripts/` on disk as a nested git repo with its own remote — TROPT and tropt-scripts evolve independently. When editing under `scripts/`, run git commands from inside that directory; they affect tropt-scripts, not TROPT. Large experiment artifacts (`opt-bench/results/`, `evaluation_results*.csv`, `plots/`) are gitignored in tropt-scripts too — they stay on disk only.
+
 ### Security Research Context
 This codebase is explicitly designed for adversarial robustness research and red-teaming. Code modifications should maintain this defensive security focus.
 
@@ -295,7 +298,7 @@ tropt/
 
 tests/               # Test suite mirroring tropt/ structure
 runner/              # Experiment runners and Hydra configs
-scripts/             # Analysis, evaluation, and utility scripts
+scripts/             # Separate repo (see "Scripts: separate repo" below)
 docs/                # Sphinx documentation
 ├── api/             # Auto-generated API reference (rst)
 ├── guides/          # Step-by-step how-to guides (md) + auto-generated compatibility matrix
