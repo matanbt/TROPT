@@ -1,26 +1,26 @@
-<div align="center">
+<p align="center">
+  <img src="docs/_static/logo.svg" alt="TROPT — Textual Trigger Optimization Toolbox" width="500">
+</p>
 
-<!-- # TROPT -->
+<p align="center">
+  <strong>Unifying discrete text-trigger optimizers under a single interface — optimize text toward any goal, with any optimizer, for any NLP model.</strong>
+</p>
 
-# <img src="docs/_static/logo.png" alt="Textual Trigger Optimization Toolbox (TROPT)" width="80%">
+<p align="center">
+  <a href="https://matanbt.github.io/TROPT"><strong>Docs</strong></a> &ensp;|&ensp;
+  <a href="quickstart.ipynb"><strong>Quick Start (Notebook)</strong></a> &ensp;|&ensp;
+  <a href="https://matanbt.github.io/TROPT/guides/index.html"><strong>Guides</strong></a> &ensp;|&ensp;
+  <a href="https://matanbt.github.io/TROPT/api/index.html"><strong>API</strong></a> &ensp;|&ensp;
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+</p>
 
+<p align="center">
+  <a href="https://pypi.org/project/tropt/"><img src="https://img.shields.io/pypi/v/tropt?logo=python&logoColor=white&color=3776ab" alt="PyPI"></a>
+  <a href="https://github.com/matanbt/tropt"><img src="https://img.shields.io/github/stars/matanbt/tropt?style=flat&logo=github&color=181717" alt="GitHub stars"></a>
+  <a href="https://github.com/matanbt/tropt/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/matanbt/tropt/test.yml?branch=main&label=tests" alt="Tests"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green?style=flat" alt="License"></a>
+</p>
 
-**Unifying discrete text-trigger optimizers under a single interface: *optimize text toward any goal, with any optimizer, for any NLP model.***
-
-
-
-[![PyPI](https://img.shields.io/pypi/v/tropt?style=flat-square&color=blue)](https://pypi.org/project/tropt/)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/)
-[![Transformers](https://img.shields.io/badge/transformers-%E2%89%A55.3-orange?style=flat-square&logo=huggingface&logoColor=white)](https://github.com/huggingface/transformers)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](https://opensource.org/licenses/MIT)
-
-[![Docs](https://img.shields.io/badge/docs-online-green?style=flat-square)](https://matanbt.github.io/TROPT)
-[![Tests](https://img.shields.io/github/actions/workflow/status/matanbt/tropt/test.yml?branch=main&style=flat-square&label=tests)](https://github.com/matanbt/tropt/actions/workflows/test.yml)
-[![Ruff](https://img.shields.io/badge/code%20style-ruff-000000?style=flat-square)](https://github.com/astral-sh/ruff)
-[![Quickstart Notebook](https://img.shields.io/badge/quickstart-notebook-F37626?style=flat-square&logo=jupyter&logoColor=white)](quickstart.ipynb)
-<!-- [TODO] [![arXiv](https://img.shields.io/badge/arXiv-XXXX.XXXXX-b31b1b?style=flat-square)](https://arxiv.org/) -->
-
-</div>
 
 ---
 
@@ -53,9 +53,12 @@ uv sync --extra dev
 pre-commit install
 ```
 
-### ⚡ Run an Attack
+### 🚀 Quick Start: Run a recipe
 
-Reproduce the GCG jailbreak [(Zou et al., 2023)](https://arxiv.org/abs/2307.15043) on `gemma-3-1b-it` in a few lines:
+TROPT enable you to run instantly optimization schemes, a.k.a. _recipes_, within a single function call. Currently 30+ recipes are available to run from the [Recipe Hub](TODO). These recipes cover LLM jailbreak (including black-box ones), embedding attacks, interpretability studies.
+
+
+For instnace, you can import the GCG jailbreak [(Zou et al., 2023)](https://arxiv.org/abs/2307.15043) and reproduce it on `gemma-3-1b-it` in a few lines:
 
 ```python
 from tropt.recipe_hub.GCG import gcg__zou2023
@@ -69,9 +72,8 @@ print("Best trigger:", result.best_trigger_str)
 print("Lowest loss:", result.best_loss)
 ```
 
-The Recipe Hub ships 30+ such single-call recipes. See [quickstart.ipynb](quickstart.ipynb) for end-to-end examples covering jailbreaks, embedding attacks, custom objectives, and black-box models.
 
-### 🫴 Compose Your Own
+### 🫴 Compose Your Own Recipe
 
 Pick any model, loss, and optimizer and assemble them directly — this is how recipes are built underneath:
 
@@ -91,10 +93,11 @@ result = optimizer.optimize_trigger(
 )
 ```
 
-See the [adding a recipe](docs/guides/adding_a_recipe.md) guide for the full walkthrough, including how to package your composition as a reusable recipe in the Hub.
+See [quickstart.ipynb](quickstart.ipynb) for end-to-end examples. See the [adding a recipe](docs/guides/adding_a_recipe.md) guide for the full walkthrough, including how to package your composition as a reusable recipe in the Hub.
 
-### 🔬 Build New Optimizers
+### 🔬 Adapt with New Objectives & Build New Optimizers [TODO more concise title, that reflect the framing]
 
+[TODO this paragraph should apply to both loss and optimizer together; indeed emphasis should be on optimziers (so we can start with them)]
 TROPT is designed as a **factory for new optimizers**. Each optimizer is a self-contained module exposing a compact, standardized interface — implement only the search algorithm, and the backend handles model integration, tokenization, batching, and gradients. Your optimizer then composes with every existing model and loss. New losses follow the same pattern.
 
 See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).

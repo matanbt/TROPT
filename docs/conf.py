@@ -49,8 +49,8 @@ html_static_path = ['_static']
 html_css_files = ['custom.css']
 html_theme_options = {
     "logo": {
-        "image_light": "_static/logo_light.png",
-        "image_dark": "_static/logo.png",
+        "image_light": "_static/logo.svg",
+        "image_dark": "_static/logo.svg",
     },
 }
 
