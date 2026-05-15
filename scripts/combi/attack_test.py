@@ -26,9 +26,10 @@ sys.path.append(
 )
 
 from tropt.tracker import BaseTracker
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER
-from tropt.loss import SimilarityLoss, DotProductLoss
-from tropt.models import EncoderHFModel, EncoderOpenAIModel
+from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
+from tropt.loss import SimilarityLoss
+from tropt.model.huggingface.encoder import EncoderHFModel
+from tropt.model.openai.encoder import EncoderOpenAIModel
 from tropt.optimizer import RASLITEPlusOptimizer
 from tropt.optimizer.combi_optimizer import CombiOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -103,19 +104,25 @@ class ModelDataset:
 
 
 class TokenTracker(BaseTracker):
+    def _init(self, config: Optional[dict] = None):
+        pass
+
     def __init__(self, initial_tokens: int):
         super().__init__("nothing")
         self.initial_tokens = initial_tokens
         self.tokens = []
 
-    def log(self, data: dict):
+    def _log(self, data: dict):
         if "loss" in data and "total_tokens" in data:
             self.tokens.append(data["total_tokens"] - self.initial_tokens)
+
+    def log(self, data: dict):
+        self._log(data)
 
     def get_tokens(self):
         return self.tokens
 
-    def finish(self):
+    def _finish(self, summary: Optional[dict] = None):
         pass
 
 
@@ -237,10 +244,11 @@ def parse_args():
     parser.add_argument("--model", type=str, required=True)
     parser.add_argument("--trials", type=int, default=50)
     parser.add_argument("--out", default="combi_attack")
+    parser.add_argument("--raslite", action="store_true")
     return parser.parse_args()
 
 
-def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
+def run_attacks(embedder_model_name: str, trials: int, raslite: bool) -> dict[str, Any]:
     best_pids = []
     info_strs = []
 
@@ -284,7 +292,8 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         embedder_model_name in similarities
         and similarities[embedder_model_name] == "dot"
     ):
-        loss = DotProductLoss()
+        # loss = DotProductLoss() # TODO readd this?
+        loss = SimilarityLoss()
     else:
         loss = SimilarityLoss()
 
@@ -300,9 +309,8 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         prefix_info = info + " " + OPTIMIZED_TRIGGER_PLACEHOLDER
         target_vector = model([q])
 
-        inputs, _ = model.prepare_text_inputs(
-            texts=[prefix_info],
-            targets={loss.TARGET_KEY: target_vector},
+        model.set_inputs_from_texts(
+            templates=[prefix_info], targets=Targets(target_vectors=target_vector)
         )
 
         def calc_sim(strs: str | list[str]) -> float | Tensor:
@@ -310,7 +318,6 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
                 strs = [strs]
             losses = model.compute_loss_from_texts(
                 candidate_trigger_strs=strs,
-                inputs=inputs,
                 loss_func=loss,
             )
             if losses.shape[0] == 1:
@@ -342,44 +349,45 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
         stuffing_similarities.append(stuffing_sim)
 
         ### RASLITE ###
-        raslite_tracker = TokenTracker(model.get_usage_stats()["total_tokens"])
+        if raslite:
+            raslite_tracker = TokenTracker(model.get_usage_stats()["total_tokens"])
 
-        optimizer = RASLITEPlusOptimizer(
-            model=model,
-            util_lm=None,
-            loss=loss,
-            # Set parameters (combining RASLITE defaults with GASLITEPlus enhancements):
-            num_steps=1500,
-            token_constraints=TokenConstraints(
-                disallow_non_ascii=True, disallow_special_tokens=True
-            ),
-            use_retokenize=False,
-            # Original features:
-            n_candidates=128,
-            n_flip=1,
-            # Plus features:
-            use_random_logits=True,
-            flip_pos_method="ordered",
-            buffer_size=10,
-            n_bulk_flips=1,
-            # Early stopping:
-            early_stopping_loss=-best_sim,
-            tracker=raslite_tracker,
-        )
+            optimizer = RASLITEPlusOptimizer(
+                model=model,
+                util_lm=None,
+                loss=loss,
+                # Set parameters (combining RASLITE defaults with GASLITEPlus enhancements):
+                num_steps=1500,
+                token_constraints=TokenConstraints(
+                    disallow_non_ascii=True, disallow_special_tokens=True
+                ),
+                use_retokenize=False,
+                # Original features:
+                n_candidates=128,
+                n_flip=1,
+                # Plus features:
+                use_random_logits=True,
+                flip_pos_method="ordered",
+                buffer_size=10,
+                n_bulk_flips=1,
+                # Early stopping:
+                early_stopping_loss=-best_sim,
+                tracker=raslite_tracker,
+            )
 
-        start = time.time()
-        result = optimizer.optimize_trigger(
-            texts=[prefix_info],
-            targets={loss.TARGET_KEY: target_vector},
-            initial_trigger="! " * 100,
-        )
-        end = time.time()
+            start = time.time()
+            result = optimizer.optimize_trigger(
+                templates=[prefix_info],
+                targets=Targets(target_vectors=target_vector),
+                initial_trigger="! " * 100,
+            )
+            end = time.time()
 
-        raslite_similarities.append(-result.best_loss)
-        raslite_times.append(end - start)
-        raslite_adv.append(result.full_prompt[0])
-        raslite_losses.append(result.losses)
-        raslite_tokens.append(raslite_tracker.get_tokens())
+            raslite_similarities.append(-result.best_loss)
+            raslite_times.append(end - start)
+            raslite_adv.append(result.best_trigger_str)
+            raslite_losses.append(result.losses)
+            raslite_tokens.append(raslite_tracker.get_tokens())
 
         ### COMBI ###
         combi_tracker = TokenTracker(model.get_usage_stats()["total_tokens"])
@@ -393,8 +401,8 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
 
         start = time.time()
         result = optimizer.optimize_trigger(
-            texts=[prefix_info],
-            targets={loss.TARGET_KEY: target_vector},
+            templates=[prefix_info],
+            targets=Targets(target_vectors=target_vector),
             initial_trigger="! " * 100,
             target_text=q,
         )
@@ -402,17 +410,18 @@ def run_attacks(embedder_model_name: str, trials: int) -> dict[str, Any]:
 
         combi_similarities.append(-result.best_loss)
         combi_times.append(end - start)
-        combi_adv.append(result.full_prompt[0])
+        combi_adv.append(result.best_trigger_str)
         combi_losses.append(result.losses)
         combi_tokens.append(combi_tracker.get_tokens())
 
-        print(f"raslite: {raslite_adv[-1]}")
+        if raslite:
+            print(f"raslite: {raslite_adv[-1]}")
         print(f"combi: {combi_adv[-1]}")
-        print(
-            f"Similarity between query and RASLITE passage: {raslite_similarities[-1]}"
-        )
+        if raslite:
+            print(
+                f"Similarity between query and RASLITE passage: {raslite_similarities[-1]}"
+            )
         print(f"Similarity between query and combi passage: {combi_similarities[-1]}")
-
         print("\n", flush=True)
 
     record = {
@@ -457,7 +466,9 @@ def main():
     np.random.seed(seed)
     torch.manual_seed(seed)
 
-    rec = run_attacks(embedder_model_name=args.model, trials=args.trials)
+    rec = run_attacks(
+        embedder_model_name=args.model, trials=args.trials, raslite=args.raslite
+    )
     # Write (append or create)
     if out_path.exists():
         existing = pd.read_csv(out_path)

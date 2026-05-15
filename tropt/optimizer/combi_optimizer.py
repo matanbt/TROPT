@@ -9,7 +9,12 @@ from openai import OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
 from tqdm.auto import tqdm
 
-from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
+from tropt.common import (
+    OPTIMIZED_TRIGGER_PLACEHOLDER,
+    Targets,
+    TextTemplates,
+    DEFAULT_INIT_TRIGGER,
+)
 from tropt.loss.base import BaseLoss
 from tropt.model import BaseModel, LossTextAccessMixin, TokenAccessMixin
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
@@ -95,10 +100,7 @@ class CombiOptimizer(BaseOptimizer):
         self.pbar = None
         self.history = []
 
-    def random_attack(
-        self,
-        inputs,
-    ):
+    def random_attack(self):
         """
         Executes the initial random search phase of the attack.
 
@@ -107,9 +109,6 @@ class CombiOptimizer(BaseOptimizer):
         evaluates them in batches, and selects the token that maximizes the similarity score
         (minimizes loss). It stops early if no improvement is seen for `random_early_stop_patience`
         steps or if `best_sim` is reached.
-
-        Args:
-            inputs: The prepared model inputs structure.
         """
         curr_p = ""
         tokens = []
@@ -123,7 +122,6 @@ class CombiOptimizer(BaseOptimizer):
         base_sim = float(
             -self.model.compute_loss_from_texts(
                 candidate_trigger_strs=[curr_p],
-                inputs=inputs,
                 loss_func=self.loss_func,
             )[0]
         )
@@ -148,7 +146,6 @@ class CombiOptimizer(BaseOptimizer):
             iter_best_score = float(
                 -self.model.compute_loss_from_texts(
                     candidate_trigger_strs=[curr_p],
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 )[0]
             )
@@ -170,7 +167,6 @@ class CombiOptimizer(BaseOptimizer):
                 # vectorized cosine similarity against q_emb
                 losses = self.model.compute_loss_from_texts(
                     candidate_trigger_strs=check_ps,
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
@@ -205,10 +201,7 @@ class CombiOptimizer(BaseOptimizer):
 
         # print(f"final similarity: {iter_best_score}")
 
-    def square_attack(
-        self,
-        inputs,
-    ):
+    def square_attack(self):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
 
         Instead of square patches over image pixels, we sample contiguous blocks ("windows")
@@ -216,9 +209,6 @@ class CombiOptimizer(BaseOptimizer):
         sampled vocabulary tokens. A proposal is accepted if it increases cosine similarity.
 
         The size of the block changes over iterations based on a schedule (`_p_selection`).
-
-        Args:
-            inputs: The prepared model inputs structure.
 
         Raises:
             ValueError: If `total_tokens` is not positive.
@@ -256,7 +246,6 @@ class CombiOptimizer(BaseOptimizer):
             best_sim = float(
                 -self.model.compute_loss_from_texts(
                     candidate_trigger_strs=[current_prompt],
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 )[0]
             )
@@ -306,7 +295,6 @@ class CombiOptimizer(BaseOptimizer):
             with torch.no_grad():
                 losses = self.model.compute_loss_from_texts(
                     candidate_trigger_strs=batch_prompts,
-                    inputs=inputs,
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
@@ -338,8 +326,8 @@ class CombiOptimizer(BaseOptimizer):
 
     def optimize_trigger(
         self,
-        texts: List[str],
-        initial_trigger: Optional[str] = "! " * 20,
+        templates: TextTemplates,
+        initial_trigger: Optional[str] = DEFAULT_INIT_TRIGGER,
         targets: Optional[Targets] = None,
         target_text: Optional[str] = None,
     ) -> OptimizerResult:
@@ -363,11 +351,7 @@ class CombiOptimizer(BaseOptimizer):
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
-        inputs, _ = self.model.prepare_text_inputs(
-            texts=texts,
-            initial_trigger=initial_trigger,
-            targets=targets,
-        )
+        self.model.set_inputs_from_texts(templates=templates, targets=targets)
 
         # TODO better way to pass hot_start
         if target_text is not None and self.hot_start:
@@ -377,22 +361,22 @@ class CombiOptimizer(BaseOptimizer):
         self.pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
         self.history = []
 
-        self.random_attack(inputs=inputs)
+        self.random_attack()
 
         if self.best_sim is None or self.history[-1]["best_score"] <= self.best_sim:
-            self.square_attack(inputs=inputs)
+            self.square_attack()
 
         result = OptimizerResult(
             best_loss=-self.history[-1]["best_score"],
             best_trigger_str=self.history[-1]["trigger_str"],
-            best_trigger=self.history[-1]["trigger"],
+            best_trigger_ids=self.history[-1]["trigger"],
             trigger_strs=[x["trigger_str"] for x in self.history],
             losses=[-x["best_score"] for x in self.history],
             full_prompt=[
                 t.replace(
                     OPTIMIZED_TRIGGER_PLACEHOLDER, self.history[-1]["trigger_str"]
                 )
-                for t in texts
+                for t in templates
             ],
         )
         return result
