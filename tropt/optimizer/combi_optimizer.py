@@ -7,6 +7,7 @@ import numpy as np
 import torch
 from openai import OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
+from torch._C import dtype
 from tqdm.auto import tqdm
 
 from tropt.common import (
@@ -118,12 +119,10 @@ class CombiOptimizer(BaseOptimizer):
                 hot_start_str, add_special_tokens=False
             )
 
-        base_sim = float(
-            -self.model.compute_loss_from_texts(
-                candidate_trigger_strs=[curr_p],
-                loss_func=self.loss_func,
-            )[0]
-        )
+        base_sim = -self.model.compute_loss_from_texts(
+            candidate_trigger_strs=[curr_p],
+            loss_func=self.loss_func,
+        ).item()
         no_improve = 0
         # print(f"initial similarity: {base_sim}")
 
@@ -148,22 +147,17 @@ class CombiOptimizer(BaseOptimizer):
             pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,))
 
             # compute current baseline similarity for this iteration
-            iter_best_score = float(
-                -self.model.compute_loss_from_texts(
-                    candidate_trigger_strs=[curr_p],
-                    loss_func=self.loss_func,
-                )[0]
-            )
+            iter_best_score = -self.model.compute_loss_from_texts(
+                candidate_trigger_strs=[curr_p],
+                loss_func=self.loss_func,
+            ).item()
             best_id = None
             best_token = None
 
             # Efficiently evaluate candidates in batches to maximize GPU utilization.
             # We construct `batch_size` prompts, each with a different candidate token appended.
-            for i in range(0, len(pool), self.batch_size):
-                batch_ids = [
-                    [int(pool[i])]
-                    for i in range(i, min(i + self.batch_size, len(pool)))
-                ]
+            for i in range(0, pool.shape[0], self.batch_size):
+                batch_ids = pool[i : i + self.batch_size, np.newaxis].tolist()
                 batch_tokens = self.model.tokenizer.batch_decode(batch_ids)
 
                 # build candidate prompts
@@ -175,11 +169,11 @@ class CombiOptimizer(BaseOptimizer):
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
-                prop_best_sim = float(-min_loss.item())
-                best_idx = int(min_idx.item())
+                prop_best_sim = -min_loss.item()
+                best_idx = min_idx.item()
                 if prop_best_sim > iter_best_score:
                     iter_best_score = prop_best_sim
-                    best_id = int(batch_ids[best_idx][0])
+                    best_id = batch_ids[best_idx][0]
                     best_token = batch_tokens[best_idx]
 
             if best_token is not None:
@@ -239,8 +233,8 @@ class CombiOptimizer(BaseOptimizer):
             if initial_tokens and len(initial_tokens) != 0:
                 appended_tokens.append(initial_tokens[i % len(initial_tokens)])
             else:
-                tok_id = np.random.choice(valid_vocab_ids)
-                tok = self.model.tokenizer.decode(int(tok_id))
+                tok_id = np.random.choice(valid_vocab_ids).item()
+                tok = self.model.tokenizer.decode(tok_id)
                 if not tok.strip():  # ensure non-empty
                     tok = self.model.tokenizer.encode("the", add_special_tokens=False)[
                         0
@@ -252,12 +246,10 @@ class CombiOptimizer(BaseOptimizer):
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
-            curr_sim = float(
-                -self.model.compute_loss_from_texts(
-                    candidate_trigger_strs=[current_prompt],
-                    loss_func=self.loss_func,
-                )[0]
-            )
+            curr_sim = -self.model.compute_loss_from_texts(
+                candidate_trigger_strs=[current_prompt],
+                loss_func=self.loss_func,
+            ).item()
 
         self._update_history(
             pbar=pbar,
@@ -274,7 +266,7 @@ class CombiOptimizer(BaseOptimizer):
             # Calculate the size of the window to perturb.
             # Early iterations perturb large blocks (exploration); later iterations fine-tune small blocks (exploitation).
             p = self._p_selection(self.square_p_init, it - 1, self.square_num_iters)
-            block_size = max(1, int(round(p * self.total_tokens)))
+            block_size = max(1, round(p * self.total_tokens))
             block_size = min(block_size, self.total_tokens)
 
             start = np.random.randint(0, self.total_tokens - block_size + 1)
@@ -291,8 +283,7 @@ class CombiOptimizer(BaseOptimizer):
                     pool_ids = np.random.choice(
                         valid_vocab_ids, size=(self.square_random_pool_per_pos,)
                     )
-                    chosen_id = np.random.choice(pool_ids)
-                    new_tok = int(chosen_id)
+                    new_tok = np.random.choice(pool_ids).item()
                     if not self.model.tokenizer.decode(
                         new_tok, skip_special_tokens=True
                     ).strip():
@@ -309,8 +300,8 @@ class CombiOptimizer(BaseOptimizer):
                     loss_func=self.loss_func,
                 )
                 min_loss, min_idx = torch.min(losses, dim=0)
-                prop_best_sim = float(-min_loss.item())
-                best_idx = int(min_idx.item())
+                prop_best_sim = -min_loss.item()
+                best_idx = min_idx.item()
 
             if prop_best_sim > curr_sim:
                 curr_sim = prop_best_sim
