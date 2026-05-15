@@ -81,9 +81,8 @@ class CombiOptimizer(BaseOptimizer):
 
         # save params:
         self.hot_start = hot_start
-        self.hot_start_str = None
         self.batch_size = batch_size
-        self.best_sim = best_sim
+        self.best_sim = best_sim  # TODO don't store/accept it here, pass it through optimize_trigger
         self.total_tokens = total_tokens
 
         self.random_num_pool = random_num_pool
@@ -95,12 +94,8 @@ class CombiOptimizer(BaseOptimizer):
         self.square_early_stop_patience = square_early_stop_patience
 
         self.openai_client: Optional[OpenAI] = None
-        self.target_text: Optional[str] = None
 
-        self.pbar = None
-        self.history = []
-
-    def random_attack(self):
+    def random_attack(self, pbar: tqdm, history: List[dict], hot_start_str: Optional[str] = None):
         """
         Executes the initial random search phase of the attack.
 
@@ -113,10 +108,10 @@ class CombiOptimizer(BaseOptimizer):
         curr_p = ""
         tokens = []
 
-        if self.hot_start_str is not None:
-            curr_p = self.hot_start_str
+        if hot_start_str is not None:
+            curr_p = hot_start_str
             tokens = self.model.tokenizer.encode(
-                self.hot_start_str, add_special_tokens=False
+                hot_start_str, add_special_tokens=False
             )
 
         base_sim = float(
@@ -131,10 +126,10 @@ class CombiOptimizer(BaseOptimizer):
         iter_best_score = 0
         valid_vocab_ids = self._get_valid_vocab_ids()
 
-        self._update_history(best_score=base_sim, trigger_str=curr_p, trigger=tokens)
+        self._update_history(pbar=pbar, history=history, best_score=base_sim, trigger_str=curr_p, trigger=tokens)
 
         if len(tokens):
-            self.pbar.update(len(tokens))
+            pbar.update(len(tokens))
 
         # Iteratively append tokens one by one to reach total_tokens. This is a greedy approach:
         # once a token is selected for position N, it is fixed, and we optimize position N+1.
@@ -185,6 +180,8 @@ class CombiOptimizer(BaseOptimizer):
                 no_improve += 1
 
             self._update_history(
+                pbar=pbar,
+                history=history,
                 best_score=iter_best_score,
                 trigger_str=curr_p,
                 trigger=tokens,
@@ -194,14 +191,14 @@ class CombiOptimizer(BaseOptimizer):
                 self.random_early_stop_patience is not None
                 and no_improve >= self.random_early_stop_patience
             ):
-                self.pbar.update(self.total_tokens - len(tokens))
+                pbar.update(self.total_tokens - len(tokens))
                 break
             if self.best_sim is not None and iter_best_score > self.best_sim:
                 break
 
         # print(f"final similarity: {iter_best_score}")
 
-    def square_attack(self):
+    def square_attack(self, pbar: tqdm, history: List[dict]):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
 
         Instead of square patches over image pixels, we sample contiguous blocks ("windows")
@@ -213,7 +210,7 @@ class CombiOptimizer(BaseOptimizer):
         Raises:
             ValueError: If `total_tokens` is not positive.
         """
-        initial_tokens = self.history[-1]["trigger"] if len(self.history) else []
+        initial_tokens = history[-1]["trigger"] if len(history) else []
 
         valid_vocab_ids = self._get_valid_vocab_ids()
         if self.total_tokens <= 0:
@@ -251,6 +248,8 @@ class CombiOptimizer(BaseOptimizer):
             )
 
         self._update_history(
+            pbar=pbar,
+            history=history,
             best_score=best_sim,
             trigger_str=current_prompt,
             trigger=appended_tokens,
@@ -310,6 +309,8 @@ class CombiOptimizer(BaseOptimizer):
                 no_improve += 1
 
             self._update_history(
+                pbar=pbar,
+                history=history,
                 best_score=best_sim,
                 trigger_str=current_prompt,
                 trigger=best_tokens,
@@ -352,31 +353,31 @@ class CombiOptimizer(BaseOptimizer):
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
 
         # TODO hot start without target texts?
+        hot_start_str = None
         if (
             targets.target_texts is not None
             and len(targets.target_texts) > 0
             and self.hot_start
         ):
-            self.target_text = targets.target_texts[0]
-            self._get_hot_start()
+            _, _, hot_start_str = self._generate_hot_start(targets.target_texts[0])
 
-        self.pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
-        self.history = []
+        pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
+        history = []
 
-        self.random_attack()
+        self.random_attack(hot_start_str=hot_start_str, pbar=pbar, history=history)
 
-        if self.best_sim is None or self.history[-1]["best_score"] <= self.best_sim:
+        if self.best_sim is None or history[-1]["best_score"] <= self.best_sim:
             self.square_attack()
 
         result = OptimizerResult(
-            best_loss=-self.history[-1]["best_score"],
-            best_trigger_str=self.history[-1]["trigger_str"],
-            best_trigger_ids=self.history[-1]["trigger"],
-            trigger_strs=[x["trigger_str"] for x in self.history],
-            losses=[-x["best_score"] for x in self.history],
+            best_loss=-history[-1]["best_score"],
+            best_trigger_str=history[-1]["trigger_str"],
+            best_trigger_ids=history[-1]["trigger"],
+            trigger_strs=[x["trigger_str"] for x in history],
+            losses=[-x["best_score"] for x in history],
             full_prompt=[
                 t.replace(
-                    OPTIMIZED_TRIGGER_PLACEHOLDER, self.history[-1]["trigger_str"]
+                    OPTIMIZED_TRIGGER_PLACEHOLDER, history[-1]["trigger_str"]
                 )
                 for t in templates
             ],
@@ -428,7 +429,7 @@ class CombiOptimizer(BaseOptimizer):
         self._valid_vocab_ids = np.array(valid_ids)
         return self._valid_vocab_ids
 
-    def _get_hot_start(self):
+    def _generate_hot_start(self, target_text: str):
         """
         Generates an initial trigger candidates using an external LLM (OpenAI).
 
@@ -439,11 +440,8 @@ class CombiOptimizer(BaseOptimizer):
         Returns:
             tuple: (text, tokens, decoded_str)
         """
-        if self.hot_start_str is not None:
-            return self.hot_start_str
-
         # String model-specific additions
-        query = self.target_text.removeprefix("query: ").removeprefix(
+        query = target_text.removeprefix("query: ").removeprefix(
             "Represent this sentence for searching relevant passages: "
         )
 
@@ -476,11 +474,12 @@ class CombiOptimizer(BaseOptimizer):
 
         tokens = self.model.tokenizer.encode(text)
         decoded: str = self.model.tokenizer.decode(tokens, skip_special_tokens=True)
-        self.hot_start_str = decoded
         return text, tokens, decoded
 
     def _update_history(
         self,
+        pbar: tqdm,
+        history: List[dict],
         best_score: float,
         trigger_str: str,
         trigger: List[int],
@@ -495,8 +494,8 @@ class CombiOptimizer(BaseOptimizer):
             trigger (List[int]): The token IDs of the trigger.
             step (int, optional): Explicit step number. Defaults to incrementing previous step.
         """
-        last_step = self.history[-1]["step"] if len(self.history) else -1
-        self.history.append(
+        last_step = history[-1]["step"] if len(history) else -1
+        history.append(
             {
                 "step": step if step is not None else last_step + 1,
                 "best_score": best_score,
@@ -507,19 +506,19 @@ class CombiOptimizer(BaseOptimizer):
             }
         )
 
-        if self.pbar is not None:
-            self.pbar.update(1)
-            self.pbar.set_postfix(
+        if pbar is not None:
+            pbar.update(1)
+            pbar.set_postfix(
                 {
-                    "similarity": f"{self.history[-1]["best_score"]:.5f}",
-                    "num_tokens": f"{self.history[-1]["num_tokens"]}",
+                    "similarity": f"{history[-1]["best_score"]:.5f}",
+                    "num_tokens": f"{history[-1]["num_tokens"]}",
                 }
             )
 
         if self.tracker is not None:
             self.tracker.log(
                 {
-                    "loss": -self.history[-1]["best_score"],
+                    "loss": -history[-1]["best_score"],
                     **self.model.get_usage_stats(),
                 }
             )
