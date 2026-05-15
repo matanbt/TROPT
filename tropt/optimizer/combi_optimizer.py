@@ -92,7 +92,8 @@ class CombiOptimizer(BaseOptimizer):
 
         self.openai_client: Optional[OpenAI] = None
 
-    def random_attack(
+    # TODO allow running just random attack/square attack
+    def _random_attack(
         self,
         pbar: tqdm,
         history: List[dict],
@@ -207,7 +208,7 @@ class CombiOptimizer(BaseOptimizer):
 
         # print(f"final similarity: {iter_best_score}")
 
-    def square_attack(
+    def _square_attack(
         self, pbar: tqdm, history: List[dict], best_sim: Optional[float] = None
     ):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
@@ -382,12 +383,12 @@ class CombiOptimizer(BaseOptimizer):
         pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
         history = []
 
-        self.random_attack(
+        self._random_attack(
             pbar=pbar, history=history, hot_start_str=hot_start_str, best_sim=best_sim
         )
 
         if best_sim is None or history[-1]["best_score"] <= best_sim:
-            self.square_attack(pbar=pbar, history=history, best_sim=best_sim)
+            self._square_attack(pbar=pbar, history=history, best_sim=best_sim)
 
         result = OptimizerResult(
             best_loss=-history[-1]["best_score"],
