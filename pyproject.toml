@@ -123,6 +123,7 @@ packages = ["tropt"]
 
 [tool.ruff]
 include = ["tropt/**/*.py", "tests/**/*.py"]
+extend-exclude = ["tests/_legacy"]
 
 [tool.ruff.lint]
 # Enable Pyflakes, pycodestyle, and isort rules
@@ -146,15 +147,9 @@ invalid-argument-type = "ignore"  # jaxtyping annotations (Float[Tensor, ...]) c
 call-non-callable = "ignore"      # ST's _first_module(), .encode(), HF's .generate() seen as Tensor|Module union
 invalid-method-override = "ignore"  # model/loss subclasses intentionally specialize abstract signatures
 
-## Tests are currently work in progress.
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "heavy: marks tests that load real model weights (deselect with '-m \"not heavy\"')",
-    "requires_cuda: marks tests that require CUDA",
-    "integration: marks integration tests across multiple pillars",
-]
+norecursedirs = ["_legacy"]

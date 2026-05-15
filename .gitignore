@@ -17,7 +17,7 @@ docs/guides/compatibility_matrix.md
 
 # Not ready for public yet
 runner/
-tests/
+tests/_legacy/
 misc/
 tropt/recipe_hub/SoftGCG.py
 tropt/recipe_hub/PGD.py
