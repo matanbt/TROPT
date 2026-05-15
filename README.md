@@ -102,7 +102,7 @@ See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [
 
 ## 🤖 Use TROPT with a Coding Agent
 
-TROPT ships an with "agentic" usage guide at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that prompts any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Point your coding agent at it.
+TROPT ships with an 'agentic' usage guide at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that prompts any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Point your coding agent at it.
 
 
 ## 🔗 Quick Links

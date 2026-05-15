@@ -57,7 +57,7 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         n_flip: int | float = 20,
         n_candidates: int = 128,
         token_constraints: TokenConstraints = TokenConstraints(),
-        use_retokenize: bool = False,
+        use_retokenize: bool = True,
 
         util_model: Optional[LMBaseModel] = None,  # for logits calc
         use_random_logits: bool = False,  # for possible ablation

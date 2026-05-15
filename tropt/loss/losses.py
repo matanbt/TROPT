@@ -222,7 +222,7 @@ class PrefillCWLoss(PrefillBasedLoss):
     Using this loss usually implies that the model will prefill the response with these target tokens.
     """
 
-    cw_margin: float = 1e-3
+    cw_margin: float = 5.0
     first_token_weight: float = 1.0
 
     def __call__(
