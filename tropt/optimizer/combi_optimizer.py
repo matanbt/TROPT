@@ -40,7 +40,6 @@ class CombiOptimizer(BaseOptimizer):
         # attack parameters:
         hot_start: bool = True,
         batch_size: int = 128,
-        best_sim: Optional[float] = 0.9,
         total_tokens: int = 100,
         random_num_pool: int = 500,
         random_early_stop_patience: int = 5,
@@ -61,7 +60,6 @@ class CombiOptimizer(BaseOptimizer):
             hot_start (bool): Whether to try and employ hot-start.
             batch_size (int): Batch size for embedding.
             sim (str): Similarity function to employ.
-            best_sim (float, optional): Similarity of best passage to try and bypass. If reached, optimizer stops.
             total_tokens (int): How many tokens should be in the prefix.
 
             random_num_pool (int): How many tokens to generate on each iteration of random attack.
@@ -82,7 +80,6 @@ class CombiOptimizer(BaseOptimizer):
         # save params:
         self.hot_start = hot_start
         self.batch_size = batch_size
-        self.best_sim = best_sim  # TODO don't store/accept it here, pass it through optimize_trigger
         self.total_tokens = total_tokens
 
         self.random_num_pool = random_num_pool
@@ -95,7 +92,13 @@ class CombiOptimizer(BaseOptimizer):
 
         self.openai_client: Optional[OpenAI] = None
 
-    def random_attack(self, pbar: tqdm, history: List[dict], hot_start_str: Optional[str] = None):
+    def random_attack(
+        self,
+        pbar: tqdm,
+        history: List[dict],
+        hot_start_str: Optional[str] = None,
+        best_sim: Optional[float] = None,
+    ):
         """
         Executes the initial random search phase of the attack.
 
@@ -126,7 +129,13 @@ class CombiOptimizer(BaseOptimizer):
         iter_best_score = 0
         valid_vocab_ids = self._get_valid_vocab_ids()
 
-        self._update_history(pbar=pbar, history=history, best_score=base_sim, trigger_str=curr_p, trigger=tokens)
+        self._update_history(
+            pbar=pbar,
+            history=history,
+            best_score=base_sim,
+            trigger_str=curr_p,
+            trigger=tokens,
+        )
 
         if len(tokens):
             pbar.update(len(tokens))
@@ -193,12 +202,14 @@ class CombiOptimizer(BaseOptimizer):
             ):
                 pbar.update(self.total_tokens - len(tokens))
                 break
-            if self.best_sim is not None and iter_best_score > self.best_sim:
+            if best_sim is not None and iter_best_score > best_sim:
                 break
 
         # print(f"final similarity: {iter_best_score}")
 
-    def square_attack(self, pbar: tqdm, history: List[dict]):
+    def square_attack(
+        self, pbar: tqdm, history: List[dict], best_sim: Optional[float] = None
+    ):
         """A 1D adaptation of the image Square Attack for token sequence (prompt) optimization.
 
         Instead of square patches over image pixels, we sample contiguous blocks ("windows")
@@ -240,7 +251,7 @@ class CombiOptimizer(BaseOptimizer):
 
         current_prompt = build_prompt(appended_tokens)
         with torch.no_grad():
-            best_sim = float(
+            curr_sim = float(
                 -self.model.compute_loss_from_texts(
                     candidate_trigger_strs=[current_prompt],
                     loss_func=self.loss_func,
@@ -250,7 +261,7 @@ class CombiOptimizer(BaseOptimizer):
         self._update_history(
             pbar=pbar,
             history=history,
-            best_score=best_sim,
+            best_score=curr_sim,
             trigger_str=current_prompt,
             trigger=appended_tokens,
         )
@@ -300,8 +311,8 @@ class CombiOptimizer(BaseOptimizer):
                 prop_best_sim = float(-min_loss.item())
                 best_idx = int(min_idx.item())
 
-            if prop_best_sim > best_sim:
-                best_sim = prop_best_sim
+            if prop_best_sim > curr_sim:
+                curr_sim = prop_best_sim
                 best_tokens = proposals_tokens[best_idx]
                 current_prompt = batch_prompts[best_idx]
                 no_improve = 0
@@ -311,7 +322,7 @@ class CombiOptimizer(BaseOptimizer):
             self._update_history(
                 pbar=pbar,
                 history=history,
-                best_score=best_sim,
+                best_score=curr_sim,
                 trigger_str=current_prompt,
                 trigger=best_tokens,
             )
@@ -322,7 +333,7 @@ class CombiOptimizer(BaseOptimizer):
                 and no_improve >= self.square_early_stop_patience
             ):
                 break
-            if self.best_sim is not None and best_sim > self.best_sim:
+            if best_sim is not None and curr_sim > best_sim:
                 break
 
     def optimize_trigger(
@@ -361,13 +372,22 @@ class CombiOptimizer(BaseOptimizer):
         ):
             _, _, hot_start_str = self._generate_hot_start(targets.target_texts[0])
 
+        best_sim = None
+        if (
+            targets.target_similarities is not None
+            and len(targets.target_similarities) > 0
+        ):
+            best_sim = targets.target_similarities[0]
+
         pbar = tqdm(total=self.total_tokens + self.square_num_iters, unit=" steps")
         history = []
 
-        self.random_attack(hot_start_str=hot_start_str, pbar=pbar, history=history)
+        self.random_attack(
+            pbar=pbar, history=history, hot_start_str=hot_start_str, best_sim=best_sim
+        )
 
-        if self.best_sim is None or history[-1]["best_score"] <= self.best_sim:
-            self.square_attack()
+        if best_sim is None or history[-1]["best_score"] <= best_sim:
+            self.square_attack(pbar=pbar, history=history, best_sim=best_sim)
 
         result = OptimizerResult(
             best_loss=-history[-1]["best_score"],
@@ -376,9 +396,7 @@ class CombiOptimizer(BaseOptimizer):
             trigger_strs=[x["trigger_str"] for x in history],
             losses=[-x["best_score"] for x in history],
             full_prompt=[
-                t.replace(
-                    OPTIMIZED_TRIGGER_PLACEHOLDER, history[-1]["trigger_str"]
-                )
+                t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, history[-1]["trigger_str"])
                 for t in templates
             ],
         )

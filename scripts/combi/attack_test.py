@@ -395,14 +395,17 @@ def run_attacks(embedder_model_name: str, trials: int, raslite: bool) -> dict[st
         optimizer = CombiOptimizer(
             model=model,
             loss=loss,
-            best_sim=best_sim,
             tracker=combi_tracker,
         )
 
         start = time.time()
         result = optimizer.optimize_trigger(
             templates=[prefix_info],
-            targets=Targets(target_vectors=target_vector, target_texts=[q]),
+            targets=Targets(
+                target_vectors=target_vector,
+                target_texts=[q],
+                target_similarities=[best_sim],
+            ),
             initial_trigger="! " * 100,
         )
         end = time.time()

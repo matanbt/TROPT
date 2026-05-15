@@ -162,8 +162,15 @@ class Targets(pydantic.BaseModel):
     target_texts: Optional[Annotated[List[str], "n_templates"]] = None
     """Target texts for embedding attack, one per template.
 
-    Shape: (n_templates, d_model)
+    Shape: (n_templates)
     Used by: Encoder attacks for hot-start.
+    """
+
+    target_similarities: Optional[Annotated[List[float], "n_templates"]] = None
+    """Target similarity scores, one per template.
+    
+    Shape: (n_templates)
+    Used by: Combination Attack for early stop.
     """
 
     # ── Classifier targets ─────────────────────────────────────────────────
