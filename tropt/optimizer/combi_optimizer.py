@@ -458,18 +458,13 @@ class CombiOptimizer(BaseOptimizer):
         Returns:
             tuple: (text, tokens, decoded_str)
         """
-        # String model-specific additions
-        query = target_text.removeprefix("query: ").removeprefix(
-            "Represent this sentence for searching relevant passages: "
-        )
-
         # Check for already-calculated response to save LLM API costs and time
         text = None
         try:
             with open("cached_responses.json", "r") as f:
                 cached = json.load(f)
-            if query in cached:
-                text = cached[query]
+            if target_text in cached:
+                text = cached[target_text]
         except FileNotFoundError:
             pass
 
@@ -480,7 +475,7 @@ class CombiOptimizer(BaseOptimizer):
             messages: list[ChatCompletionUserMessageParam] = [
                 {
                     "role": "user",
-                    "content": f"Return a short sentence, up to 15 words, related to the following passage: {query}",
+                    "content": f"Return a short sentence, up to 15 words, related to the following passage: {target_text}",
                 },
             ]
             response = self.openai_client.chat.completions.create(

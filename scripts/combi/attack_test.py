@@ -398,12 +398,16 @@ def run_attacks(embedder_model_name: str, trials: int, raslite: bool) -> dict[st
             tracker=combi_tracker,
         )
 
+        target_text = q.removeprefix("query: ").removeprefix(
+            "Represent this sentence for searching relevant passages: "
+        )
+
         start = time.time()
         result = optimizer.optimize_trigger(
             templates=[prefix_info],
             targets=Targets(
                 target_vectors=target_vector,
-                target_texts=[q],
+                target_texts=[target_text],
                 target_similarities=[best_sim],
             ),
             initial_trigger="! " * 100,
