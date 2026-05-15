@@ -1,10 +1,11 @@
 # Running a Recipe from _Recipe Hub_
 
 The ***Recipe Hub*** hosts dozens of optimization recipes that are instantly runnable.
-Each recipe is a single function that wires together a _Model_, a _Loss_, an _Optimizer_, and an _Input Setup_ for a specific application: LLM jailbreaks, corpus poisoning attacks against retrievers, adversarial examples against classifiers, prompt recovery from images, and more.
+Recipes are end-to-end optimization schemes formed by instantiating and assembling TROPT's four foundational components — _model_, _loss_, _optimizer_, and _inputs and targets_ — to craft an optimized trigger.
+These can render endless applications, including: LLM jailbreaks, corpus poisoning attacks against retrievers, adversarial examples against classifiers, prompt recovery from images, toxicity auditing, and more.
 
 The full registry lives in [`tropt/recipe_hub/`](../../tropt/recipe_hub/).
-A complete list of available recipes (organised by task and access level) is included in the [API reference](../api/recipe_hub); you can also enumerate the registry programmatically with `list_recipes()`:
+A complete list of available recipes (organised by task and access level) is included in the [API reference](../api/recipe_hub); you can also enumerate the Recipe Hub programmatically with `list_recipes()`:
 
 ```python
 from tropt.recipe_hub import list_recipes
@@ -12,7 +13,7 @@ from tropt.recipe_hub import list_recipes
 print(list_recipes())   # all registered recipe keys
 ```
 
-Every recipe returns an {py:class}`~tropt.optimizer.OptimizerResult` with the optimized trigger, its loss trajectory, and the full reconstituted prompt:
+Every recipe returns an {py:class}`~tropt.optimizer.OptimizerResult` with the optimized trigger, its loss trajectory:
 
 ```python
 result.best_trigger_str   # the optimized trigger as a string
@@ -20,6 +21,10 @@ result.best_trigger_ids   # the optimized trigger as token IDs
 result.best_loss          # the best loss reached
 result.losses             # full per-step loss trajectory
 ```
+
+By convention, The recipes expects model from specific kind(s), eg OpenAI embedding model, Huggingface LM, etc. And input template that includes the input placeholder. 
+And the required objective information for the recipe (eg a target response we optimize towards). 
+However, recipes may vary in their api by design; intended for flexibility across new applications.
 
 ## Example Recipes
 
@@ -62,8 +67,7 @@ print(result.best_trigger_str)
 
 Following the threat model of [Zhong et al. (2023)](https://arxiv.org/abs/2310.19156), a corpus-poisoning attack inserts adversarial passages that are crafted to be *retrieved* for a target query set.
 [GASLITE (Ben-Tov et al., 2024)](https://arxiv.org/abs/2412.20953) does this by optimizing a discrete trigger appended to a "malicious" passage so that the passage's embedding is pulled toward the centroid of the target queries.
-
-The target vector is the centroid of a target query set — embed the queries with the *same* encoder used by the retriever and average:
+The target vector is the centroid of a target query set.
 
 ```python
 import torch
