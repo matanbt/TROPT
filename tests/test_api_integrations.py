@@ -1,7 +1,7 @@
 """Opt-in end-to-end tests for external-API model wrappers.
 
 Skipped by default. To run, set ``RUN_API_TESTS=1`` and the relevant API key
-(``OPENAI_API_KEY`` / ``GOOGLE_API_KEY``) in the environment:
+(``OPENAI_API_KEY`` / ``GOOGLE_API_KEY`` / ``VOYAGE_API_KEY``) in the environment:
 
     RUN_API_TESTS=1 OPENAI_API_KEY=sk-... uv run pytest tests/test_api_integrations.py -q
 
@@ -97,6 +97,28 @@ def test_gemini_encoder_invoke():
     from tropt.model.google.encoder import EncoderGeminiModel
 
     model = EncoderGeminiModel()
+    output = model.invoke_from_texts(["Hello world", "Goodbye world"])
+
+    assert output.output_embeddings is not None
+    embeddings = output.output_embeddings
+    assert embeddings.shape[0] == 2
+    assert embeddings.shape[1] == model.d_model
+
+
+# -----------------------------------------------------------------------------
+# Voyage Encoder: thin invoke-and-shape check.
+# Voyage wrapper only exposes LossTextAccessMixin (no tokenizer), so running
+# RandomSearchOptimizer would require an external tokenizer. Keeping this
+# minimal — enough to catch SDK / auth / wrapper regressions.
+# -----------------------------------------------------------------------------
+@pytest.mark.skipif(
+    not API_TESTS_ENABLED or not os.environ.get("VOYAGE_API_KEY"),
+    reason="Requires RUN_API_TESTS=1 and VOYAGE_API_KEY",
+)
+def test_voyage_encoder_invoke():
+    from tropt.model.voyage.encoder import EncoderVoyageModel
+
+    model = EncoderVoyageModel()
     output = model.invoke_from_texts(["Hello world", "Goodbye world"])
 
     assert output.output_embeddings is not None

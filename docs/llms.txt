@@ -25,7 +25,7 @@ This is defensive-security research tooling: use it for robustness evaluation, r
 
 - [API index](https://matanbt.github.io/TROPT/api/index.html): auto-generated reference for all public modules.
 - [`tropt.common`](https://matanbt.github.io/TROPT/api/common.html): `ModelInput`, `ModelOutput`, `Targets`, `MessageTargets`, `SliceKey`, `OPTIMIZED_TRIGGER_PLACEHOLDER`. Start here when reading loss / optimizer signatures.
-- [`tropt.model`](https://matanbt.github.io/TROPT/api/models.html): base classes, access mixins, and concrete backends (`LMHFModel`, `EncoderHFModel`, `EncoderOpenAIModel`, `LiteLLMModel`, `EncoderGeminiModel`).
+- [`tropt.model`](https://matanbt.github.io/TROPT/api/models.html): base classes, access mixins, and concrete backends (`LMHFModel`, `EncoderHFModel`, `EncoderOpenAIModel`, `LiteLLMModel`, `EncoderGeminiModel`, `EncoderVoyageModel`).
 - [`tropt.loss`](https://matanbt.github.io/TROPT/api/loss.html): base classes (`LogitBasedLoss`, `EmbeddingBasedLoss`, `TextBasedLoss`, `AttentionBasedLoss`, `HiddenStateBasedLoss`, `CombinedLoss`) and the resolver (`resolve_and_compute_loss`).
 - [`tropt.optimizer`](https://matanbt.github.io/TROPT/api/optimizer.html): `BaseOptimizer`, `OptimizerResult`, and every concrete optimizer (one per file).
 - [`tropt.recipe_hub`](https://matanbt.github.io/TROPT/api/recipe_hub.html): the full registry of one-call recipes and `list_recipes()`.
