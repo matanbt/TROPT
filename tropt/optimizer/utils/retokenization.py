@@ -44,10 +44,7 @@ def retokenize_filtering(
 
     for i in range(len(ids_decoded)):
         # Retokenize the decoded token ids
-        ids_encoded = tokenizer(
-            ids_decoded[i], return_tensors="pt", add_special_tokens=False
-        ).to(ids.device)["input_ids"][0]
-
+        ids_encoded = tokenizer.encode_trigger(ids_decoded[i]).to(ids.device)
 
         if torch.equal(ids[i], ids_encoded):
             # trigger is the same after retokenization
