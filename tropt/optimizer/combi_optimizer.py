@@ -139,7 +139,7 @@ class CombiOptimizer(BaseOptimizer):
             history=history,
             best_score=base_score,
             trigger_str=curr_p,
-            trigger=tokens,
+            trigger_ids=tokens,
         )
 
         if len(tokens):
@@ -188,7 +188,7 @@ class CombiOptimizer(BaseOptimizer):
                 history=history,
                 best_score=iter_best_score,
                 trigger_str=curr_p,
-                trigger=tokens,
+                trigger_ids=tokens,
             )
 
             if (
@@ -216,7 +216,7 @@ class CombiOptimizer(BaseOptimizer):
         Raises:
             ValueError: If `total_tokens` is not positive.
         """
-        initial_tokens = history[-1]["trigger"] if len(history) else []
+        initial_tokens = history[-1]["trigger_ids"] if len(history) else []
 
         valid_vocab_ids = self._get_valid_vocab_ids()
         if self.total_tokens <= 0:
@@ -256,7 +256,7 @@ class CombiOptimizer(BaseOptimizer):
             history=history,
             best_score=curr_score,
             trigger_str=current_prompt,
-            trigger=appended_tokens,
+            trigger_ids=appended_tokens,
         )
         best_tokens = list(appended_tokens)
         no_improve = 0
@@ -316,7 +316,7 @@ class CombiOptimizer(BaseOptimizer):
                 history=history,
                 best_score=curr_score,
                 trigger_str=current_prompt,
-                trigger=best_tokens,
+                trigger_ids=best_tokens,
             )
 
             # Early stopping
@@ -384,7 +384,7 @@ class CombiOptimizer(BaseOptimizer):
         result = OptimizerResult(
             best_loss=-history[-1]["best_score"],
             best_trigger_str=history[-1]["trigger_str"],
-            best_trigger_ids=history[-1]["trigger"],
+            best_trigger_ids=history[-1]["trigger_ids"],
             trigger_strs=[x["trigger_str"] for x in history],
             losses=[-x["best_score"] for x in history],
             full_prompt=[
@@ -487,7 +487,7 @@ class CombiOptimizer(BaseOptimizer):
         history: List[dict],
         best_score: float,
         trigger_str: str,
-        trigger: List[int],
+        trigger_ids: List[int],
         step: int = None,
     ):
         """
@@ -496,7 +496,7 @@ class CombiOptimizer(BaseOptimizer):
         Args:
             best_score (float): The current best similarity/loss score.
             trigger_str (str): The current best trigger string.
-            trigger (List[int]): The token IDs of the trigger.
+            trigger_ids (List[int]): The token IDs of the trigger.
             step (int, optional): Explicit step number. Defaults to incrementing previous step.
         """
         last_step = history[-1]["step"] if len(history) else -1
@@ -507,7 +507,7 @@ class CombiOptimizer(BaseOptimizer):
                 "num_tokens": self.model.get_usage_stats()["total_tokens"],
                 "num_api": self.model.get_usage_stats()["forward_calls"],
                 "trigger_str": trigger_str,
-                "trigger": trigger,
+                "trigger_ids": trigger_ids,
             }
         )
 
