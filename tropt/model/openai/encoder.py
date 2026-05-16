@@ -63,25 +63,20 @@ class OpenAITokenizer(BaseTokenizer):
 
     def __call__(
         self,
-        text: str | List[str],
+        text: List[str],
         return_tensors: Literal["list", "pt", "np"] = "list",
         **kwargs,
     ) -> BatchEncoding:
         _ = kwargs  # unused
-        if text is None:
-            return BatchEncoding()
+        assert isinstance(text, list), "BaseTokenizer.__call__ requires a list of strings."
 
-        if isinstance(text, list):
-            # Encode all special tokens as normal text
-            _ids = self._encoding.encode_batch(text, disallowed_special=())
-            max_len = max(len(i) for i in _ids)
-            input_ids = np.zeros((len(_ids), max_len), dtype=np.int64)
-            input_ids += self.pad_token_id
-            for i, _id in enumerate(_ids):
-                input_ids[i, : len(_id)] = _id
-        else:
-            input_ids = self._encoding.encode(text, disallowed_special=())
-            input_ids = np.array(input_ids, dtype=np.int64)
+        # Encode all special tokens as normal text
+        _ids = self._encoding.encode_batch(text, disallowed_special=())
+        max_len = max(len(i) for i in _ids)
+        input_ids = np.zeros((len(_ids), max_len), dtype=np.int64)
+        input_ids += self.pad_token_id
+        for i, _id in enumerate(_ids):
+            input_ids[i, : len(_id)] = _id
 
         if return_tensors == "pt":
             input_ids = torch.from_numpy(input_ids)
@@ -89,8 +84,9 @@ class OpenAITokenizer(BaseTokenizer):
             input_ids = input_ids.tolist()
         return BatchEncoding({"input_ids": input_ids})
 
-    def encode(self, text, **kwargs):
-        return self(text, **kwargs).input_ids
+    def encode(self, text: str, **kwargs) -> List[int]:
+        _ = kwargs  # unused
+        return self._encoding.encode(text, disallowed_special=())
 
     def _parse_ids(self, ids):
         return ids

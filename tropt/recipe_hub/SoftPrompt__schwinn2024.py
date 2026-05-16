@@ -206,7 +206,7 @@ def encode_from_soft_trigger(
     embedding_layer = model.embedding_layer
 
     ## Split texts into before/after optimized trigger parts
-    ids = tokenizer(text_template, add_special_tokens=True)["input_ids"]
+    ids = tokenizer([text_template], add_special_tokens=True)["input_ids"][0]
     ids = torch.tensor(ids, device=model.device, dtype=torch.int64)
     placeholder_id = tokenizer.convert_tokens_to_ids(
         OPTIMIZED_TRIGGER_PLACEHOLDER  # expected to be a single token

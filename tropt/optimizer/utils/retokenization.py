@@ -155,8 +155,8 @@ def full_messages_retokenize_filtering(
             # 2.b. Get the (re)tokenization of the triggered text template:
             # (this is what the model input will see at inference time)
             triggered_template_new_ids: List[int] = tokenizer(
-                triggered_template, add_special_tokens=False
-            ).input_ids
+                [triggered_template], add_special_tokens=False
+            ).input_ids[0]
 
             print("old texts:", tokenizer.decode(triggered_template_ids))
             print("new texts:", tokenizer.decode(triggered_template_new_ids))

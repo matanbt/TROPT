@@ -331,14 +331,11 @@ class BaseTokenizer(ABC):
     @abstractmethod
     def __call__(
         self,
-        text: str | List[str],
+        text: List[str],
         return_tensors: Literal["list", "pt", "np"] = "list",
         **kwargs,
     ) -> BatchEncoding:
-        """
-        Main entry point for tokenization.
-        Should return a BatchEncoding containing 'input_ids'.
-        """
+        """Tokenize a batch of strings. ``text`` must be a list (single strings rejected; use :meth:`encode`)."""
         pass
 
     @abstractmethod
@@ -415,6 +412,7 @@ class HFTokenizerWrapper(BaseTokenizer):
         return self._hf_tokenizer.vocab_size
 
     def __call__(self, text, return_tensors=None, **kwargs):
+        assert isinstance(text, list), "BaseTokenizer.__call__ requires a list of strings."
         # "list" in our abstraction maps to None (Python objects) in HF
         if return_tensors == "list":
             return_tensors = None
