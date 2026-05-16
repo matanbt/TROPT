@@ -40,12 +40,12 @@ class CombiOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # attack parameters:
         hot_start: bool = True,
-        batch_size: int = 128,
         total_tokens: int = 100,
         random_num_pool: int = 500,
         random_early_stop_patience: int = 5,
         square_p_init: float = 0.5,
         square_num_iters: int = 2000,
+        square_batch_size: int = 128,
         square_random_pool_per_pos: int = 300,
         square_early_stop_patience: int = 100,
         **kwargs,
@@ -59,7 +59,6 @@ class CombiOptimizer(BaseOptimizer):
             seed (int, optional): Random seed for reproducibility.
 
             hot_start (bool): Whether to try and employ hot-start.
-            batch_size (int): Batch size for embedding.
             sim (str): Similarity function to employ.
             total_tokens (int): How many tokens should be in the prefix.
 
@@ -68,6 +67,7 @@ class CombiOptimizer(BaseOptimizer):
 
             square_p_init (float): Initial fraction of tokens replaced in one update (analogous to image pixel fraction).
             square_num_iters (int): Maximum number of iterations.
+            square_batch_size (int): Batch size for square attack.
             square_random_pool_per_pos (int): For every position in the chosen block we sample uniformly that many candidate tokens and pick 1 (simple random draw). Higher => more diversity.
             square_early_stop_patience (int): Stop if no improvement for this many iterations.
 
@@ -80,7 +80,6 @@ class CombiOptimizer(BaseOptimizer):
 
         # save params:
         self.hot_start = hot_start
-        self.batch_size = batch_size
         self.total_tokens = total_tokens
 
         self.random_num_pool = random_num_pool
@@ -88,6 +87,7 @@ class CombiOptimizer(BaseOptimizer):
 
         self.square_p_init = square_p_init
         self.square_num_iters = square_num_iters
+        self.square_batch_size = square_batch_size
         self.square_random_pool_per_pos = square_random_pool_per_pos
         self.square_early_stop_patience = square_early_stop_patience
 
@@ -106,7 +106,7 @@ class CombiOptimizer(BaseOptimizer):
 
         This method iteratively constructs a trigger by appending tokens one by one (greedy approach).
         At each step, it samples a pool of random candidates (`random_num_pool`) from the vocabulary,
-        evaluates them in batches, and selects the token that maximizes the similarity score
+        evaluates them, and selects the token that maximizes the similarity score
         (minimizes loss). It stops early if no improvement is seen for `random_early_stop_patience`
         steps or if `best_sim` is reached.
         """
@@ -154,27 +154,22 @@ class CombiOptimizer(BaseOptimizer):
             best_id = None
             best_token = None
 
-            # Efficiently evaluate candidates in batches to maximize GPU utilization.
-            # We construct `batch_size` prompts, each with a different candidate token appended.
-            for i in range(0, pool.shape[0], self.batch_size):
-                batch_ids = pool[i : i + self.batch_size, np.newaxis].tolist()
-                batch_tokens = self.model.tokenizer.batch_decode(batch_ids)
+            # We construct prompts, each with a different candidate token appended.
+            batch_tokens = self.model.tokenizer.batch_decode(pool)
+            check_ps = [curr_p + " " + t for t in batch_tokens]
 
-                # build candidate prompts
-                check_ps = [curr_p + " " + t for t in batch_tokens]
-
-                # loss against q_emb
-                losses = self.model.compute_loss_from_texts(
-                    candidate_trigger_strs=check_ps,
-                    loss_func=self.loss_func,
-                )
-                min_loss, min_idx = torch.min(losses, dim=0)
-                prop_best_score = -min_loss.item()
-                best_idx = min_idx.item()
-                if prop_best_score > iter_best_score:
-                    iter_best_score = prop_best_score
-                    best_id = batch_ids[best_idx][0]
-                    best_token = batch_tokens[best_idx]
+            # loss against q_emb
+            losses = self.model.compute_loss_from_texts(
+                candidate_trigger_strs=check_ps,
+                loss_func=self.loss_func,
+            )
+            min_loss, min_idx = torch.min(losses, dim=0)
+            prop_best_score = -min_loss.item()
+            best_idx = min_idx.item()
+            if prop_best_score > iter_best_score:
+                iter_best_score = prop_best_score
+                best_id = pool[best_idx].item()
+                best_token = batch_tokens[best_idx]
 
             if best_token is not None:
                 tokens.append(best_id)
@@ -276,7 +271,7 @@ class CombiOptimizer(BaseOptimizer):
             # Each proposal takes the current best trigger and randomizes the tokens
             # within the [start, end] window.
             proposals_tokens = []
-            for _ in range(max(1, self.batch_size)):
+            for _ in range(max(1, self.square_batch_size)):
                 proposal = list(best_tokens)
                 for pos in range(start, end):
                     # Sample a small pool then choose one at random for this position
