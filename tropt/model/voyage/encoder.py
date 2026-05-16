@@ -1,15 +1,15 @@
-import random as _random
-import time
 from typing import List, Optional
 
 import torch
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 from tropt.common import ModelOutput
 from tropt.model import EncoderBaseModel, LossTextAccessMixin
-
-_RETRY_MAX_ATTEMPTS = 6
-_RETRY_BASE_DELAY = 1.5
-_RETRY_CAP_DELAY = 60.0
 
 
 def _is_transient_voyage_error(e: BaseException) -> bool:
@@ -40,6 +40,15 @@ def _is_transient_voyage_error(e: BaseException) -> bool:
     if isinstance(code, int) and (code == 429 or 500 <= code < 600):
         return True
     return False
+
+
+def _log_voyage_retry(rs):
+    e = rs.outcome.exception()
+    print(
+        f"[voyage retry] {type(e).__name__}: {str(e)[:80]} "
+        f"-> sleeping {rs.next_action.sleep:.1f}s (attempt {rs.attempt_number})",
+        flush=True,
+    )
 
 
 class EncoderVoyageModel(EncoderBaseModel, LossTextAccessMixin):
@@ -108,35 +117,25 @@ class EncoderVoyageModel(EncoderBaseModel, LossTextAccessMixin):
         MAX_BATCH = 128
         all_embeddings: list = []
         total_tokens = 0
+
+        @retry(
+            retry=retry_if_exception(_is_transient_voyage_error),
+            wait=wait_random_exponential(multiplier=1.5, max=60),
+            stop=stop_after_attempt(6),
+            before_sleep=_log_voyage_retry,
+            reraise=True,
+        )
+        def _embed_chunk(chunk):
+            return self._client.embed(
+                texts=chunk,
+                model=self.model_name,
+                input_type=input_type,
+                output_dimension=self._d_model,
+            )
+
         for start in range(0, len(input_texts), MAX_BATCH):
             chunk = input_texts[start : start + MAX_BATCH]
-            response = None
-            for attempt in range(_RETRY_MAX_ATTEMPTS):
-                try:
-                    response = self._client.embed(
-                        texts=chunk,
-                        model=self.model_name,
-                        input_type=input_type,
-                        output_dimension=self._d_model,
-                    )
-                    break
-                except Exception as e:
-                    if (
-                        attempt == _RETRY_MAX_ATTEMPTS - 1
-                        or not _is_transient_voyage_error(e)
-                    ):
-                        raise
-                    delay = min(
-                        _RETRY_CAP_DELAY,
-                        _RETRY_BASE_DELAY * (2**attempt) + _random.random(),
-                    )
-                    print(
-                        f"[voyage retry] {type(e).__name__}: {str(e)[:80]} "
-                        f"-> sleeping {delay:.1f}s "
-                        f"(attempt {attempt + 1}/{_RETRY_MAX_ATTEMPTS})",
-                        flush=True,
-                    )
-                    time.sleep(delay)
+            response = _embed_chunk(chunk)
             assert response is not None and response.embeddings is not None, (
                 "voyage embed returned no embeddings"
             )

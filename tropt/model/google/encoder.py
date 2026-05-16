@@ -1,15 +1,16 @@
-import random as _random
-import time
 from typing import List, Optional
 
 import torch
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_random_exponential,
+)
 
 from tropt.common import ModelOutput
 from tropt.model import EncoderBaseModel, LossTextAccessMixin
 
-_RETRY_MAX_ATTEMPTS = 6
-_RETRY_BASE_DELAY = 1.5
-_RETRY_CAP_DELAY = 60.0
 # Per-request HTTP timeout (ms). Without this, a half-open connection or
 # hung server can deadlock the run indefinitely.
 _REQUEST_TIMEOUT_MS = 120_000
@@ -39,6 +40,15 @@ def _is_transient_gemini_error(e: BaseException) -> bool:
     if name == "ServerError":
         return True
     return False
+
+
+def _log_gemini_retry(rs):
+    e = rs.outcome.exception()
+    print(
+        f"[gemini retry] {type(e).__name__}: {str(e)[:80]} "
+        f"-> sleeping {rs.next_action.sleep:.1f}s (attempt {rs.attempt_number})",
+        flush=True,
+    )
 
 
 class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
@@ -107,36 +117,26 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
         MAX_BATCH = 100
         all_embeddings = []
         total_tokens = 0
+        cfg = genai.types.EmbedContentConfig(
+            task_type=task_type,
+            output_dimensionality=self._d_model,
+        )
+
+        @retry(
+            retry=retry_if_exception(_is_transient_gemini_error),
+            wait=wait_random_exponential(multiplier=1.5, max=60),
+            stop=stop_after_attempt(6),
+            before_sleep=_log_gemini_retry,
+            reraise=True,
+        )
+        def _embed_chunk(chunk):
+            return self._client.models.embed_content(
+                contents=chunk, model=self.model_name, config=cfg,
+            )
+
         for start in range(0, len(input_texts), MAX_BATCH):
             chunk = input_texts[start : start + MAX_BATCH]
-            cfg = genai.types.EmbedContentConfig(
-                task_type=task_type,
-                output_dimensionality=self._d_model,
-            )
-            response = None
-            for attempt in range(_RETRY_MAX_ATTEMPTS):
-                try:
-                    response = self._client.models.embed_content(
-                        contents=chunk, model=self.model_name, config=cfg,
-                    )
-                    break
-                except Exception as e:
-                    if (
-                        attempt == _RETRY_MAX_ATTEMPTS - 1
-                        or not _is_transient_gemini_error(e)
-                    ):
-                        raise
-                    delay = min(
-                        _RETRY_CAP_DELAY,
-                        _RETRY_BASE_DELAY * (2**attempt) + _random.random(),
-                    )
-                    print(
-                        f"[gemini retry] {type(e).__name__}: {str(e)[:80]} "
-                        f"-> sleeping {delay:.1f}s "
-                        f"(attempt {attempt + 1}/{_RETRY_MAX_ATTEMPTS})",
-                        flush=True,
-                    )
-                    time.sleep(delay)
+            response = _embed_chunk(chunk)
             assert response is not None and response.embeddings is not None, (
                 "embed_content returned no embeddings"
             )
