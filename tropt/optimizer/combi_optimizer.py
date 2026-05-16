@@ -50,8 +50,7 @@ class CombiOptimizer(BaseOptimizer):
         random_early_stop_patience: int = 5,
         square_p_init: float = 0.5,
         square_num_iters: int = 2000,
-        square_batch_size: int = 128,
-        square_random_pool_per_pos: int = 300,
+        square_random_pool: int = 300,
         square_early_stop_patience: int = 100,
         **kwargs,
     ):
@@ -72,8 +71,7 @@ class CombiOptimizer(BaseOptimizer):
 
             square_p_init (float): Initial fraction of tokens replaced in one update (analogous to image pixel fraction).
             square_num_iters (int): Maximum number of iterations.
-            square_batch_size (int): Batch size for square attack.
-            square_random_pool_per_pos (int): For every position in the chosen block we sample uniformly that many candidate tokens and pick 1 (simple random draw). Higher => more diversity.
+            square_random_pool (int): For every position in the chosen block we sample uniformly that many candidate tokens. Higher => more diversity.
             square_early_stop_patience (int): Stop if no improvement for this many iterations.
 
         """
@@ -92,8 +90,7 @@ class CombiOptimizer(BaseOptimizer):
 
         self.square_p_init = square_p_init
         self.square_num_iters = square_num_iters
-        self.square_batch_size = square_batch_size
-        self.square_random_pool_per_pos = square_random_pool_per_pos
+        self.square_random_pool = square_random_pool
         self.square_early_stop_patience = square_early_stop_patience
 
         self.openai_client: Optional[OpenAI] = None
@@ -235,10 +232,6 @@ class CombiOptimizer(BaseOptimizer):
             else:
                 tok_id = np.random.choice(valid_vocab_ids).item()
                 tok = self.model.tokenizer.decode(tok_id)
-                if not tok.strip():  # ensure non-empty
-                    tok = self.model.tokenizer.encode("the", add_special_tokens=False)[
-                        0
-                    ]  # fallback harmless common token
                 appended_tokens.append(tok)
 
         def build_prompt(tokens_list):
@@ -272,24 +265,15 @@ class CombiOptimizer(BaseOptimizer):
             start = np.random.randint(0, self.total_tokens - block_size + 1)
             end = start + block_size
 
-            # Generate a batch of candidate triggers (proposals).
+            # Generate a pool of candidate triggers (proposals).
             # Each proposal takes the current best trigger and randomizes the tokens
             # within the [start, end] window.
             proposals_tokens = []
-            for _ in range(max(1, self.square_batch_size)):
+            num_proposals = max(1, self.square_random_pool)
+            for _ in range(num_proposals):
                 proposal = list(best_tokens)
                 for pos in range(start, end):
-                    # Sample a small pool then choose one at random for this position
-                    pool_ids = np.random.choice(
-                        valid_vocab_ids, size=(self.square_random_pool_per_pos,)
-                    )
-                    new_tok = np.random.choice(pool_ids).item()
-                    if not self.model.tokenizer.decode(
-                        new_tok, skip_special_tokens=True
-                    ).strip():
-                        # skip empty; retain old token
-                        continue
-                    proposal[pos] = new_tok
+                    proposal[pos] = np.random.choice(valid_vocab_ids).item()
                 proposals_tokens.append(proposal)
 
             # Build all candidate prompts and evaluate in batches
@@ -433,8 +417,13 @@ class CombiOptimizer(BaseOptimizer):
         english_pattern = re.compile(r"^[a-zA-Z]+$")
 
         for token, token_id in vocab.items():
+            # 1. Check the regex pattern
             if english_pattern.match(token):
-                valid_ids.append(token_id)
+                # 2. Decode to ensure it's not an empty/whitespace or special token
+                if self.model.tokenizer.decode(
+                    [token_id], skip_special_tokens=True
+                ).strip():
+                    valid_ids.append(token_id)
 
         self._valid_vocab_ids = np.array(valid_ids)
         return self._valid_vocab_ids
