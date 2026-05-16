@@ -1,10 +1,10 @@
-TODONOW
-
 # Contributing to TROPT
 
 This document covers contributions back to the **TROPT package itself**: registering new components, naming conventions, tests, and Recipe Hub entries.
 
 If you only want to *use* TROPT (with custom losses, optimizers, models, or recipes living in your own scripts), the user-facing guides under [`docs/guides/`](docs/guides/) are what you want; they are intentionally scoped to library use, with no contribution boilerplate. The sections below assume you have already followed the relevant guide and have a working component.
+
+<!-- TODONOW REREAD IT  -->
 
 ---
 

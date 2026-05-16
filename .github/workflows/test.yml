@@ -1,0 +1,44 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Cache HuggingFace models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-${{ runner.os }}-${{ hashFiles('tests/conftest.py') }}
+          restore-keys: hf-${{ runner.os }}-
+
+      - name: Run tests
+        env:
+          # Optional — only needed if a fixture model is gated on HuggingFace.
+          # Set this in repo Settings → Secrets if `google/gemma-3-270m-it`
+          # or any other model used in tests requires gated access.
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: uv run pytest -v

@@ -33,16 +33,11 @@ class OptimizerResult:
     losses: Optional[List[float]] = None
     trigger_strs: Optional[List[str]] = None
 
-    # Complete artifacts:
-    full_prompt: Optional[str | List[str]] = None
-
     def to_dict(self) -> dict:
         """Lightweight summary dict for final logging (no tensors or lists !)."""
         d: dict = {"best_loss": self.best_loss}
         if self.best_trigger_str is not None:
             d["best_trigger_str"] = self.best_trigger_str
-        if self.full_prompt is not None:
-            d["full_prompt"] = self.full_prompt
         return d
 
 ## ------- Base Optimizer ------- ##

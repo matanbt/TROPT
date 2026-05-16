@@ -108,8 +108,8 @@ class PALOptimizer(BaseOptimizer):
                 )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        # [TODO more informative name to use_token_eval; it should also reflect the its compute-loss and on the target model] [TODONOW]
-        use_token_eval = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
+        # (otherwise, if tokenizer are not shared, or we don't have access to the target model's tokenzier, we simply use text-level loss compuation)
+        use_token_input_for_loss = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
         if model == proxy_model:
             n_candidates_after_proxy_filter = None  # disable proxy filtering if proxy and target are the same
@@ -123,7 +123,7 @@ class PALOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.candidate_oversample_factor = candidate_oversample_factor
-        self.use_token_eval = use_token_eval
+        self.use_token_input_for_loss = use_token_input_for_loss
 
     def optimize_trigger(
         self,
@@ -140,8 +140,8 @@ class PALOptimizer(BaseOptimizer):
         # Proxy uses token access:
         proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
 
-        # Target model access depends on `use_token_eval`:
-        if not self.use_token_eval:
+        # Target model access depends on `use_token_input_for_loss`:
+        if not self.use_token_input_for_loss:
             target_model.set_inputs_from_texts(templates=templates, targets=targets)
         else:
             target_model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -243,7 +243,7 @@ class PALOptimizer(BaseOptimizer):
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
     ) -> Float[Tensor, "n_candidates"]:
         """Evaluate candidates on the target model. Returns per-candidate loss."""
-        if self.use_token_eval:
+        if self.use_token_input_for_loss:
             losses = self.model.compute_loss_from_tokens(
                 candidate_trigger_ids, loss_func=self.loss_func
             )

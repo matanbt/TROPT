@@ -180,7 +180,7 @@ class BinaryLMJudgeLoss(TextBasedLoss):
                 dim=0,
             )
 
-        return _batched()  # TODO make sure the callers `to.device & dtype` !!!!!!!!!! [TODONOW]
+        return _batched()
 
     @abstractmethod
     def __call__(
@@ -238,8 +238,8 @@ class FirstTokenNLLLoss(TextBasedLoss):
     Simple Adaptive Attacks" (2024).  The model is queried with ``max_tokens=1``
     and ``top_logprobs`` enabled.  The loss is the negative log-probability of
     ``target_token`` among the returned logprobs.  If the target token is not in
-    the top-k, the loss is ``missing_logprob_value`` (default ``inf``, matching
-    the paper's ``-(-inf) = inf``).
+    the top-k, its logprob is treated as ``missing_logprob_value`` (default
+    ``-inf``), making the loss ``+inf`` (worst possible) — matching the paper.
 
     To account for tokenizer quirks (leading space), the lookup tries both
     ``target_token`` and ``" " + target_token`` and takes the better one.
@@ -251,8 +251,10 @@ class FirstTokenNLLLoss(TextBasedLoss):
     target_token: str = "Sure"
     """First target token whose probability we maximise."""
 
-    missing_logprob_value: float = float("inf")
-    """Loss returned when the target token is absent from the top-k logprobs."""
+    missing_logprob_value: float = -float("inf")
+    """Logprob value substituted when the target token is absent from the top-k
+    logprobs. Negated to a loss in ``__call__``; default ``-inf`` yields a
+    ``+inf`` loss."""
 
     def __call__(
         self,

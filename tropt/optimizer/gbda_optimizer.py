@@ -66,24 +66,30 @@ class GBDAOptimizer(BaseOptimizer):
         learning_rate: float = 0.3,
         grad_clip_norm: Optional[float] = None,
     ):
-    # TODO rearrange and categorize the docstring parameters [TODONOW]
         """
         Args:
+            # GBDA-specific parameters:
             num_steps: Number of optimization steps.
             n_grad_samples: Gumbel-softmax samples per gradient step.
+            n_final_gumbel_samples: Samples to draw for final trigger selection (if 0, use argmax).
+
+            # Init parameters:
             initial_coeff: Initial logit value at original token positions (used when init_mode="from_trigger").
+            init_mode: How to initialize the logit matrix. "from_trigger" sets initial_coeff at
+                the initial trigger token positions. "random" samples from N(0, init_noise_scale).
+            init_noise_scale: Std of random initialization (used only with init_mode="random").
+
+            # Temperature schedule parameters:
             temp_schedule: Temperature schedule type. "linear" for linear annealing, "gradual" for
                 3-phase schedule (explore 2.5->1.0, refine 1.0->0.5, discretize 0.5->0.01).
                 When "gradual", temp_start and temp_end are ignored.
             temp_start: Starting Gumbel-softmax temperature (used only with "linear" schedule).
             temp_end: Ending Gumbel-softmax temperature (used only with "linear" schedule).
-            n_final_gumbel_samples: Samples to draw for final trigger selection (if 0, use argmax).
+
+            # Optimization parameters:
             gd_optimizer: The gradient descent optimizer Torch class to use.
             use_lr_schedule: If True, apply cosine annealing to the learning rate.
             grad_clip_norm: If set, clip gradient norms to this value before each optimizer step.
-            init_mode: How to initialize the logit matrix. "from_trigger" sets initial_coeff at
-                the initial trigger token positions. "random" samples from N(0, init_noise_scale).
-            init_noise_scale: Std of random initialization (used only with init_mode="random").
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
