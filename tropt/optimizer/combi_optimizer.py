@@ -168,6 +168,8 @@ class CombiOptimizer(BaseOptimizer):
             min_loss, min_idx = torch.min(losses, dim=0)
             prop_best_score = -min_loss.item()
             best_idx = min_idx.item()
+
+            # Update only if loss improved
             if prop_best_score > iter_best_score:
                 iter_best_score = prop_best_score
                 best_id = pool[best_idx].item()
@@ -287,6 +289,7 @@ class CombiOptimizer(BaseOptimizer):
                 prop_best_score = -min_loss.item()
                 best_idx = min_idx.item()
 
+            # Update only if loss improved
             if prop_best_score > curr_score:
                 curr_score = prop_best_score
                 best_tokens = proposals_tokens[best_idx]
