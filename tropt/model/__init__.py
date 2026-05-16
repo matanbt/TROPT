@@ -37,6 +37,9 @@ from .openai.encoder import EncoderOpenAIModel
 
 # Import all Google models:
 from .google.encoder import EncoderGeminiModel
+
+# Import all Voyage models:
+from .voyage.encoder import EncoderVoyageModel
 from .huggingface.encoder import EncoderHFModel
 from .huggingface.clip_encoder import CLIPTextEncoderHFModel
 

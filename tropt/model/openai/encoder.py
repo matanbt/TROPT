@@ -193,6 +193,10 @@ class EncoderOpenAIModel(
     def tokenizer(self) -> OpenAITokenizer:
         return self._tokenizer
 
+    @property
+    def vocab_size(self) -> int:
+        return self._tokenizer.vocab_size
+
     @retry(
         wait=wait_exponential(multiplier=1, min=4, max=60),
         stop=stop_after_attempt(5)

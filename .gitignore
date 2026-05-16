@@ -24,5 +24,3 @@ tropt/recipe_hub/PGD.py
 tropt/recipe_hub/PGD__geisler2024.py
 tropt/optimizer/pgd_optimizer.py
 
-# scripts/ is maintained in a separate repo: https://github.com/matanbt/tropt-scripts
-scripts/

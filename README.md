@@ -24,14 +24,14 @@
 
 ---
 
-***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text-triggers that elicit (un)desired behaviors from various types of NLP models (LLMs, embeddings, etc). 
+***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text-triggers that elicit (un)desired behaviors from various types of NLP models, including LLMs, embeddings, classifiers, etc. 
 <!-- It supports any optimization approach that minimizes a quantifiable objective by iteratively updating a trigger combined with user-provided templates; this is a common method used in LLM jailbreak. -->
 
 
 - ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with 30+ ready-to-run recipes (e.g., GCG, BEAST, MAC) — each invocable in a single call — to evaluate model and defense robustness.
 - 🔁 **Extend to any NLP model:** Swap the model or loss to port an LLM-jailbreak optimizer to retrievers, classifiers, multimodal systems, or interpretability research — no algorithm changes required.
 - 🧩 **Extend to any new recipe:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to build new, adaptive optimization schemes.
-- 🔬 **Build new optimizers:** Implement only the search algorithm against a compact, standardized interface — the backend handles tokenization, batching, and gradients, and your optimizer composes with every existing model and loss.
+- 🔬 **Build new optimizers and losses:** Implement only the search algorithm against a compact, standardized interface — the backend handles tokenization, batching, and gradients, and your optimizer composes with every existing model and loss.
 - 🛡️ **Benchmark head-to-head:** Form fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure with standardized evaluation.
 
 
@@ -92,7 +92,7 @@ result = optimizer.optimize_trigger(
 )
 ```
 
-See [quickstart.ipynb](quickstart.ipynb) for end-to-end examples. See the [adding a recipe](docs/guides/adding_a_recipe.md) guide for the full walkthrough, including how to package your composition as a reusable recipe in the Hub.
+Crucially, you can replace any component in this recipe code (e.g., replace target model and loss, or swap the optimizer); see [quickstart.ipynb](quickstart.ipynb) for more end-to-end examples. We include a detailed guide on [adding a recipe](docs/guides/adding_a_recipe.md) for the full walkthrough.
 
 ### Build New Optimizers & Losses 🔬
 
@@ -101,9 +101,9 @@ TROPT is designed as a **factory for new optimizers and losses**. Each is a self
 See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
 
 
-## 🤖 Use TROPT with a Coding Agent
+## 🤖 Use TROPT w/ Your Coding Agent
 
-TROPT ships with an 'agentic' usage guide at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that prompts any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Point your coding agent at it.
+TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that provides any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Simply point your coding agent at it.
 
 
 ## 🔗 Quick Links

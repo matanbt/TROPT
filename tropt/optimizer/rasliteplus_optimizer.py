@@ -110,12 +110,27 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         self.use_retokenize = use_retokenize
         self.use_random_logits = use_random_logits
 
-        self.util_model = self.model if util_model is None else util_model
+        if util_model is not None:
+            self.util_model = util_model
+        else:
+            # No util model provided: fall back to the target's tokenizer when
+            # only random logits are needed; otherwise we genuinely need a util LM.
+            if not self.use_random_logits:
+                raise ValueError(
+                    "RASLITEPlus requires a util_model with LM-logits access when "
+                    "use_random_logits=False. Pass util_model=<an LMBaseModel that "
+                    "implements LogitsTokenAccessMixin>, or set use_random_logits=True."
+                )
+            self.util_model = self.model
 
-        # Ensure tokenization capability
-        assert isinstance(self.util_model, TokenAccessMixin), "Either provide a util model for tokenization, or ensure the target model supports tokenization."
+        # Ensure tokenization capability on the chosen util_model.
+        assert isinstance(self.util_model, TokenAccessMixin), (
+            "RASLITEPlus needs tokenization for its search. Neither the target model "
+            "nor any util_model implements TokenAccessMixin -- pass util_model=<a model "
+            "with a tokenizer> (e.g. EncoderOpenAIModel, LMHFModel)."
+        )
 
-        # Ensure logits access capability (if not using random logits)
+        # Ensure logits access capability (if not using random logits).
         if not self.use_random_logits:
             assert isinstance(self.util_model, LMBaseModel) and isinstance(
                 self.util_model, LogitsTokenAccessMixin

@@ -51,6 +51,10 @@ google = [
   "google-genai>=1.0.0",
 ]
 
+voyage = [
+  "voyageai>=0.3.0",
+]
+
 litellm = [
   "litellm>=1.0.0",
 ]
@@ -75,7 +79,7 @@ notebooks = [
 
 # All optional features (convenience installer)
 all = [
-  "tropt[openai,google,litellm,vision,tracking,notebooks]",
+  "tropt[openai,google,voyage,litellm,vision,tracking,notebooks]",
 ]
 
 # Development tools
