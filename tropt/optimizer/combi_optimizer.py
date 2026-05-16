@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from openai import OpenAI
 from openai.types.chat import ChatCompletionUserMessageParam
-from torch._C import dtype
 from tqdm.auto import tqdm
 
 from tropt.common import (
@@ -17,7 +16,12 @@ from tropt.common import (
     DEFAULT_INIT_TRIGGER,
 )
 from tropt.loss.base import BaseLoss
-from tropt.model import BaseModel, LossTextAccessMixin, TokenAccessMixin
+from tropt.model import (
+    BaseModel,
+    LossTextAccessMixin,
+    TokenAccessMixin,
+    EncoderBaseModel,
+)
 from tropt.optimizer.base import BaseOptimizer, OptimizerResult
 from tropt.tracker.base import BaseTracker
 
@@ -30,7 +34,8 @@ class CombiOptimizer(BaseOptimizer):
 
     """
 
-    model_requirements = (LossTextAccessMixin, TokenAccessMixin)
+    # TODO test against LLM
+    model_requirements = (LossTextAccessMixin, TokenAccessMixin, EncoderBaseModel)
 
     def __init__(
         self,
