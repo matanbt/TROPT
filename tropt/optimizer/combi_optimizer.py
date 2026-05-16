@@ -377,10 +377,10 @@ class CombiOptimizer(BaseOptimizer):
             best_trigger_ids=history[-1]["trigger_ids"],
             trigger_strs=[x["trigger_str"] for x in history],
             losses=[-x["best_score"] for x in history],
-            full_prompt=[
-                t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, history[-1]["trigger_str"])
-                for t in templates
-            ],
+            # full_prompt=[
+            #     t.replace(OPTIMIZED_TRIGGER_PLACEHOLDER, history[-1]["trigger_str"])
+            #     for t in templates
+            # ],
         )
         return result
 
