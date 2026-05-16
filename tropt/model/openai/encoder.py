@@ -130,6 +130,17 @@ class OpenAITokenizer(BaseTokenizer):
         decoded_list = [s.replace(self.eot_token, "") for s in decoded_list]
         return decoded_list
 
+    def get_vocab(self) -> dict[str, int]:
+        vocab = {}
+        for i in range(self.vocab_size):
+            try:
+                token_bytes = self._encoding.decode_single_token_bytes(i)
+                token_str = token_bytes.decode("utf-8", errors="replace")
+            except KeyError:
+                token_str = self._encoding.decode([i])
+            vocab[token_str] = i
+        return vocab
+
 
 # --------------------------------------------------------------------------
 # OpenAI Encoder Model
