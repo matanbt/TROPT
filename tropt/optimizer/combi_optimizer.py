@@ -340,6 +340,9 @@ class CombiOptimizer(BaseOptimizer):
             np.random.seed(self.seed)
             torch.manual_seed(self.seed)
 
+        # TODO test multiple templates
+        assert len(templates) == 1, "Can only attack with one template"
+
         self.model.set_inputs_from_texts(templates=templates, targets=targets)
 
         # TODO hot start without target texts?
