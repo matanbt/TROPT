@@ -260,7 +260,7 @@ class CombiOptimizer(BaseOptimizer):
         for it in range(1, self.square_num_iters + 1):
             # Calculate the size of the window to perturb.
             # Early iterations perturb large blocks (exploration); later iterations fine-tune small blocks (exploitation).
-            p = self._p_selection(self.square_p_init, it - 1, self.square_num_iters)
+            p = self._p_selection(it - 1)
             block_size = max(1, round(p * self.total_tokens))
             block_size = min(block_size, self.total_tokens)
 
@@ -381,14 +381,15 @@ class CombiOptimizer(BaseOptimizer):
         )
         return result
 
-    def _p_selection(self, p_init: float, it: int, n_iters: int) -> float:
+    def _p_selection(self, it: int) -> float:
         """
         Piece-wise constant schedule for p (re-used from original Square Attack).
 
         Calculates the fraction of the sequence to mutate based on the current iteration number.
         The mutation size decreases as the attack progresses (fine-tuning phase).
         """
-        scaled = int(it / n_iters * 10000)
+        p_init = self.square_p_init
+        scaled = int(it / self.square_num_iters * 10000)
         # Mirrors original schedule thresholds.
         if 10 < scaled <= 50:
             return p_init / 2
