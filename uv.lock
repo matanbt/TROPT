@@ -7046,7 +7046,7 @@ requires-dist = [
     { name = "torch", specifier = ">=2.4.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "tqdm" },
     { name = "trackio", marker = "extra == 'tracking'", specifier = ">=0.3.0" },
-    { name = "transformers", specifier = ">=5.3.0" },
+    { name = "transformers", specifier = "==5.4.0" },
     { name = "tropt", extras = ["all"], marker = "extra == 'dev'" },
     { name = "tropt", extras = ["openai", "google", "voyage", "litellm", "vision", "tracking", "notebooks"], marker = "extra == 'all'" },
     { name = "voyageai", marker = "extra == 'voyage'", specifier = ">=0.3.0" },

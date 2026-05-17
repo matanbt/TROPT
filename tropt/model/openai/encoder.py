@@ -57,8 +57,8 @@ class OpenAITokenizer(BaseTokenizer):
     @property
     def all_special_ids(self) -> List[int]:
         return [
-            self(tok, return_tensors="list").input_ids[0]
-            for tok in list(self._encoding.special_tokens_set)
+            self._encoding.encode_single_token(tok)
+            for tok in self._encoding.special_tokens_set
         ]
 
     def __call__(
