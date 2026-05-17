@@ -126,6 +126,20 @@ class OpenAITokenizer(BaseTokenizer):
         decoded_list = [s.replace(self.eot_token, "") for s in decoded_list]
         return decoded_list
 
+    def get_vocab(self) -> dict[str, int]:
+        vocab = {}
+
+        # 1. Add standard mergeable ranks (bytes -> int)
+        for token_bytes, token_id in self._encoding._mergeable_ranks.items():
+            token_str = token_bytes.decode("utf-8", errors="replace")
+            vocab[token_str] = token_id
+
+        # 2. Add special tokens (str -> int)
+        for token_str, token_id in self._encoding._special_tokens.items():
+            vocab[token_str] = token_id
+
+        return vocab
+
 
 # --------------------------------------------------------------------------
 # OpenAI Encoder Model

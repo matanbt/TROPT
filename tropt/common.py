@@ -157,6 +157,20 @@ class Targets(pydantic.BaseModel):
     and update this annotation accordingly.
     """
 
+    target_texts: Optional[Annotated[List[str], "n_templates"]] = None
+    """Target texts for embedding attack, one per template.
+
+    Shape: (n_templates)
+    Used by: Encoder attacks for hot-start.
+    """
+
+    target_similarities: Optional[Annotated[List[float], "n_templates"]] = None
+    """Target similarity scores, one per template.
+
+    Shape: (n_templates)
+    Used by: Combination Attack for early stop.
+    """
+
     # ── Classifier targets ─────────────────────────────────────────────────
     # Consumed by losses that operate on classifier logits.
 
@@ -215,7 +229,6 @@ class Targets(pydantic.BaseModel):
             if isinstance(v, list) and isinstance(v[0], Tensor):
                 updates[k] = [t.to(device) for t in v]
         return self.model_copy(update=updates)
-
 
 
 # ======================= Model Input Wrapper =======================
