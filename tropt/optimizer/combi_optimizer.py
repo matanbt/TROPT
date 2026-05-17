@@ -146,7 +146,7 @@ class CombiOptimizer(BaseOptimizer):
         # once a token is selected for position N, it is fixed, and we optimize position N+1.
         for n in range(self.total_tokens - len(tokens)):
             # print(f"iteration {n + 1}")
-            pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,))
+            pool = np.random.choice(valid_vocab_ids, size=(self.random_num_pool,)).tolist()
 
             # compute current baseline similarity for this iteration
             iter_best_score = -self.model.compute_loss_from_texts(
