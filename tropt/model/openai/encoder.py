@@ -132,13 +132,16 @@ class OpenAITokenizer(BaseTokenizer):
 
     def get_vocab(self) -> dict[str, int]:
         vocab = {}
-        for i in range(self.vocab_size):
-            try:
-                token_bytes = self._encoding.decode_single_token_bytes(i)
-                token_str = token_bytes.decode("utf-8", errors="replace")
-            except KeyError:
-                token_str = self._encoding.decode([i])
-            vocab[token_str] = i
+
+        # 1. Add standard mergeable ranks (bytes -> int)
+        for token_bytes, token_id in self._encoding._mergeable_ranks.items():
+            token_str = token_bytes.decode("utf-8", errors="replace")
+            vocab[token_str] = token_id
+
+        # 2. Add special tokens (str -> int)
+        for token_str, token_id in self._encoding._special_tokens.items():
+            vocab[token_str] = token_id
+
         return vocab
 
 
