@@ -2,22 +2,23 @@
 
 Going one level of abstraction down from picking an existing loss off the shelf as part of a recipe composition, this guide shows how to build your *own* custom loss.
 
-A TROPT loss defines the optimization objective: given a model's output on a triggered input (and sometimes the input itself), it returns a per-sample scalar that the optimizer minimizes.
+A TROPT loss defines the optimization objective: given a model's output on a trigger-combined input, it computes and returns a scalar for the optimizer to minimize.
 
 **Design in a nutshell.** The loss is agnostic to both the model and the optimizer: it does not call the model — it operates on the model's artifacts — and is _not_ wired into the optimization loop directly. 
 Instead, the model component invokes the registered loss as part of its forward pass, and TROPT's resolver ({py:func}`~tropt.loss.resolve_and_compute_loss`) automatically fills in the right model data by inspecting the loss's `__call__` signature. 
-This keeps losses small, swappable, and trivial to compose into recipes (see [Composing a Recipe](adding_a_recipe.md)).
+This keeps losses small, swappable, and trivial to compose into recipes (as we've seen in [Composing a Recipe](adding_a_recipe.md)).
 
-> **The one rule.** The names of your `__call__` parameters must match field names on {py:class}`~tropt.common.ModelOutput`, {py:class}`~tropt.common.ModelInput`, or {py:class}`~tropt.common.MessageTargets`. Get the names right and everything connects automatically. The most common fields are listed in the [reference table](#available-parameter-names) at the end of this guide; the canonical definitions live in [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py).
 
-This guide effectively explains how every loss in [`tropt/loss/`](https://github.com/matanbt/TROPT/tree/main/tropt/loss) is implemented; browsing the existing losses there can provide helpful concrete examples.
+This guide effectively explains how every loss in {py:mod}`tropt.loss` is implemented; browsing the existing losses there can provide helpful concrete examples.
 
 > If you would like to *contribute* a loss back to TROPT, see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md). This guide focuses on building losses for your own use.
 
 
 ## A Minimal Loss
 
-We start with a simple loss useful against embedding models: maximizing cosine similarity between an encoder's output embedding and a target embedding vector — e.g., aligning a trigger-augmented text with a target vector.
+Implementing a loss in TROPT requires following a single rule: the names of your `__call__` parameters must match field names on {py:class}`~tropt.common.ModelOutput`, {py:class}`~tropt.common.ModelInput`, or {py:class}`~tropt.common.MessageTargets`. Get the names right and everything connects automatically. The most common fields are listed in the [reference table](#available-parameter-names) at the end of this guide; the canonical definitions live in {py:mod}`tropt.common`.
+
+To demonstrate loss implementation, we start with a simple loss useful against embedding models: maximizing cosine similarity between an encoder's output embedding and a target embedding vector — e.g., aligning a trigger-augmented text with a target vector.
 
 ```python
 from dataclasses import dataclass
@@ -47,30 +48,34 @@ class MyLoss(BaseLoss):
 **Let's break the implmenetation down, and see what every loss must satisfy:**
 
 - **Inherits from {py:class}`~tropt.loss.BaseLoss`.** Any subclass of `BaseLoss` works regardless of where it lives — no registration step, no entry point.
-- **Parameter names do all the wiring.** `output_embeddings` is a field on {py:class}`~tropt.common.ModelOutput` (populated by encoder models); `target_vectors` is a field on {py:class}`~tropt.common.MessageTargets` (sliced from the {py:class}`~tropt.common.Targets` you pass to {py:meth}`~tropt.optimizer.BaseOptimizer.optimize_trigger`). The resolver matches by name, no other registration needed.
+- **Parameter names do all the wiring.** `output_embeddings` is a field on {py:class}`~tropt.common.ModelOutput` (populated by encoder models); `target_vectors` is a field on {py:class}`~tropt.common.MessageTargets`. The resolver matches by name, no other registration needed.
 - **Return shape `(bsz,)`.** One per-sample loss, no batch reduction. The optimizer handles aggregation. Note that there is no ned to handle batching internally within the loss; this is the _caller_ duty.
 - **Sign convention.** Losses are *minimized*. Negate inside the loss if you want to maximize the underlying quantity.
 - **`@dataclass` decoration.** Not strictly required, but lets you add hyperparameters cleanly later (next section). All built-in losses use it.
 
-To use this loss, just drop it into any optimizer that supports embedding-based objectives:
+To _use_ this loss, just drop it into any optimizer that supports embedding-based objectives:
 
-```python
+```{code-block} python
+:emphasize-lines: 4
+
 from tropt.common import Targets
 from tropt.optimizer import GASLITEOptimizer
 
-optimizer = GASLITEOptimizer(model=encoder_model, loss=MyLoss(), num_steps=50)
+loss = MyLoss()
+optimizer = GASLITEOptimizer(model=encoder_model, loss=loss, num_steps=50)
 result = optimizer.optimize_trigger(
     templates=["This passage is great. {{OPTIMIZED_TRIGGER}}"],
     targets=Targets(target_vectors=target_vec.unsqueeze(0)),  # (1, d_model)
 )
 ```
 
-(For more on composing losses with models and optimizers into a runnable attack, see [Composing a Recipe](adding_a_recipe.md).)
-
 
 ## Enhancing the Loss
 
-The version below adds (i) hyperparameters via dataclass fields, (ii) a `require_*` flag asking the model for extra output, and (iii) inheritance from an existing category base class.
+The version below adds 
+_(i)_ hyperparameters via dataclass fields, 
+_(ii)_ a `require_*` flag asking the model for extra output, 
+and _(iii)_ inheritance from an existing loss category base class.
 
 For this we rewrite the loss as **cross-entropy on a prefilled target response** — the canonical [GCG](https://arxiv.org/abs/2307.15043)-style jailbreak loss, which encourages the model to produce an affirmative target string (e.g. `"Sure, here's how:"`). This is what {py:class}`~tropt.loss.PrefillCELoss` does in TROPT.
 
@@ -108,13 +113,10 @@ class MyLoss(PrefillBasedLoss):
         nll = F.cross_entropy(logits.transpose(-1, -2), targets, reduction="none")
         return nll.mean(dim=-1)  # (bsz,)
 ```
-(*Highlighted lines* are new or changed compared to the minimal loss.)
 
 Breaking down the additions:
 
-**Hyperparameters as dataclass fields.** Anything you want callers to tweak at construction time — temperatures, margins, layer ranges, mode flags — goes here. Crucially, *per-template* data (target tokens, target vectors, target classes) does **not** belong here; it belongs on {py:class}`~tropt.common.Targets`, and the loss pulls it in by parameter name (`target_response_toks` above). This keeps the loss instance stateless w.r.t. the attack — the optimizer can resample or subsample templates without telling the loss.
-
-**`require_*` flags.** Some losses need the model to do extra work before returning output — append the target response and return logits over it, return attention weights, run real generation, etc. Declare this via a `ClassVar` bool on the loss; the model backend inspects these before its forward pass and turns the right outputs on. The full set:
+**`require_*` flags.** Some losses need the model to do extra work before returning output — append the target response and return logits over it, return attention weights, run real generation, etc. Declare this as a class attibute in the loss; the model backend inspects these before its forward pass and turns the right outputs on. The full set:
 
 | Attribute | What the model does when it's `True` |
 |---|---|
@@ -124,10 +126,14 @@ Breaking down the additions:
 | `require_generation` | Performs autoregressive generation, returns `generated_response_strs` |
 | `require_first_token_logprobs` | Returns `response_first_token_logprobs` (e.g. for OpenAI-style logprobs APIs) |
 
-**Inheriting from a category base class.** [`tropt/loss/`](https://github.com/matanbt/TROPT/tree/main/tropt/loss) defines abstract bases like {py:class}`~tropt.loss.PrefillBasedLoss`, {py:class}`~tropt.loss.EmbeddingBasedLoss`, {py:class}`~tropt.loss.HiddenStateBasedLoss`, {py:class}`~tropt.loss.AttentionBasedLoss`, {py:class}`~tropt.loss.ClassificationBasedLoss`, and {py:class}`~tropt.loss.TextBasedLoss`. Each sets the right `require_*` flag and pins a typed `__call__` signature for its category — inheriting from the right base saves boilerplate and signals intent. The categorization is a **convention for readability**, not a hard requirement: the resolver dispatches by parameter names, not by base class. If your loss doesn't fit any existing category, inheriting from `BaseLoss` directly and setting the flags yourself is equally valid.
+
+**Convention: Hyperparameters as Fields.** Anything you want callers to tweak at construction time — temperatures, margins, layer ranges, mode flags — goes here. Crucially, *per-template* data (target tokens, target vectors, target classes) does **not** belong here; it belongs on {py:class}`~tropt.common.Targets`, and the loss pulls it in by parameter name (`target_response_toks` above). This keeps the loss instance stateless w.r.t. the attack — the optimizer can resample or subsample templates without telling the loss.
 
 
-## A Variant: Activation Steering
+**Convention: Inheriting from a category base class.** {py:mod}`tropt.loss` defines abstract bases like {py:class}`~tropt.loss.PrefillBasedLoss`, {py:class}`~tropt.loss.EmbeddingBasedLoss`, {py:class}`~tropt.loss.HiddenStateBasedLoss`, {py:class}`~tropt.loss.AttentionBasedLoss`, {py:class}`~tropt.loss.ClassificationBasedLoss`, and {py:class}`~tropt.loss.TextBasedLoss`. Each sets the right `require_*` flag and pins a typed `__call__` signature for its category — inheriting from the right base saves boilerplate and signals intent. The categorization is a **convention for readability**, not a hard requirement: the resolver dispatches by parameter names, not by base class. If your loss doesn't fit any existing category, inheriting from `BaseLoss` directly and setting the flags yourself is equally valid.
+
+
+## Practical Example: Activation Steering
 
 Up to here we asked the model for logits over a target response. The same pattern works just as well for *any* model artifact — swap the base class, swap the `require_*` flag, and swap the `__call__` parameter names, and you have a loss over a completely different signal.
 
@@ -234,7 +240,6 @@ class MyLoss(TextBasedLoss):
         mask = enc.attention_mask[:, 1:].float()
         return (nll * mask).sum(-1) / mask.sum(-1)  # mean NLL per sample
 ```
-(*Highlighted lines* are new or changed compared to the previous examples.)
 
 Breaking down the changes:
 
@@ -266,7 +271,7 @@ Two constraints to know about:
 
 ## Available Parameter Names
 
-The resolver matches your `__call__` parameter names against fields on three classes (see [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py) for the canonical definitions and full list).
+The resolver matches your `__call__` parameter names against fields on three classes (see {py:mod}`tropt.common` for the canonical definitions and full list).
 
 **From {py:class}`~tropt.common.ModelOutput`** — produced by the model's forward pass:
 
@@ -304,7 +309,5 @@ The resolver matches your `__call__` parameter names against fields on three cla
 
 Parameters with default values in your signature are treated as optional by the resolver — missing data does not raise. Use this for losses that can operate in multiple modes.
 
-If the data you need isn't exposed by any current field, add a new field to `ModelOutput` / `MessageTargets` / `Targets` in [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py) and populate it from the relevant model backend; the resolver will then route it to any loss that names it.
+If the data you need isn't exposed by any current field, add a new field to `ModelOutput` / `MessageTargets` / `Targets` in {py:mod}`tropt.common` and populate it from the relevant model backend; the resolver will then route it to any loss that names it.
 
-
-> Want to contribute your loss back to the TROPT package? See [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for the registration and testing steps.

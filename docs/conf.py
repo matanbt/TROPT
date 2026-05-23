@@ -49,6 +49,7 @@ codeautolink_concat_default = True
 # MyST: enable colon-fence so sphinx-design directives (`:::{grid}` etc.) and
 # admonitions work in .md guides.
 myst_enable_extensions = ["colon_fence", "deflist"]
+myst_heading_anchors = 3
 
 autodoc_mock_imports = ['runner', 'sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'tqdm', 'transformers', 'accelerate', 'hydra', 'omegaconf', 'huggingface_hub', 'datasets', 'PIL', 'diffusers', 'trackio']
 autodoc_typehints = "description"
@@ -65,6 +66,7 @@ language = 'en'
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
+html_favicon = '_static/favicon.svg'
 html_theme_options = {
     "logo": {
         "image_light": "_static/logo.svg",
