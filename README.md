@@ -3,15 +3,17 @@
 </p>
 
 <p align="center">
-  <strong>Optimize text-triggers toward any goal, with any optimizer, against any NLP model, under a unified framework</strong>
+  <strong>Optimize text-triggers 
+  toward any goal, with any optimizer, against any NLP model, 
+  under a unified framework</strong>
 </p>
 
 <p align="center">
   <a href="https://matanbt.github.io/TROPT"><strong>Docs</strong></a> &ensp;|&ensp;
   <a href="quickstart.ipynb"><strong>Quick Start (Notebook)</strong></a> &ensp;|&ensp;
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> &ensp;|&ensp;
   <a href="https://matanbt.github.io/TROPT/guides/index.html"><strong>Guides</strong></a> &ensp;|&ensp;
-  <a href="https://matanbt.github.io/TROPT/api/index.html"><strong>API</strong></a> &ensp;|&ensp;
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  <a href="[TODO]"><strong>Paper</strong></a>
 </p>
 
 <p align="center">
@@ -24,15 +26,14 @@
 
 ---
 
-***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text-triggers that elicit (un)desired behaviors from various types of NLP models, including LLMs, embeddings, classifiers, etc. 
-<!-- It supports any optimization approach that minimizes a quantifiable objective by iteratively updating a trigger combined with user-provided templates; this is a common method used in LLM jailbreak. -->
+***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text-trigger optimizers that elicit (un)desired behaviors from various types of NLP models, including LLMs, embeddings, classifiers, etc.
 
 
 - ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with 30+ ready-to-run recipes (e.g., GCG, BEAST, MAC) — each invocable in a single call — to evaluate model and defense robustness.
 - 🔁 **Extend to any NLP model:** Swap the model or loss to port an LLM-jailbreak optimizer to retrievers, classifiers, multimodal systems, or interpretability research — no algorithm changes required.
-- 🧩 **Extend to any new recipe:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to build new, adaptive optimization schemes.
-- 🔬 **Build new optimizers and losses:** Implement only the search algorithm against a compact, standardized interface — the backend handles tokenization, batching, and gradients, and your optimizer composes with every existing model and loss.
-- 🛡️ **Benchmark head-to-head:** Form fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure with standardized evaluation.
+- 🧩 **Compose new recipes:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to build new, adaptive optimization schemes.
+- 🔬 **Build new optimizers and losses:** Add custom losses by defining only their core logic, or optimizers by defining only their search algorithm. New losses and optimizers instantly compose with every compatible model and recipe — TROPT absorbs the common boilerplate (batching, tokenization, gradients).
+- 🛡️ **Benchmark head-to-head:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure with standardized evaluation.
 
 
 ## 🚀 Getting Started
@@ -40,7 +41,7 @@
 ### Installation
 
 ```bash
-pip install tropt           # core (HuggingFace support)
+pip install tropt           # core dependencies
 pip install tropt[all]      # all optional extras (OpenAI, LiteLLM, tracking, ...)
 ```
 
@@ -55,9 +56,9 @@ pre-commit install
 
 ### Quick Start: Run a Recipe 🥗
 
-TROPT lets you instantly run an optimization scheme — a _recipe_ — in a single function call. 30+ recipes ship out of the box in the [Recipe Hub](https://matanbt.github.io/TROPT/api/recipe_hub.html), covering LLM jailbreaks (white- and black-box), embedding attacks, and interpretability studies.
+TROPT lets you run an optimization scheme — a _recipe_ — in a single function call. 30+ recipes ship out of the box in the [Recipe Hub](https://matanbt.github.io/TROPT/guides/running_a_recipe.html), covering LLM jailbreaks (white- and black-box), embedding attacks, and interpretability studies.
 
-For instance, you can import the GCG jailbreak [(Zou et al., 2023)](https://arxiv.org/abs/2307.15043) and reproduce it on `gemma-3-1b-it` in a few lines:
+For instance, you can import the GCG jailbreak ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) and reproduce it on `gemma-3-1b-it` in a few lines:
 
 ```python
 from tropt.recipe_hub.GCG import gcg__zou2023
@@ -74,13 +75,13 @@ print("Lowest loss:", result.best_loss)
 
 ### Compose Your Own Recipe 🫴
 
-Pick any model, loss, and optimizer and assemble them directly — this is how recipes are built underneath:
+Pick any model, loss, and optimizer and assemble them directly — this is how the _recipes_ are built underneath:
 
 ```python
 from tropt.common import Targets
 from tropt.loss import PrefillCELoss
-from tropt.model.huggingface.lm import LMHFModel
-from tropt.optimizer.gcg_optimizer import GCGOptimizer
+from tropt.model.huggingface import LMHFModel
+from tropt.optimizer import GCGOptimizer
 
 model = LMHFModel(model_name="google/gemma-3-1b-it")
 loss = PrefillCELoss()
@@ -92,29 +93,42 @@ result = optimizer.optimize_trigger(
 )
 ```
 
-Crucially, you can replace any component in this recipe code (e.g., replace target model and loss, or swap the optimizer); see [quickstart.ipynb](quickstart.ipynb) for more end-to-end examples. We include a detailed guide on [adding a recipe](docs/guides/adding_a_recipe.md) for the full walkthrough.
+You can replace any component in this recipe code with another compatible one; e.g., swap the loss or optimizer with a more sophisticated one to enhance the jailbreak. 
+For more examples see [quickstart.ipynb](quickstart.ipynb) notebook, and the detailed guide on [adding a recipe](docs/guides/adding_a_recipe.md).
 
 ### Build New Optimizers & Losses 🔬
 
-TROPT is designed as a **factory for new optimizers and losses**. Each is a self-contained module behind a compact, standardized interface: implement only the search algorithm or objective, and the backend handles model integration, tokenization, batching, and gradients. Your new optimizer or loss then composes automatically with every existing model and counterpart component.
+TROPT is designed as a **factory for new optimizers and losses**. Each is a self-contained module behind a compact, standardized interface. This makes optimizer and loss modules more transparent and easy to read, and easily extensible: creating a new optimizer largely amounts to defining its search algorithm, and a new loss to defining its core computation.
+TROPT internally handles the repeated logic required to operate these modules, including input--trigger management, batching, tokenization blocking, trigger gradient computation, etc.
+Your new optimizer or loss then composes automatically with every existing model and counterpart component.
 
-See the guides for adding [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
-
-
-## 🤖 Use TROPT w/ Your Coding Agent
-
-TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that provides any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) with how to install, run, and extend TROPT. Simply point your coding agent at it.
+Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickstart.ipynb); the docs have more detailed guides on building [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
 
 
-## 🔗 Quick Links
+## 🤖 Use TROPT with Your Coding Agent
 
-| [Usage Guides](https://matanbt.github.io/TROPT/guides/index.html) | [Quick Notebook](quickstart.ipynb) | [API Reference](https://matanbt.github.io/TROPT/api/index.html) | [Contributing](CONTRIBUTING.md) |
-| --- | --- | --- | --- |
-| Step-by-step: adding models, losses, optimizers, recipes | End-to-end examples for jailbreaks, attacks, and custom objectives | Auto-generated API docs for every module | How to contribute new optimizers and attacks |
+TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT. Simply point your coding agent at it.
+
+
+## Contributing
+
+TROPT covers a continuously growing area. As TROPT aims to serve as a relevant hub for discrete text optimizers and recipes, it is important to keep it updated.
+You can help improve TROPT in the following two ways:
+
+**⚠️ Report.** If you encounter any issue, bug, unexpected behavior, or error when using TROPT, please open a [new issue](https://github.com/matanbt/TROPT/issues).
+
+**👨‍💻 Contribute.** You are encouraged to contribute new recipes, losses, optimizers, or model integrations, as well as to fix open issues. We kindly ask you to do so following the guidelines defined in [CONTRIBUTING.md](CONTRIBUTING.md).
+
+<!-- ## 🔗 Quick Links
+
+| [Usage Guides](https://matanbt.github.io/TROPT/guides/index.html) | [Quick Notebook](quickstart.ipynb) | [API Reference](https://matanbt.github.io/TROPT/api/index.html) | 
+| --- | --- | --- | 
+| Step-by-step: adding models, losses, optimizers, recipes | End-to-end examples for jailbreaks, attacks, and custom objectives | Auto-generated API docs for every module |  -->
 
 
 ## Citation
 
+[TODO paper cite!]
 If you find this package useful, please cite our paper as follows:
 
 ```bibtex

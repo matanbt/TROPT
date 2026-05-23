@@ -6,7 +6,7 @@ This guide walks you through wrapping a new model backend. Pick the section that
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
 - **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `HuggingFaceBackendModel` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
 
-> This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (especially "Pillar 1: Target Model"). For full API reference, see the [models API docs](../api/models).
+> This guide is self-contained — you can follow it step by step without reading anything else. If you want to understand the *why* behind the design, see [DESIGN.md](../../DESIGN.md) (especially "Component 1: Target Model"). For full API reference, see the [models API docs](../api/models).
 
 ---
 

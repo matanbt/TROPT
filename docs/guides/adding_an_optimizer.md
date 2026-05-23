@@ -309,7 +309,7 @@ Same overall flow, swapped at the access boundary:
 
 **Splitting a long `optimize_trigger`.** If the method grows past a screenful, delegate logical chunks to private methods (`self._propose_candidates(...)`, `self._update_best(...)`). Don't over-do it though — the top-level `optimize_trigger` should still read as the *algorithm*, not as glue.
 
-**Keep optimizers self-contained.** Resist the urge to share helpers across optimizers. The repo deliberately factored everything that's *not* optimizer-specific into the model and utility layers; what remains *is* the algorithm, and three similar lines in two files beats a fragile shared abstraction. See [DESIGN.md](../../DESIGN.md) (Pillar 4) for the full rationale.
+**Keep optimizers self-contained.** Resist the urge to share helpers across optimizers. The repo deliberately factored everything that's *not* optimizer-specific into the model and utility layers; what remains *is* the algorithm, and three similar lines in two files beats a fragile shared abstraction. See [DESIGN.md](../../DESIGN.md) (Component 3: Optimizers) for the full rationale.
 
 
 ## Available Access Levels
