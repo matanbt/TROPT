@@ -256,11 +256,12 @@ class LiveLossPlotTracker(BaseTracker):
         self._plotlosses: Optional[livelossplot.PlotLosses] = None
 
     def _init(self, config: Optional[dict] = None):
-        def _relabel_x(axes):
-            for ax in axes.values():
-                ax.set_xlabel("step")
+        def _after_subplot(ax, group_name, x_label):
+            ax.set_title(group_name)
+            ax.set_xlabel("step")
+            ax.legend(loc="center right")
         self._plotlosses = livelossplot.PlotLosses(
-            outputs=[MatplotlibPlot(figsize=(7, 3), after_plots=_relabel_x)],
+            outputs=[MatplotlibPlot(figsize=(7, 3), after_subplot=_after_subplot)],
         )
 
     def _log(self, data: Dict[str, Any]):
