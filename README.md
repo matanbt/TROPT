@@ -128,10 +128,9 @@ You can help improve TROPT in the following two ways:
 ## Intended Use
 
 TROPT is built for defensive research:
-auditing, robustness evaluation,
+auditing, interpretabiliy, robustness evaluation,
 and authorized red-teaming of NLP models.
-
-**Do not misuse TROPT to attack systems you don't own or to elicit harmful behaviors from deployed models in the wild.**
+**Do not use TROPT to attack systems you don't own or to elicit harmful behaviors from deployed models in the wild.**
 
 
 ## Citation

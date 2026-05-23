@@ -7,7 +7,7 @@ TROPT can be used at three levels of customization:
 2. **Compose your own recipe**: wire a *Model* + *Loss* + *Optimizer* + *Input Setup* of your choice into a custom function, with optional trackers, token constraints, and FLOP budgets.
 3. **Extend TROPT with new components** — write a new loss, optimizer, or model backend in your own script. Any new component you build can be simply dropped into an existing recipe.
 
-For an end-to-end notebook walkthrough see [`quickstart.ipynb`](https://github.com/matanbt/TROPT/blob/main/quickstart.ipynb) notebook.[TODO fix this link!]
+For an end-to-end notebook walkthrough see the `quickstart.ipynb <https://github.com/matanbt/TROPT/blob/main/quickstart.ipynb>`_ notebook.
 If you want to *contribute* a component back to the TROPT package itself, see `CONTRIBUTING.md <https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md>`_.
 
 .. grid:: 1 2 2 3
