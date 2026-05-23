@@ -115,7 +115,7 @@ TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/t
 TROPT covers a continuously growing area. As TROPT aims to serve as a relevant hub for discrete text optimizers and recipes, it is important to keep it updated.
 You can help improve TROPT in the following two ways:
 
-**⚠️ Report.** If you encounter any issue, bug, unexpected behavior, or error when using TROPT, please open a [new issue](https://github.com/matanbt/TROPT/issues).
+**🐛 Report.** If you encounter any issue, bug, unexpected behavior, or error when using TROPT, please open a [new issue](https://github.com/matanbt/TROPT/issues).
 
 **👨‍💻 Contribute.** You are encouraged to contribute new recipes, losses, optimizers, or model integrations, as well as to fix open issues. We kindly ask you to do so following the guidelines defined in [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -4,7 +4,7 @@ The ***Recipe Hub*** hosts dozens of optimization recipes that are instantly run
 Recipes are end-to-end optimization schemes formed by instantiating and assembling TROPT's four foundational components — _model_, _loss_, _optimizer_, and _inputs and targets_ — to craft an optimized trigger.
 These can render endless applications, including: LLM jailbreaks, corpus poisoning attacks against retrievers, adversarial examples against classifiers, prompt recovery from images, toxicity auditing, and more.
 
-The full registry lives in [`tropt/recipe_hub/`](../../tropt/recipe_hub/).
+The full registry lives in `tropt/recipe_hub/`.
 A complete list of available recipes (organised by task and access level) is included in the [API reference](../api/recipe_hub); you can also enumerate the Recipe Hub programmatically with `list_recipes()`:
 
 ```python
@@ -26,13 +26,16 @@ By convention, The recipes expects model from specific kind(s), eg OpenAI embedd
 And the required objective information for the recipe (eg a target response we optimize towards). 
 However, recipes may vary in their api by design; intended for flexibility across new applications.
 
+----
+
 ## Example Recipes
 
 The following demonstrates the simple execution of selected Recipe Hub recipes.
 
+
 ### LLM Jailbreak
 
-[GCG (Zou et al., 2023)](https://arxiv.org/abs/2307.15043) is the canonical white-box jailbreak: it greedily optimizes a discrete suffix trigger appended to a harmful instruction so that the target LM is induced to begin its response with a chosen affirmative prefix.
+GCG ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) is the canonical white-box jailbreak: it greedily optimizes a discrete suffix trigger appended to a harmful instruction so that the target LM is induced to begin its response with a chosen affirmative prefix.
 The recipe `gcg__zou2023` reproduces the paper:
 
 ```python
@@ -63,10 +66,12 @@ result = gcg_mult__zou2023(
 print(result.best_trigger_str)
 ```
 
-### Corpus Poisoning Against Dense Retrievers (white-box)
+---
+
+### Corpus Poisoning (white-box)
 
 Following the threat model of [Zhong et al. (2023)](https://arxiv.org/abs/2310.19156), a corpus-poisoning attack inserts adversarial passages that are crafted to be *retrieved* for a target query set.
-[GASLITE (Ben-Tov et al., 2024)](https://arxiv.org/abs/2412.20953) does this by optimizing a discrete trigger appended to a "malicious" passage so that the passage's embedding is pulled toward the centroid of the target queries.
+GASLITE ([Ben-Tov et al., 2024](https://arxiv.org/abs/2412.20953)) does this by optimizing a discrete trigger appended to a "malicious" passage so that the passage's embedding is pulled toward the centroid of the target queries.
 The target vector is the centroid of a target query set.
 
 ```python
@@ -93,9 +98,12 @@ result = gaslite__bentov2024(
 print(result.best_trigger_str)
 ```
 
-### Corpus Poisoning Against *Black-Box* Dense Retrievers
+---
 
-For black-box retrievers (e.g. OpenAI embeddings) there are no gradients. We instead use the random-search recipe `rs_emb`, which mirrors the optimization of the originally LLM jailbreak optimizer by [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
+### Corpus Poisoning Under *Black-Box*
+
+We also supplement the Recipe Hub with methods that mix and match existing optimziers and problem domains. Such as adapting jailbreak methods to corpus poiosning.
+For black-box retrievers (e.g. OpenAI embeddings) there are no available gradients. We instead use the random-search recipe `rs_emb`, which mirrors the optimization of the originally LLM jailbreak optimizer by [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
 
 ```python
 from tropt.model.openai.encoder import EncoderOpenAIModel
@@ -111,6 +119,8 @@ result = rs_emb(
 )
 print(result.best_trigger_str)
 ```
+
+---
 
 ### Universal Trigger for Evading a Prompt-Injection Classifier
 
@@ -136,6 +146,8 @@ print(result.best_trigger_str)   # universal suffix flipping the detector
 ```
 
 For the larger benchmark — 50 held-in injections optimized over, then evaluated on held-out and benign splits — use `uat_prompt_injection`, which wraps `uat_classifier` with the `rogue-security/prompt-injections-benchmark` dataset and reports per-split ASR.
+
+---
 
 ### Prompt Recovery from Images
 

@@ -8,9 +8,9 @@ A TROPT loss defines the optimization objective: given a model's output on a tri
 Instead, the model component invokes the registered loss as part of its forward pass, and TROPT's resolver ({py:func}`~tropt.loss.resolve_and_compute_loss`) automatically fills in the right model data by inspecting the loss's `__call__` signature. 
 This keeps losses small, swappable, and trivial to compose into recipes (see [Composing a Recipe](adding_a_recipe.md)).
 
-> **The one rule.** The names of your `__call__` parameters must match field names on {py:class}`~tropt.common.ModelOutput`, {py:class}`~tropt.common.ModelInput`, or {py:class}`~tropt.common.MessageTargets`. Get the names right and everything connects automatically. The most common fields are listed in the [reference table](#available-parameter-names) at the end of this guide; the canonical definitions live in [`tropt/common.py`](../../tropt/common.py).
+> **The one rule.** The names of your `__call__` parameters must match field names on {py:class}`~tropt.common.ModelOutput`, {py:class}`~tropt.common.ModelInput`, or {py:class}`~tropt.common.MessageTargets`. Get the names right and everything connects automatically. The most common fields are listed in the [reference table](#available-parameter-names) at the end of this guide; the canonical definitions live in [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py).
 
-This guide effectively explains how every loss in [`tropt/loss/`](../../tropt/loss/) is implemented; browsing the existing losses there can provide helpful concrete examples.
+This guide effectively explains how every loss in [`tropt/loss/`](https://github.com/matanbt/TROPT/tree/main/tropt/loss) is implemented; browsing the existing losses there can provide helpful concrete examples.
 
 > If you would like to *contribute* a loss back to TROPT, see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md). This guide focuses on building losses for your own use.
 
@@ -124,7 +124,7 @@ Breaking down the additions:
 | `require_generation` | Performs autoregressive generation, returns `generated_response_strs` |
 | `require_first_token_logprobs` | Returns `response_first_token_logprobs` (e.g. for OpenAI-style logprobs APIs) |
 
-**Inheriting from a category base class.** [`tropt/loss/`](../../tropt/loss/) defines abstract bases like {py:class}`~tropt.loss.PrefillBasedLoss`, {py:class}`~tropt.loss.EmbeddingBasedLoss`, {py:class}`~tropt.loss.HiddenStateBasedLoss`, {py:class}`~tropt.loss.AttentionBasedLoss`, {py:class}`~tropt.loss.ClassificationBasedLoss`, and {py:class}`~tropt.loss.TextBasedLoss`. Each sets the right `require_*` flag and pins a typed `__call__` signature for its category — inheriting from the right base saves boilerplate and signals intent. The categorization is a **convention for readability**, not a hard requirement: the resolver dispatches by parameter names, not by base class. If your loss doesn't fit any existing category, inheriting from `BaseLoss` directly and setting the flags yourself is equally valid.
+**Inheriting from a category base class.** [`tropt/loss/`](https://github.com/matanbt/TROPT/tree/main/tropt/loss) defines abstract bases like {py:class}`~tropt.loss.PrefillBasedLoss`, {py:class}`~tropt.loss.EmbeddingBasedLoss`, {py:class}`~tropt.loss.HiddenStateBasedLoss`, {py:class}`~tropt.loss.AttentionBasedLoss`, {py:class}`~tropt.loss.ClassificationBasedLoss`, and {py:class}`~tropt.loss.TextBasedLoss`. Each sets the right `require_*` flag and pins a typed `__call__` signature for its category — inheriting from the right base saves boilerplate and signals intent. The categorization is a **convention for readability**, not a hard requirement: the resolver dispatches by parameter names, not by base class. If your loss doesn't fit any existing category, inheriting from `BaseLoss` directly and setting the flags yourself is equally valid.
 
 
 ## A Variant: Activation Steering
@@ -266,7 +266,7 @@ Two constraints to know about:
 
 ## Available Parameter Names
 
-The resolver matches your `__call__` parameter names against fields on three classes (see [`tropt/common.py`](../../tropt/common.py) for the canonical definitions and full list).
+The resolver matches your `__call__` parameter names against fields on three classes (see [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py) for the canonical definitions and full list).
 
 **From {py:class}`~tropt.common.ModelOutput`** — produced by the model's forward pass:
 
@@ -304,7 +304,7 @@ The resolver matches your `__call__` parameter names against fields on three cla
 
 Parameters with default values in your signature are treated as optional by the resolver — missing data does not raise. Use this for losses that can operate in multiple modes.
 
-If the data you need isn't exposed by any current field, add a new field to `ModelOutput` / `MessageTargets` / `Targets` in [`tropt/common.py`](../../tropt/common.py) and populate it from the relevant model backend; the resolver will then route it to any loss that names it.
+If the data you need isn't exposed by any current field, add a new field to `ModelOutput` / `MessageTargets` / `Targets` in [`tropt/common.py`](https://github.com/matanbt/TROPT/blob/main/tropt/common.py) and populate it from the relevant model backend; the resolver will then route it to any loss that names it.
 
 
 > Want to contribute your loss back to the TROPT package? See [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for the registration and testing steps.

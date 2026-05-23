@@ -4,10 +4,10 @@ Going one level of abstraction down from picking an existing optimizer off the s
 
 A TROPT optimizer is the search algorithm at the heart of the recipe: given a model, a loss, text templates (with a `{{OPTIMIZED_TRIGGER}}` placeholder), and an initial trigger, it repeatedly evaluates and updates the trigger to minimize the loss, returning an {py:class}`~tropt.optimizer.OptimizerResult`.
 
-**Design in a nutshell.** Optimizers are deliberately **self-contained**: each one lives in a single file, owns its full search algorithm, and shares no logic with its siblings — a *Repeat Yourself* philosophy (inspired by HuggingFace's `transformers` modeling files [TODO link]) that trades a few duplicated lines for readability, hackability, and easy head-to-head comparison. To keep them focused on the algorithm, TROPT pushes everything model-specific and infrastructural — input/template management, batching, tokenization, loss computation, gradient computation — into the model component, exposed via a small set of `compute_*_from_*` methods. Your optimizer just calls them.
+**Design in a nutshell.** Optimizers are deliberately **self-contained**: each one lives in a single file, owns its full search algorithm, and shares no logic with its siblings — a *Repeat Yourself* philosophy (inspired by [HuggingFace's `transformers` single-file modeling philosophy](https://huggingface.co/blog/transformers-design-philosophy)) that trades a few duplicated lines for readability, hackability, and easy head-to-head comparison. To keep them focused on the algorithm, TROPT pushes everything model-specific and infrastructural — input/template management, batching, tokenization, loss computation, gradient computation — into the model component, exposed via a small set of `compute_*_from_*` methods. Your optimizer just calls them.
 
 
-This guide effectively explains how every optimizer in [`tropt/optimizer/`](../../tropt/optimizer/) is implemented; browsing the existing optimizers there can provide helpful concrete examples.
+This guide effectively explains how every optimizer in [`tropt/optimizer/`](https://github.com/matanbt/TROPT/tree/main/tropt/optimizer) is implemented; browsing the existing optimizers there can provide helpful concrete examples.
 
 > If you would like to *contribute* an optimizer back to TROPT, see [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md). This guide focuses on building optimizers for your own use.
 
@@ -212,7 +212,7 @@ optimizer.optimize_trigger(...)
 
 **Trigger initialization.** Callers can pass an explicit `initial_trigger` (the `DEFAULT_INIT_TRIGGER` is `"! ! ! ..."`-style). For something smarter, sample from the constrained vocabulary itself via {py:func}`~tropt.optimizer.utils.token_initializers.get_printable_random_trigger`.
 
-The remaining building blocks in [`tropt/optimizer/utils/`](../../tropt/optimizer/utils/) worth knowing about: `retokenize_filtering` (drop candidates that don't survive a decode → encode round-trip), `TriggerBuffer` (best-K pool instead of a single best), `NFlipScheduler` (control how many positions to mutate per step). Pull them in only when your search actually needs them — they're not boilerplate.
+The remaining building blocks in [`tropt/optimizer/utils/`](https://github.com/matanbt/TROPT/tree/main/tropt/optimizer/utils) worth knowing about: `retokenize_filtering` (drop candidates that don't survive a decode → encode round-trip), `TriggerBuffer` (best-K pool instead of a single best), `NFlipScheduler` (control how many positions to mutate per step). Pull them in only when your search actually needs them — they're not boilerplate.
 
 
 ## Going White-Box: Gradient-Guided Search
@@ -260,7 +260,7 @@ Structurally nothing else changes — same `BaseOptimizer` subclass, same `optim
 - **Access requirement:** the model must also implement `GradientTokenAccessMixin`. `BaseOptimizer` rejects incompatible models (e.g. black-box LiteLLM) at init.
 - **Per-step signal:** one `compute_grad_from_tokens` call returns a `(1, trigger_seq_len, vocab_size)` tensor — one value per (position, vocabulary token) telling you how much the loss would change under that substitution. Negate and `topk` to identify promising replacements; different optimizers use this signal differently (see existing implementations for examples).
 
-The same template specializes to AutoPrompt (averaged gradient over multiple samples), MAC (momentum on top of the gradient), GASLITE (multi-coordinate flips), and so on — see {py:class}`~tropt.optimizer.GCGOptimizer`, {py:class}`~tropt.optimizer.AutoPromptOptimizer`, and the rest of [`tropt/optimizer/`](../../tropt/optimizer/) for full implementations.
+The same template specializes to AutoPrompt (averaged gradient over multiple samples), MAC (momentum on top of the gradient), GASLITE (multi-coordinate flips), and so on — see {py:class}`~tropt.optimizer.GCGOptimizer`, {py:class}`~tropt.optimizer.AutoPromptOptimizer`, and the rest of [`tropt/optimizer/`](https://github.com/matanbt/TROPT/tree/main/tropt/optimizer) for full implementations.
 
 
 ## Going Black-Box: Text-Level Optimization
@@ -309,12 +309,12 @@ Same overall flow, swapped at the access boundary:
 
 **Splitting a long `optimize_trigger`.** If the method grows past a screenful, delegate logical chunks to private methods (`self._propose_candidates(...)`, `self._update_best(...)`). Don't over-do it though — the top-level `optimize_trigger` should still read as the *algorithm*, not as glue.
 
-**Keep optimizers self-contained.** Resist the urge to share helpers across optimizers. The repo deliberately factored everything that's *not* optimizer-specific into the model and utility layers; what remains *is* the algorithm, and three similar lines in two files beats a fragile shared abstraction. See [DESIGN.md](../../DESIGN.md) (Component 3: Optimizers) for the full rationale.
+**Keep optimizers self-contained.** Resist the urge to share helpers across optimizers. The repo deliberately factored everything that's *not* optimizer-specific into the model and utility layers; what remains *is* the algorithm, and three similar lines in two files beats a fragile shared abstraction. See [DESIGN.md](https://github.com/matanbt/TROPT/blob/main/DESIGN.md) (Component 3: Optimizers) for the full rationale.
 
 
 ## Available Access Levels
 
-An optimizer's `model_requirements` is a tuple of these mixins; the model must implement all of them. Canonical definitions live in [`tropt/model/`](../../tropt/model/).
+An optimizer's `model_requirements` is a tuple of these mixins; the model must implement all of them. Canonical definitions live in [`tropt/model/`](https://github.com/matanbt/TROPT/tree/main/tropt/model).
 
 | Mixin | What it provides on the model | Typical use |
 |---|---|---|

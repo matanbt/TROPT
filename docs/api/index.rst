@@ -9,4 +9,5 @@ API Reference
    optimizer
    optimizer_utils
    loss
+   tracker
    recipe_hub

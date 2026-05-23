@@ -29,8 +29,26 @@ extensions = [
     'sphinx.ext.napoleon',
     'sphinx.ext.viewcode',
     'sphinx_autodoc_typehints',
+    'sphinx_copybutton',
+    'sphinx_codeautolink',
+    'sphinx_design',
     'myst_parser',
 ]
+
+# sphinx-copybutton: strip shell prompts and Python REPL prefixes so the
+# clipboard receives runnable code only.
+copybutton_prompt_text = r">>> |\.\.\. |\$ |# "
+copybutton_prompt_is_regexp = True
+
+# sphinx-codeautolink: turn identifiers in code blocks into links to the
+# autodoc API reference. `concat_default=True` chains code blocks within a
+# single page (like a notebook), so later blocks can resolve names imported
+# in earlier ones.
+codeautolink_concat_default = True
+
+# MyST: enable colon-fence so sphinx-design directives (`:::{grid}` etc.) and
+# admonitions work in .md guides.
+myst_enable_extensions = ["colon_fence", "deflist"]
 
 autodoc_mock_imports = ['runner', 'sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'tqdm', 'transformers', 'accelerate', 'hydra', 'omegaconf', 'huggingface_hub', 'datasets', 'PIL', 'diffusers', 'trackio']
 autodoc_typehints = "description"

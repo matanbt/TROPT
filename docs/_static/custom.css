@@ -23,3 +23,13 @@ hr.hr-minor {
     border: 0;
     border-top: 1px solid #e0e0e0;
 }
+
+/* Plain horizontal rule from markdown `---` / `----`. pydata-sphinx-theme
+   applies opacity: .25 to <hr>, which renders the default border invisible
+   against a white background; reset it. */
+hr.docutils {
+    margin: 30px 0;
+    border: 0;
+    border-top: 1px solid var(--pst-color-border, #e0e0e0);
+    opacity: 1;
+}

@@ -28,6 +28,8 @@ pre-commit install      # install pre-commit hooks
 
 Always invoke tools via `uv run` (e.g. `uv run ruff check`, `uv run ty check`, `uv run pytest`).
 
+When iterating on docs (`docs/`), use `uv run sphinx-autobuild docs docs/_build/html` for live-reload instead of repeatedly invoking `docs/build_docs.py` — only fall back to the full builder when you need the auto-generated API reference or compatibility matrix refreshed.
+
 The project uses Weights & Biases for experiment tracking. Ensure `wandb` is configured if running experiments.
 
 ## Architecture (orientation)
