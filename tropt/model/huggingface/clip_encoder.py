@@ -5,7 +5,7 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 from transformers import AutoTokenizer, CLIPTextModelWithProjection
-from transformers.models.clip.modeling_clip import CLIPTextTransformer
+from transformers.models.clip.modeling_clip import CLIPTextModel
 from transformers.masking_utils import create_causal_mask
 
 from tropt.common import (
@@ -131,7 +131,7 @@ class CLIPTextEncoderHFModel(
         https://github.com/huggingface/transformers/blob/e1b80de84d3c5da35669b2834ef017eeaf620f93/src/transformers/models/clip/modeling_clip.py#L531-L589
         """
         text_model = self._model.text_model
-        assert isinstance(text_model, CLIPTextTransformer), f"Expected CLIPTextTransformer, got {type(text_model)}"
+        assert isinstance(text_model, CLIPTextModel), f"Expected CLIPTextModel, got {type(text_model)}"
 
         hidden_states = text_model.embeddings(inputs_embeds=input_embeds)
         cache_position = torch.arange(hidden_states.shape[1], device=hidden_states.device)

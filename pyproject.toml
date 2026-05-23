@@ -20,9 +20,9 @@ dependencies = [
   "numpy>=2.0.0",
   "jaxtyping",
   # HuggingFace models (core use case)
-  "transformers==5.4.0",
+  "transformers==5.8.1",
   "accelerate>=1.0.0",
-  "sentence-transformers>=5.1.0",
+  "sentence-transformers>=5.5.0",
   # Data validation
   "pydantic>=2.0.0",
   # Configuration & utilities
