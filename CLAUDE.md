@@ -1,6 +1,8 @@
 # CLAUDE.md
 
 > Guidance for Claude Code when working with this repository. For comprehensive design philosophy see `DESIGN.md`; for step-by-step guides see `docs/guides/`.
+>
+> **Working WITH TROPT as a user** (running and composing recipes, picking the right Model/Loss/Optimizer, extending the framework with a new component, diagnosing cross-cutting pitfalls, helping someone without a local checkout) — load `skills/tropt/SKILL.md`. It's the user-facing companion to this dev-facing file: a routing table to the external guides/source, curated gotchas (mixin mismatches, attention-loss requirements, thinking-model target alignment, black-box vs white-box loss, multi-model OOM, etc.), and quickstarts for both calling a Recipe Hub entry and composing Model + Loss + Optimizer directly. Install is just the first step it covers — the bulk is usage and extension.
 
 ## Tips
 

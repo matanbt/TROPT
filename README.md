@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Optimize text-triggers 
-  toward any goal, with any optimizer, against any NLP model, 
+  <strong>Optimize text-triggers
+  toward any goal, with any optimizer, against any NLP model,
   under a unified framework</strong>
 </p>
 
