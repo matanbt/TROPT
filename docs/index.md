@@ -9,18 +9,40 @@ myst:
 
 ```{raw} html
 <section class="tropt-hero">
+  <div class="tropt-hero-dots" aria-hidden="true"></div>
   <div class="tropt-hero-inner">
-    <img class="tropt-hero-logo" src="_static/logo.svg" alt="TROPT — Textual Trigger Optimization Toolbox" />
+    <svg class="tropt-hero-logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 180" role="img" aria-label="TROPT — Textual Trigger Optimization Toolbox">
+      <defs>
+        <linearGradient id="tropt-hero-logo-grad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#06B6D4"/>
+          <stop offset="100%" stop-color="#7C3AED"/>
+        </linearGradient>
+      </defs>
+      <g transform="translate(28, 24)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M 60 4 C 32 4, 28 14, 28 36 L 28 56 C 28 68, 18 68, 6 68 C 18 68, 28 68, 28 80 L 28 100 C 28 122, 32 132, 60 132" stroke="url(#tropt-hero-logo-grad)" stroke-width="6.5"/>
+        <rect x="70"  y="50" width="30" height="32" rx="5.5" stroke="#64748B" stroke-width="2.4"/>
+        <rect x="110" y="50" width="30" height="32" rx="5.5" fill="url(#tropt-hero-logo-grad)"/>
+        <rect x="150" y="50" width="30" height="32" rx="5.5" stroke="#64748B" stroke-width="2.4"/>
+        <path d="M 190 4 C 218 4, 222 14, 222 36 L 222 56 C 222 68, 232 68, 244 68 C 232 68, 222 68, 222 80 L 222 100 C 222 122, 218 132, 190 132" stroke="url(#tropt-hero-logo-grad)" stroke-width="6.5"/>
+      </g>
+      <text x="305" y="112" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="100" font-weight="800" fill="#7C3AED" letter-spacing="-2">TROPT</text>
+      <text x="308" y="144" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13.5" font-weight="500" fill="#64748B" letter-spacing="3.5">TEXTUAL TRIGGER OPTIMIZATION TOOLBOX</text>
+    </svg>
     <p class="tropt-hero-tagline">
-      Optimize text triggers <br> 
+      Optimize text triggers 
       toward <em>any</em> goal,
-      with <em>any</em> optimizer,
+      with <em>any</em> optimizer,<br>
       against <em>any</em> NLP model &mdash;
-      <br/>under a unified framework.
+      under a unified framework.
     </p>
-    <p class="tropt-hero-sub">
-      <!-- 30+ ready-to-run recipes for LLM jailbreaks, embedding attacks, prompt&nbsp;injection, and interpretability research. -->
-    </p>
+    <div class="tropt-optbar" aria-label="Easily optimize toward any goal, with any optimizer, against any model">
+      <div class="tropt-tok tropt-tok-fixed">Easily</div>
+      <div class="tropt-tok tropt-tok-fixed">optimize</div>
+      <div class="tropt-tok tropt-tok-opt"><span class="tropt-slot" data-slot="verb">toward</span></div>
+      <div class="tropt-tok tropt-tok-fixed">any</div>
+      <div class="tropt-tok tropt-tok-opt"><span class="tropt-slot" data-slot="noun">goal</span></div>
+      <div class="tropt-tok tropt-tok-fixed tropt-tok-bang">!</div>
+    </div>
     <div class="tropt-cta-row">
       <a class="tropt-cta tropt-cta-primary" href="#get-started">
         <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M13 3 4 14h7l-1 7 9-11h-7l1-7Z"/></svg>
@@ -47,6 +69,136 @@ myst:
     </div> -->
   </div>
 </section>
+<script>
+(function () {
+  // Slot-machine: cycles "Optimize [verb] any [noun]" through TROPT's modularity
+  // axes — any goal / any model / any trigger / any optimizer / any loss / any
+  // application. Random ~25% of transitions briefly flash "!!!" in one slot,
+  // nodding to GCG's classic "! ! ! ! !" initial trigger.
+  var PAIRS = [
+    ["toward",  "goal"       ],
+    ["against", "model"      ],
+    ["for",     "trigger"    ],
+    ["with",    "optimizer"  ],
+    ["against", "loss"       ],
+    ["for",     "application"],
+  ];
+  var TICK_MS       = 1900;
+  var TICK_MS_HOVER = 650;   // accelerated cadence while cursor is over .tropt-optbar
+  var OUT_MS    = 170;   // time for the old word to slide up + out
+  var SETTLE_MS = 200;   // time for the new word to slide up + in
+  var FLASH_MS  = 350;   // how long "!!!" stays before settling on the real word
+  var FLASH_P   = 0.25;
+
+  function init() {
+    var verb = document.querySelector('.tropt-slot[data-slot="verb"]');
+    var noun = document.querySelector('.tropt-slot[data-slot="noun"]');
+    if (!verb || !noun) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    /* Slot-machine swap: old word slides up + out, snaps to below (no transition),
+       then slides up into place. Done with a single span — no DOM churn. */
+    function slotSwap(el, txt) {
+      if (el.textContent === txt) return;
+      el.style.transition = 'transform ' + OUT_MS + 'ms cubic-bezier(0.4,0,0.2,1), opacity ' + OUT_MS + 'ms ease';
+      el.style.transform  = 'translateY(-130%)';
+      el.style.opacity    = '0';
+      setTimeout(function () {
+        el.style.transition = 'none';
+        el.textContent      = txt;
+        el.style.transform  = 'translateY(130%)';
+        /* force reflow so the next transition actually animates */
+        void el.offsetHeight;
+        el.style.transition = 'transform ' + SETTLE_MS + 'ms cubic-bezier(0.34,1.56,0.64,1), opacity ' + SETTLE_MS + 'ms ease';
+        el.style.transform  = 'translateY(0)';
+        el.style.opacity    = '1';
+      }, OUT_MS);
+    }
+
+    var i = 0;
+    function tick() {
+      i = (i + 1) % PAIRS.length;
+      var nextV = PAIRS[i][0], nextN = PAIRS[i][1];
+      if (Math.random() < FLASH_P) {
+        // Briefly flash "!!!" in one randomly picked slot, then settle on the real word.
+        var pickVerb = Math.random() < 0.5;
+        var flashEl  = pickVerb ? verb : noun;
+        var finalTxt = pickVerb ? nextV : nextN;
+        slotSwap(flashEl, '!!!');
+        slotSwap(pickVerb ? noun : verb, pickVerb ? nextN : nextV);
+        setTimeout(function () { slotSwap(flashEl, finalTxt); }, FLASH_MS);
+      } else {
+        slotSwap(verb, nextV);
+        slotSwap(noun, nextN);
+      }
+    }
+    var timer = setInterval(tick, TICK_MS);
+
+    /* Hover over the optimize bar → accelerate the cycle. On mouseleave, restore
+       the default cadence. Plain clearInterval + setInterval swap keeps the
+       phase aligned (next tick fires after the NEW cadence elapses). */
+    var optbar = document.querySelector('.tropt-optbar');
+    if (optbar) {
+      optbar.addEventListener('mouseenter', function () {
+        clearInterval(timer);
+        timer = setInterval(tick, TICK_MS_HOVER);
+      });
+      optbar.addEventListener('mouseleave', function () {
+        clearInterval(timer);
+        timer = setInterval(tick, TICK_MS);
+      });
+    }
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+
+/* ------------------------------------------------------------------------
+   Hero balloons: cursor-driven parallax. Sets --mx/--my CSS vars on the
+   .tropt-hero element based on mouse position (range -0.5 to +0.5). The
+   two ::before/::after balloons translate via those vars (see custom.css).
+   ------------------------------------------------------------------------ */
+(function () {
+  function initBalloons() {
+    var hero = document.querySelector('.tropt-hero');
+    if (!hero) return;
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    var raf = 0, mx = 0, my = 0;
+    function apply() {
+      hero.style.setProperty('--mx', mx);
+      hero.style.setProperty('--my', my);
+      raf = 0;
+    }
+    /* Two-speed transition: while the cursor is INSIDE the hero we set
+       .is-tracking (CSS picks a snappy 0.22s transition); on mouseleave the
+       class is removed AND we reset --mx/--my to 0 — so the balloons drift
+       slowly back to rest on the default 1.8s ease (see custom.css). */
+    hero.addEventListener('mouseenter', function () {
+      hero.classList.add('is-tracking');
+    });
+    hero.addEventListener('mousemove', function (e) {
+      var rect = hero.getBoundingClientRect();
+      mx = (e.clientX - rect.left) / rect.width  - 0.5;
+      my = (e.clientY - rect.top)  / rect.height - 0.5;
+      if (!raf) raf = requestAnimationFrame(apply);
+    });
+    hero.addEventListener('mouseleave', function () {
+      hero.classList.remove('is-tracking');
+      mx = 0; my = 0;
+      if (!raf) raf = requestAnimationFrame(apply);
+    });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initBalloons);
+  } else {
+    initBalloons();
+  }
+})();
+</script>
 ```
 
 ## What's TROPT?
@@ -764,7 +916,6 @@ If you find TROPT useful in your research, please cite:
 }
 ```
 
-
 ```{toctree}
 :hidden:
 :caption: Documentation
@@ -772,3 +923,4 @@ If you find TROPT useful in your research, please cite:
 guides/index
 api/index
 ```
+

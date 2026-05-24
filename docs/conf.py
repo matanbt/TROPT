@@ -66,6 +66,7 @@ language = 'en'
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
+html_js_files = ['skip_auto_theme.js']
 html_favicon = '_static/favicon.svg'
 html_theme_options = {
     "logo": {
@@ -78,6 +79,24 @@ html_theme_options = {
         "**": ["page-toc", "edit-this-page"],
         "index": [],
     },
+    # New visitors land in light mode. Theme switcher is kept so users can
+    # opt into dark mode; we just override the switcher's JS below to skip
+    # the "auto" (system-selected) state — light ↔ dark only.
+    "default_mode": "light",
+    # Compact single-line footer — see docs/_templates/footer-tropt.html.
+    # Drops the default copyright / sphinx-version / theme-version stack.
+    "footer_start": [],
+    "footer_center": ["footer-tropt"],
+    "footer_end": [],
+    # GitHub icon in the top-right of the navbar (GEPA-style).
+    "icon_links": [
+        {
+            "name": "GitHub",
+            "url": "https://github.com/matanbt/TROPT",
+            "icon": "fa-brands fa-github",
+            "type": "fontawesome",
+        },
+    ],
 }
 
 # Landing page: hide the primary (left) sidebar so the hero spans full width.

@@ -58,20 +58,62 @@ article:has(.tropt-hero) > h1:first-of-type {
   display: none;
 }
 
-/* Let the landing hero break out of the constrained content width */
+/* Let the landing hero span the FULL viewport. The pydata-sphinx-theme
+   wraps <article> inside .bd-main → .bd-article-container → .bd-article,
+   each with their own padding / max-width. The previous `margin: calc(50%-50vw)`
+   trick failed because:
+     (a) the article column is OFFSET from viewport center (no left sidebar
+         but the theme still reserves padding), so `50%` ≠ `50vw / 2`;
+     (b) the article (or an ancestor) clipped the negative-margin overflow.
+   Cleanest fix: on the landing page, drop max-width + horizontal padding
+   from every wrapper between <body> and <article>, then let the hero use
+   plain `width: 100%`. Every piece of CONTENT inside the article already
+   reasserts its own `max-width: 1140px; margin: 0 auto` (see h2, p, grids,
+   tabs, install block, citation — all scoped via `article:has(.tropt-hero)`),
+   so removing the wrapper constraints does NOT widen body text. */
+body:has(article .tropt-hero) .bd-main,
+body:has(article .tropt-hero) .bd-container__inner,
+body:has(article .tropt-hero) .bd-article-container,
+body:has(article .tropt-hero) .bd-article,
+body:has(article .tropt-hero) .bd-content {
+  max-width: 100% !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+}
+/* NOTE: do NOT target `.bd-page-width` here — that class is shared with the
+   footer (`.bd-footer__inner.bd-page-width`) and the header
+   (`.bd-header__inner.bd-page-width`); stripping their padding pushed the
+   "© Copyright …" / "Built with PyData …" lines flush against the viewport
+   edge. The content-tree's .bd-page-width sits on .bd-container__inner —
+   already covered above. */
 article:has(.tropt-hero) {
   max-width: none !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
 }
 
-/* Belt-and-suspenders: never allow horizontal page scroll on the landing page.
-   The hero uses negative margins to break out and long code lines can overflow
-   their tab-content boxes — clip anything that would otherwise extend past the
-   viewport edge. */
+/* Now that the article tree is full-viewport-width, each non-hero content
+   section needs to re-impose its own body-text column. The MyST structure is:
+     <article> > <section id="tropt"> > {<section.tropt-hero>, <section#...>, ...}
+   So we constrain the INNER sections (siblings of the hero) — but NOT the
+   outer wrapper section (which contains the hero, and must stay full-width)
+   and NOT the hero itself. */
+article:has(.tropt-hero) > section > section:not(.tropt-hero) {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: clamp(1rem, 4vw, 2rem);
+  padding-right: clamp(1rem, 4vw, 2rem);
+  box-sizing: border-box;
+}
+
+/* Belt-and-suspenders: don't allow horizontal page scroll on the landing
+   page (long code lines inside tabs should scroll internally, not push the
+   page wide). Use `clip` so we don't establish a new scroll container — and
+   apply it on body, NOT on the article (clipping the article would clip the
+   hero's full-width children). */
 html:has(article .tropt-hero),
 body:has(article .tropt-hero) {
-  overflow-x: hidden;
-}
-article:has(.tropt-hero) {
   overflow-x: clip;
 }
 
@@ -90,32 +132,88 @@ article:has(.tropt-hero) {
    ========================================================================== */
 .tropt-hero {
   position: relative;
-  /* True full-bleed: pull to the viewport edges regardless of article padding */
-  margin-left: calc(50% - 50vw);
-  margin-right: calc(50% - 50vw);
+  /* Now that the landing article tree is full-viewport-width (see body:has(...)
+     overrides above), the hero simply fills its parent with width: 100%. No
+     negative-margin or calc() trick — those broke when the article column was
+     offset by the theme's wrapper padding. Content (.tropt-hero-inner) stays
+     centered in its own max-width column. */
+  width: 100%;
+  max-width: 100%;
   margin-top: -2rem;
   margin-bottom: 3rem;
-  width: 100vw;
   padding: 4.5rem 2rem 3.5rem 2rem;
   text-align: center;
-  background: var(--tropt-gradient-soft);
-  border-bottom: 1px solid var(--tropt-slate-100);
+  /* Very faint violet wash. The two cursor-following balloons (::before / ::after)
+     and the dot-grid layer (.tropt-hero-dots) compose on top of this base. */
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 38%, rgba(124, 58, 237, 0.04), rgba(255, 255, 255, 0) 65%),
+    #fff;
+  border: 0;
   overflow: hidden;
   box-sizing: border-box;
+  /* CSS variables driven by JS mousemove — used by the balloons below. */
+  --mx: 0;
+  --my: 0;
 }
 
-/* Subtle radial accent behind the logo */
+/* Cyan balloon, top-left area, drifts WITH the cursor.
+   Two-speed transition: snappy while cursor is INSIDE the hero (.is-tracking
+   class added by JS on mouseenter) for responsive feel; slow + eased on
+   mouseleave so the balloons drift elegantly back to rest. The bumped-up
+   translate range (60px vs the old 30px) makes the tracking feel meaningful. */
 .tropt-hero::before {
   content: "";
   position: absolute;
-  top: -200px; left: 50%;
-  width: 900px; height: 900px;
-  transform: translateX(-50%);
-  background:
-    radial-gradient(circle at 30% 30%, rgba(6, 182, 212, 0.18) 0%, transparent 55%),
-    radial-gradient(circle at 70% 60%, rgba(124, 58, 237, 0.18) 0%, transparent 55%);
+  width: 460px;
+  height: 460px;
+  left: 12%;
+  top: 8%;
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.20), rgba(6, 182, 212, 0) 62%);
+  filter: blur(38px);
   pointer-events: none;
   z-index: 0;
+  transform: translate3d(calc(var(--mx) * 60px), calc(var(--my) * 60px), 0);
+  transition: transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);  /* slow ease-back */
+  will-change: transform;
+}
+
+/* Violet balloon, bottom-right area, drifts AGAINST the cursor (parallax) */
+.tropt-hero::after {
+  content: "";
+  position: absolute;
+  width: 500px;
+  height: 500px;
+  right: 10%;
+  bottom: -10%;
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.18), rgba(124, 58, 237, 0) 62%);
+  filter: blur(42px);
+  pointer-events: none;
+  z-index: 0;
+  transform: translate3d(calc(var(--mx) * -72px), calc(var(--my) * -72px), 0);
+  transition: transform 1.8s cubic-bezier(0.22, 1, 0.36, 1);  /* slow ease-back */
+  will-change: transform;
+}
+
+/* While the cursor is inside the hero, balloons follow it snappily. */
+.tropt-hero.is-tracking::before,
+.tropt-hero.is-tracking::after {
+  transition: transform 0.22s ease-out;
+}
+
+/* Subtle dot grid that fades to invisible at the hero edges (no boundary). */
+.tropt-hero-dots {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(100, 116, 139, 0.22) 1px, transparent 1.4px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.9) 35%, rgba(0, 0, 0, 0) 90%);
+          mask-image: radial-gradient(ellipse 70% 65% at 50% 50%, #000 0%, rgba(0, 0, 0, 0.9) 35%, rgba(0, 0, 0, 0) 90%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tropt-hero::before, .tropt-hero::after { transition: none; transform: none; }
 }
 
 .tropt-hero-inner {
@@ -169,34 +267,47 @@ article:has(.tropt-hero) {
 .tropt-cta {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  padding: 0.7rem 1.35rem;
+  gap: 0.5rem;
+  padding: 0.7rem 1.3rem;
   border-radius: 10px;
   font-weight: 600;
-  font-size: 0.98rem;
+  font-size: 0.95rem;
   text-decoration: none !important;
-  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
-  border: 1.5px solid transparent;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+  border: 1px solid transparent;
   white-space: nowrap;
+  line-height: 1;
 }
-.tropt-cta:hover { transform: translateY(-2px); }
+.tropt-cta svg { flex-shrink: 0; transition: transform 0.2s ease; }
 .tropt-cta-primary {
-  background: var(--tropt-gradient);
+  background-image: linear-gradient(135deg, var(--tropt-cyan), var(--tropt-violet));
+  background-color: var(--tropt-violet);  /* solid fallback */
   color: #fff !important;
-  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
+  /* No border on the primary CTA. The previous `1px solid transparent` (inherited
+     from `.tropt-cta`) anti-aliased into the gradient at the rounded corners,
+     painting faint cyan/violet edge pixels that read as a colored halo. With
+     `border: 0` + `background-clip: padding-box` the gradient sits cleanly
+     inside the radius with no edge bleed. */
+  border: 0 !important;
+  background-clip: padding-box;
+  /* Compensate for the removed 1px border so the button doesn't shrink relative
+     to the secondary CTAs sitting next to it in the flex row. */
+  padding: calc(0.7rem + 1px) calc(1.3rem + 1px);
+  /* Single, neutral violet drop-shadow — no cyan inner glow. */
+  box-shadow: 0 8px 22px -10px rgba(124, 58, 237, 0.45);
 }
 .tropt-cta-primary:hover {
-  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.38);
+  transform: translateY(-1px);
   color: #fff !important;
+  box-shadow: 0 12px 30px -12px rgba(124, 58, 237, 0.55);
 }
+.tropt-cta-primary:hover svg { transform: translateX(2px); }
 .tropt-cta-secondary {
-  background: rgba(255, 255, 255, 0.7);
-  color: var(--tropt-violet-deep) !important;
+  background: #fff;
+  color: var(--tropt-slate-700) !important;
   border-color: var(--tropt-slate-300);
-  backdrop-filter: blur(6px);
 }
 .tropt-cta-secondary:hover {
-  background: #fff;
   border-color: var(--tropt-violet);
   color: var(--tropt-violet) !important;
 }
@@ -219,6 +330,86 @@ html[data-theme="dark"] .tropt-cta-secondary:hover {
   margin-top: 1.25rem;
 }
 .tropt-hero-badges img { height: 20px; }
+
+/* --------------------------------------------------------------------------
+   Optimize bar — live "Optimize [verb] any [noun]" slot-machine that
+   demonstrates TROPT's modularity axes (any goal / any model / any optimizer
+   / any loss / any application).
+   -------------------------------------------------------------------------- */
+.tropt-optbar {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: nowrap;
+  margin: 0.5rem auto 1.75rem auto;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid var(--tropt-slate-300);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02),
+              0 12px 40px -20px rgba(124, 58, 237, 0.22);
+}
+.tropt-tok {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 9px 14px;
+  border-radius: 8px;
+  line-height: 1;
+  letter-spacing: 0;
+  user-select: none;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.tropt-tok-fixed {
+  color: var(--tropt-slate-700);
+  background: #fff;
+  border: 1px solid var(--tropt-slate-200, #E2E8F0);
+}
+/* The trailing "!" token nods to GCG-style "! ! ! ! !" initial triggers.
+   Same color/weight as the other fixed tokens — just one character of content. */
+/* Active (cycling) tokens: subtle cyan→violet tinted pill with gradient text
+   — clearly distinct from the plain white fixed tokens, but still quiet. */
+.tropt-tok-opt {
+  background:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.07), rgba(124, 58, 237, 0.07)),
+    #fff;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  box-shadow: 0 1px 0 rgba(15, 23, 42, 0.02),
+              0 4px 14px -10px rgba(124, 58, 237, 0.35);
+  min-width: 140px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.tropt-slot {
+  display: inline-block;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  /* Gradient text — same accent as the tagline's "any" emphasis */
+  background: linear-gradient(135deg, var(--tropt-cyan), var(--tropt-violet));
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+  /* Slot-machine baseline: positioned at center; the JS animates transform +
+     opacity for the swap. Initial transition added so the very first cycle
+     animates cleanly without a JS-set inline transition. */
+  transform: translateY(0);
+  opacity: 1;
+  transition: transform 0.32s cubic-bezier(0.34, 1.56, 0.64, 1),
+              opacity 0.28s ease;
+  will-change: transform, opacity;
+}
+
+/* (Dot-grid layer is now `.tropt-hero-dots` defined above with the hero.) */
+
+@media (max-width: 720px) {
+  .tropt-optbar { gap: 6px; padding: 8px 10px; }
+  .tropt-tok { font-size: 12.5px; padding: 7px 10px; }
+  .tropt-tok-opt { min-width: 100px; }
+}
 
 /* ==========================================================================
    Section headings on the landing page (left-aligned)
@@ -533,6 +724,46 @@ html[data-theme="dark"] .tropt-card-icon {
 }
 .tropt-arch-cta a:hover { border-color: var(--tropt-violet); }
 
+/* Hide the prev/next page navigation on the landing page — there's no
+   meaningful "next" for a marketing-style landing, and the "Next: Guides"
+   bar adds visual noise after the citation block. Scoped via :has so the
+   prev/next still appears on guides/API pages. */
+body:has(article .tropt-hero) .prev-next-footer {
+  display: none;
+}
+
+/* ==========================================================================
+   Compact site-wide footer
+   © 2026 Matan Ben-Tov · MIT · Built with Sphinx + PyData Theme
+   Template: docs/_templates/footer-tropt.html
+   ========================================================================== */
+.bd-footer .tropt-footer-line {
+  margin: 0;
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--tropt-slate-500);
+  line-height: 1.6;
+}
+.bd-footer .tropt-footer-line a {
+  color: var(--tropt-slate-700);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--tropt-slate-300);
+}
+.bd-footer .tropt-footer-line a:hover {
+  color: var(--tropt-violet);
+  border-bottom-color: var(--tropt-violet);
+}
+/* The pydata footer normally splits into start / center / end zones; with only
+   one center item, let it span the full inner width and center its text. */
+.bd-footer .footer-items__start,
+.bd-footer .footer-items__end {
+  display: none;
+}
+.bd-footer .footer-items__center {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
 /* ==========================================================================
    Citation block
    ========================================================================== */
@@ -579,4 +810,13 @@ article:has(.tropt-hero) section[id="citation"] div.highlight-bibtex pre {
   .tropt-cta { padding: 0.6rem 1rem; font-size: 0.92rem; }
   .tropt-cta-row { gap: 0.55rem; }
   article:has(.tropt-hero) > section > h2 { margin-top: 2.5rem; }
+}
+
+/* Force-light theme: even if the theme switcher gets re-enabled later, these
+   landing-page panels must look right under the light palette. */
+html[data-theme="light"] .tropt-hero {
+  background:
+    radial-gradient(ellipse 75% 70% at 22% 35%, rgba(6, 182, 212, 0.22) 0%, transparent 70%),
+    radial-gradient(ellipse 75% 70% at 78% 65%, rgba(124, 58, 237, 0.22) 0%, transparent 70%),
+    #ffffff;
 }
