@@ -48,7 +48,7 @@ codeautolink_concat_default = True
 
 # MyST: enable colon-fence so sphinx-design directives (`:::{grid}` etc.) and
 # admonitions work in .md guides.
-myst_enable_extensions = ["colon_fence", "deflist"]
+myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline"]
 myst_heading_anchors = 3
 
 autodoc_mock_imports = ['runner', 'sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'tqdm', 'transformers', 'accelerate', 'hydra', 'omegaconf', 'huggingface_hub', 'datasets', 'PIL', 'diffusers', 'trackio']
@@ -72,6 +72,17 @@ html_theme_options = {
         "image_light": "_static/logo.svg",
         "image_dark": "_static/logo.svg",
     },
+    "show_toc_level": 2,
+    "navbar_align": "left",
+    "secondary_sidebar_items": {
+        "**": ["page-toc", "edit-this-page"],
+        "index": [],
+    },
+}
+
+# Landing page: hide the primary (left) sidebar so the hero spans full width.
+html_sidebars = {
+    "index": [],
 }
 
 

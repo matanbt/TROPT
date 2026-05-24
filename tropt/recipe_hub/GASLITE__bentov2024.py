@@ -4,7 +4,7 @@ Hosts the paper-faithful `gaslite__bentov2024` plus the `GASLITEPlus` extension
 (`gasliteplus_encoder`, `gasliteplus_llm`) which adds a buffer and adaptive
 parameters on top of the GASLITE optimizer.
 """
-from typing import Optional
+from typing import List, Optional
 
 import torch
 from jaxtyping import Float
@@ -25,6 +25,7 @@ _TOKEN_CONSTRAINTS = TokenConstraints(disallow_non_ascii=True, disallow_special_
 def gaslite__bentov2024(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     mal_info_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
+    target_queries: Optional[List[str]] = None,
     target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
@@ -36,17 +37,33 @@ def gaslite__bentov2024(
     Args:
         model_name (str): The name of the HuggingFace model to attack.
         mal_info_template (str): The string prefixing the passage with a placeholder for the trigger (i.e., the "malicious information").
-        target_vector (Tensor, (d_model)): The target vector the passage's embedding is aligned (the centroid of the target query set).
+        target_queries: A list of target query strings; the recipe encodes them
+            with the same encoder and uses their centroid as the target vector.
+            Provide exactly one of `target_queries` or `target_vector`.
+        target_vector (Tensor, (1, d_model)): Pre-computed target embedding
+            (alternative to `target_queries`).
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
     """
-    assert target_vector is not None, "target_vector is required."
+    assert (target_queries is None) != (target_vector is None), (
+        "Provide exactly one of `target_queries` or `target_vector`."
+    )
 
     if model_obj is None:
         model_obj = EncoderHFModel(
             model_name=model_name,
         )
     model = model_obj
+
+    if target_vector is None:
+        # Encode the target queries with the victim encoder and average to a
+        # single target vector (the centroid of the target query set).
+        with torch.no_grad():
+            query_embs = model.invoke_from_texts(
+                target_queries
+            ).output_embeddings  # (n_queries, d_model)
+        target_vector = query_embs.mean(dim=0, keepdim=True)  # (1, d_model)
+
     loss = SimilarityLoss()
 
     optimizer = GASLITEOptimizer(

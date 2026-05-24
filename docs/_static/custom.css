@@ -1,35 +1,582 @@
-/* Add subtle border and spacing between class definitions */
+/* ==========================================================================
+   TROPT — color tokens
+   ========================================================================== */
+:root {
+  --tropt-cyan:        #06B6D4;
+  --tropt-cyan-soft:   #67E8F9;
+  --tropt-violet:      #7C3AED;
+  --tropt-violet-deep: #5B21B6;
+  --tropt-slate-900:   #0F172A;
+  --tropt-slate-700:   #334155;
+  --tropt-slate-500:   #64748B;
+  --tropt-slate-300:   #CBD5E1;
+  --tropt-slate-100:   #F1F5F9;
+  --tropt-slate-50:    #F8FAFC;
+
+  --tropt-gradient:        linear-gradient(135deg, #06B6D4 0%, #7C3AED 100%);
+  --tropt-gradient-soft:   linear-gradient(135deg, #ECFEFF 0%, #F5F3FF 100%);
+  --tropt-gradient-strong: linear-gradient(135deg, #0E7490 0%, #5B21B6 100%);
+}
+
+html[data-theme="dark"] {
+  --tropt-slate-900: #F1F5F9;
+  --tropt-slate-700: #CBD5E1;
+  --tropt-slate-500: #94A3B8;
+  --tropt-slate-300: #475569;
+  --tropt-slate-100: #1E293B;
+  --tropt-slate-50:  #0F172A;
+  --tropt-gradient-soft: linear-gradient(135deg, #082F49 0%, #2E1065 100%);
+}
+
+/* ==========================================================================
+   Base API-page tweaks (kept from previous custom.css)
+   ========================================================================== */
 dl.class {
-    margin: 20px 0;          /* Tighter spacing */
-    border: 0;
-    border-top: 0.5px dotted #9c9c9c; /* Dotted, lighter line */
+  margin: 20px 0;
+  border: 0;
+  border-top: 0.5px dotted #9c9c9c;
 }
-
-/* Remove border from the last item so it doesn't look weird */
-/* dl.class:last-child {
-    border-bottom: none;
-} */
-
-/* Cross-Group Separator (Major Sections) */
-hr.hr-major {
-    margin: 40px 0;          /* Larger spacing */
-    border: 0;
-    border-top: 2px solid #e0e0e0;
-}
-
-/* Cross-Group Separator (Major Sections) */
-hr.hr-minor {
-    margin: 30px 0;          /* Larger spacing */
-    border: 0;
-    border-top: 1px solid #e0e0e0;
-}
-
-/* Plain horizontal rule from markdown `---` / `----`. pydata-sphinx-theme
-   applies opacity: .25 to <hr>, which renders the default border invisible
-   against a white background; reset it. */
+hr.hr-major { margin: 40px 0; border: 0; border-top: 2px solid #e0e0e0; }
+hr.hr-minor { margin: 30px 0; border: 0; border-top: 1px solid #e0e0e0; }
 hr.docutils {
-    margin: 30px 0;
-    border: 0;
-    border-top: 1px solid var(--pst-color-border, #e0e0e0);
-    opacity: 1;
+  margin: 30px 0;
+  border: 0;
+  border-top: 1px solid var(--pst-color-border, #e0e0e0);
+  opacity: 1;
+}
+
+/* ==========================================================================
+   Landing page — hide noisy chrome, give the hero room
+   ========================================================================== */
+/* Hide the page title (h1 "TROPT") on the landing page — the hero logo IS the title */
+.bd-main .bd-content h1.tropt-landing-h1 { display: none; }
+
+/* Suppress the auto-generated H1 from the index.md `# TROPT` heading by hiding
+   the first H1 inside articles that contain `.tropt-hero` */
+article:has(.tropt-hero) > section > h1:first-of-type,
+article:has(.tropt-hero) > h1:first-of-type {
+  display: none;
+}
+
+/* Let the landing hero break out of the constrained content width */
+article:has(.tropt-hero) {
+  max-width: none !important;
+}
+
+/* Belt-and-suspenders: never allow horizontal page scroll on the landing page.
+   The hero uses negative margins to break out and long code lines can overflow
+   their tab-content boxes — clip anything that would otherwise extend past the
+   viewport edge. */
+html:has(article .tropt-hero),
+body:has(article .tropt-hero) {
+  overflow-x: hidden;
+}
+article:has(.tropt-hero) {
+  overflow-x: clip;
+}
+
+/* All tab-content / pre blocks scroll internally instead of pushing the page wide. */
+.tropt-example-tabs .sd-tab-content,
+.tropt-level-tabs .sd-tab-content,
+.tropt-example-tabs pre,
+.tropt-level-tabs pre {
+  max-width: 100%;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+
+/* ==========================================================================
+   Hero
+   ========================================================================== */
+.tropt-hero {
+  position: relative;
+  /* True full-bleed: pull to the viewport edges regardless of article padding */
+  margin-left: calc(50% - 50vw);
+  margin-right: calc(50% - 50vw);
+  margin-top: -2rem;
+  margin-bottom: 3rem;
+  width: 100vw;
+  padding: 4.5rem 2rem 3.5rem 2rem;
+  text-align: center;
+  background: var(--tropt-gradient-soft);
+  border-bottom: 1px solid var(--tropt-slate-100);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+/* Subtle radial accent behind the logo */
+.tropt-hero::before {
+  content: "";
+  position: absolute;
+  top: -200px; left: 50%;
+  width: 900px; height: 900px;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(circle at 30% 30%, rgba(6, 182, 212, 0.18) 0%, transparent 55%),
+    radial-gradient(circle at 70% 60%, rgba(124, 58, 237, 0.18) 0%, transparent 55%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.tropt-hero-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+.tropt-hero-logo {
+  width: min(560px, 88%);
+  height: auto;
+  margin: 0 auto 1.5rem auto;
+  display: block;
+  filter: drop-shadow(0 6px 24px rgba(124, 58, 237, 0.18));
+}
+
+.tropt-hero-tagline {
+  font-size: clamp(1.15rem, 1.6vw, 1.5rem);
+  line-height: 1.5;
+  font-weight: 500;
+  color: var(--tropt-slate-700);
+  margin: 0.5rem auto 0.75rem auto;
+  max-width: 720px;
+}
+.tropt-hero-tagline em {
+  font-style: normal;
+  font-weight: 700;
+  background: var(--tropt-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tropt-hero-sub {
+  font-size: 1rem;
+  color: var(--tropt-slate-500);
+  margin: 0 auto 2rem auto;
+  max-width: 640px;
+  line-height: 1.55;
+}
+
+/* CTA buttons */
+.tropt-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  margin: 1.75rem 0 1.5rem 0;
+}
+.tropt-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 1.35rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.98rem;
+  text-decoration: none !important;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, color 0.2s ease;
+  border: 1.5px solid transparent;
+  white-space: nowrap;
+}
+.tropt-cta:hover { transform: translateY(-2px); }
+.tropt-cta-primary {
+  background: var(--tropt-gradient);
+  color: #fff !important;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.28);
+}
+.tropt-cta-primary:hover {
+  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.38);
+  color: #fff !important;
+}
+.tropt-cta-secondary {
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--tropt-violet-deep) !important;
+  border-color: var(--tropt-slate-300);
+  backdrop-filter: blur(6px);
+}
+.tropt-cta-secondary:hover {
+  background: #fff;
+  border-color: var(--tropt-violet);
+  color: var(--tropt-violet) !important;
+}
+html[data-theme="dark"] .tropt-cta-secondary {
+  background: rgba(15, 23, 42, 0.6);
+  color: #E0E7FF !important;
+  border-color: #475569;
+}
+html[data-theme="dark"] .tropt-cta-secondary:hover {
+  background: rgba(15, 23, 42, 0.9);
+  border-color: var(--tropt-cyan);
+  color: var(--tropt-cyan-soft) !important;
+}
+
+.tropt-hero-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 1.25rem;
+}
+.tropt-hero-badges img { height: 20px; }
+
+/* ==========================================================================
+   Section headings on the landing page (left-aligned)
+   ========================================================================== */
+article:has(.tropt-hero) > section > h2,
+article:has(.tropt-hero) h2 {
+  font-size: clamp(1.6rem, 2.2vw, 2.1rem);
+  font-weight: 700;
+  text-align: left;
+  margin: 3.5rem 0 1.5rem 0;
+  max-width: 1140px;
+  margin-left: auto;
+  margin-right: auto;
+  letter-spacing: -0.01em;
+  border: 0;
+  /* Flex row so the inline SVG icon sits perfectly centered with the text;
+     `flex-wrap: wrap` + `flex-basis: 100%` on ::after pushes the gradient
+     underline onto its own line below. */
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+article:has(.tropt-hero) > section > h2::after {
+  content: "";
+  display: block;
+  flex-basis: 100%;     /* wrap onto a new flex line */
+  width: 56px;
+  max-width: 56px;
+  height: 3px;
+  margin: 0.6rem 0 0 0;
+  border-radius: 3px;
+  background: var(--tropt-gradient);
+}
+
+/* Elegant black/slate icon inside an H2 — perfectly centered with the heading
+   text via the flex layout above. No vertical-align hacks needed. */
+.tropt-h2-icon {
+  flex-shrink: 0;
+  color: var(--tropt-slate-900);
+}
+
+/* Left-align body paragraphs within landing-page sections */
+article:has(.tropt-hero) > section > p,
+article:has(.tropt-hero) > section > .admonition {
+  max-width: 1140px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: left;
+}
+
+/* ==========================================================================
+   Feature cards (Why TROPT, Modular, Explore)
+   ========================================================================== */
+.tropt-feature-grid,
+.tropt-arch-grid,
+.tropt-explore-grid {
+  margin: 0 auto 1.5rem auto;
+  max-width: 1140px;
+}
+
+.tropt-feature-card,
+.tropt-arch-card,
+.tropt-explore-card {
+  border: 1px solid var(--tropt-slate-100) !important;
+  border-radius: 14px !important;
+  background: var(--pst-color-background, #fff) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease !important;
+  overflow: hidden;
+  position: relative;
+}
+.tropt-feature-card::before,
+.tropt-arch-card::before,
+.tropt-explore-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 14px;
+  padding: 1.5px;
+  background: var(--tropt-gradient);
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+.tropt-feature-card:hover,
+.tropt-arch-card:hover,
+.tropt-explore-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08) !important;
+  border-color: transparent !important;
+}
+.tropt-feature-card:hover::before,
+.tropt-arch-card:hover::before,
+.tropt-explore-card:hover::before {
+  opacity: 1;
+}
+
+/* Card title styling */
+.tropt-feature-card .sd-card-title,
+.tropt-arch-card .sd-card-title,
+.tropt-explore-card .sd-card-title {
+  font-size: 1.05rem !important;
+  font-weight: 700 !important;
+  color: var(--tropt-slate-900) !important;
+  margin-bottom: 0.7rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.6rem !important;
+}
+
+/* SVG icons inside card titles */
+.tropt-card-icon {
+  flex-shrink: 0;
+  color: var(--tropt-violet);
+  /* Subtle gradient-tinted background tile behind the icon */
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.12), rgba(124, 58, 237, 0.14));
+  padding: 6px;
+  border-radius: 8px;
+  width: 36px !important;
+  height: 36px !important;
+}
+html[data-theme="dark"] .tropt-card-icon {
+  color: var(--tropt-cyan-soft);
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(124, 58, 237, 0.22));
+}
+.tropt-feature-card .sd-card-body,
+.tropt-arch-card .sd-card-body,
+.tropt-explore-card .sd-card-body {
+  padding: 1.4rem 1.4rem !important;
+}
+.tropt-feature-card p,
+.tropt-arch-card p,
+.tropt-explore-card p {
+  font-size: 0.92rem !important;
+  line-height: 1.55 !important;
+  color: var(--tropt-slate-700) !important;
+  margin-bottom: 0 !important;
+}
+
+/* Arch cards align with the others (left) */
+.tropt-arch-card .sd-card-body { text-align: left; }
+
+/* ==========================================================================
+   Get Started — install block
+   ========================================================================== */
+.tropt-install-block {
+  max-width: 1140px;
+  margin: 0 auto 2rem auto;
+  text-align: left;
+}
+.tropt-install-block + p { text-align: left; }
+
+/* ==========================================================================
+   Example / Level tabs (sphinx-design)
+   ========================================================================== */
+.tropt-example-tabs,
+.tropt-level-tabs {
+  max-width: 1100px;
+  margin: 1.5rem auto !important;
+}
+
+/* -- Outer example tabs: folder-tab style --
+   Each label is a "folder tab" sitting on top of the card. The ACTIVE label
+   shares the card's border colour and background, and its bottom edge
+   overlaps the card's top border by 1.5px — so it visually becomes part of
+   the card boundary. A thin violet stripe along the active label's top
+   identifies it without overwhelming the surrounding inactive labels. */
+
+.tropt-example-tabs > input[type="radio"] + label.sd-tab-label {
+  font-size: 0.98rem !important;
+  font-weight: 600 !important;
+  padding: 0.7rem 1.3rem !important;
+  background: transparent !important;
+  color: var(--tropt-slate-500) !important;
+  border: 1.5px solid transparent !important;
+  border-bottom: 0 !important;
+  border-radius: 12px 12px 0 0 !important;
+  margin: 0 0.25rem -1.5px 0 !important;   /* overlap the card's 1.5px border */
+  position: relative;
+  z-index: 1;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 0.45rem !important;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease !important;
+}
+
+/* SVG icons inside tab labels — inherit currentColor */
+.tropt-tab-icon {
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+/* Hover only on INACTIVE outer tabs (otherwise text disappears on active). */
+.tropt-example-tabs > input[type="radio"]:not(:checked) + label.sd-tab-label:hover {
+  color: var(--tropt-violet) !important;
+  background: rgba(124, 58, 237, 0.05) !important;
+}
+
+/* Active outer tab: same fill/border as the card, plus a violet top accent. */
+.tropt-example-tabs > input[type="radio"]:checked + label.sd-tab-label {
+  background: var(--pst-color-background, #fff) !important;
+  color: var(--tropt-violet) !important;
+  border-color: var(--tropt-slate-300) !important;
+  box-shadow: inset 0 3px 0 var(--tropt-violet) !important;
+}
+
+/* Card content: clearer border, integrates with the active tab seam above. */
+.tropt-example-tabs > .sd-tab-content {
+  border: 1.5px solid var(--tropt-slate-300) !important;
+  border-radius: 0 14px 14px 14px !important;
+  padding: 1.5rem !important;
+  background: var(--pst-color-background, #fff) !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+}
+
+/* -- Inner level tabs (pill style) --
+   Active pill has a flat bottom, sitting flush against the code panel.
+   Hover only applies to inactive pills, so the active violet pill keeps
+   its white text. */
+.tropt-level-tabs > input[type="radio"] + label.sd-tab-label {
+  font-size: 0.92rem !important;
+  font-weight: 600 !important;
+  padding: 0.45rem 1rem !important;
+  border-radius: 8px 8px 0 0 !important;
+  background: var(--tropt-slate-50) !important;
+  border: 1px solid var(--tropt-slate-100) !important;
+  border-bottom: 0 !important;
+  color: var(--tropt-slate-700) !important;
+  margin-right: 0.4rem !important;
+  margin-bottom: 0 !important;
+  transition: color 0.18s ease, background 0.18s ease, border-color 0.18s ease !important;
+}
+/* Active inner pill: subtle — same slate background as inactive, but with
+   violet text and a 3-px violet top accent stripe. Matches the outer-tab
+   accent pattern so the design feels cohesive. */
+.tropt-level-tabs > input[type="radio"]:checked + label.sd-tab-label {
+  background: var(--pst-color-background, #fff) !important;
+  border-color: var(--tropt-slate-300) !important;
+  color: var(--tropt-violet) !important;
+  box-shadow: inset 0 3px 0 var(--tropt-violet) !important;
+}
+/* Hover only on inactive pills — fixes the text-disappears-on-hover bug
+   that occurred when hover was applied to the active violet pill. */
+.tropt-level-tabs > input[type="radio"]:not(:checked) + label.sd-tab-label:hover {
+  border-color: var(--tropt-violet) !important;
+  color: var(--tropt-violet) !important;
+  background: rgba(124, 58, 237, 0.06) !important;
+}
+.tropt-level-tabs > .sd-tab-content {
+  border: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+/* Code blocks inside level tabs — fill 100% of the inner tab-content,
+   no border-radius, no external margin: they "merge" with the level-tab
+   area, looking like one continuous panel. Internal padding kept for
+   code readability. */
+.tropt-level-tabs > .sd-tab-content > div[class*="highlight-"],
+.tropt-level-tabs > .sd-tab-content > .highlight {
+  margin: 0 !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  border-radius: 0 !important;
+}
+.tropt-level-tabs > .sd-tab-content pre {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  padding: 1.1rem 1.2rem !important;
+  font-size: 0.86rem !important;
+  line-height: 1.5 !important;
+  width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* Caption paragraphs ("**One call.**...") immediately after a code block
+   need their own top spacing since the pre no longer carries margin. */
+.tropt-level-tabs > .sd-tab-content > p {
+  margin-top: 1rem !important;
+}
+
+/* Hint line under the tabs */
+.tropt-tabs-hint {
+  max-width: 1140px;
+  margin: 0.5rem auto 0 auto;
+  text-align: left;
+  color: var(--tropt-slate-500);
+  font-size: 0.92rem;
+}
+
+/* ==========================================================================
+   Architecture CTA
+   ========================================================================== */
+.tropt-arch-cta {
+  max-width: 1140px;
+  margin: 1.5rem auto 0 auto;
+  text-align: left;
+  font-size: 1rem;
+  color: var(--tropt-slate-700);
+}
+.tropt-arch-cta a {
+  color: var(--tropt-violet) !important;
+  font-weight: 600;
+  text-decoration: none !important;
+  border-bottom: 1.5px solid transparent;
+  transition: border-color 0.2s ease;
+}
+.tropt-arch-cta a:hover { border-color: var(--tropt-violet); }
+
+/* ==========================================================================
+   Citation block
+   ========================================================================== */
+article:has(.tropt-hero) section[id="citation"] > p {
+  color: var(--tropt-slate-700);
+}
+article:has(.tropt-hero) section[id="citation"] {
+  max-width: 1140px;
+  margin: 0 auto;
+}
+/* Responsive width on the BibTeX block: fit the available space and scroll
+   internally on narrow screens. Margins live on the outer highlight wrapper
+   only — don't stack with the inner highlight div or <pre>. */
+article:has(.tropt-hero) section[id="citation"] div.highlight-bibtex {
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+}
+article:has(.tropt-hero) section[id="citation"] div.highlight-bibtex div.highlight,
+article:has(.tropt-hero) section[id="citation"] div.highlight-bibtex pre {
+  max-width: 100%;
+  width: 100%;
+  margin: 0;
+  overflow-x: auto;
+  box-sizing: border-box;
+}
+@media (max-width: 720px) {
+  article:has(.tropt-hero) section[id="citation"] pre {
+    font-size: 0.78rem;
+    padding: 0.9rem 1rem;
+  }
+}
+
+/* ==========================================================================
+   Responsive tweaks
+   ========================================================================== */
+@media (max-width: 720px) {
+  .tropt-hero {
+    padding: 3rem 1rem 2.5rem 1rem;
+    margin-top: -1rem;
+    margin-bottom: 2.5rem;
+  }
+  .tropt-hero-tagline br { display: none; }
+  .tropt-cta { padding: 0.6rem 1rem; font-size: 0.92rem; }
+  .tropt-cta-row { gap: 0.55rem; }
+  article:has(.tropt-hero) > section > h2 { margin-top: 2.5rem; }
 }

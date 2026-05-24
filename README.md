@@ -9,10 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://matanbt.github.io/TROPT"><strong>Docs</strong></a> &ensp;|&ensp;
-  <a href="quickstart.ipynb"><strong>Quick Start (Notebook)</strong></a> &ensp;|&ensp;
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> &ensp;|&ensp;
+  <a href="https://matanbt.github.io/TROPT"><strong>Website</strong></a> &ensp;|&ensp;
+  <strong>Quick Start (<a href="https://matanbt.github.io/TROPT#get-started">Examples</a>, <a href="quickstart.ipynb">Notebook</a>)</strong> &ensp;|&ensp;
   <a href="https://matanbt.github.io/TROPT/guides/index.html"><strong>Guides</strong></a> &ensp;|&ensp;
+  <a href="https://matanbt.github.io/TROPT/api/index.html"><strong>API Ref.</strong></a> &ensp;|&ensp;
   <a href="[TODO]"><strong>Paper</strong></a>
 </p>
 
@@ -26,7 +26,7 @@
 
 ---
 
-***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text-trigger optimizers that elicit (un)desired behaviors from various types of NLP models, including LLMs, embeddings, classifiers, etc.
+***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text optimizers that elicit (un)desired behaviors for various types of NLP models (LLMs, embeddings, classifiers) and applications (red-teaming, interpretability, etc.).
 
 
 - ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with 30+ ready-to-run recipes (e.g., GCG, BEAST, MAC) — each invocable in a single call — to evaluate model and defense robustness.
