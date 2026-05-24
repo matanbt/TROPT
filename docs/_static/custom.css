@@ -459,6 +459,8 @@ article:has(.tropt-hero) > section > .admonition {
   margin-left: auto;
   margin-right: auto;
   text-align: left;
+  font-size: 1.05rem;
+  line-height: 1.65;
 }
 
 /* ==========================================================================
@@ -516,7 +518,7 @@ article:has(.tropt-hero) > section > .admonition {
 .tropt-feature-card .sd-card-title,
 .tropt-arch-card .sd-card-title,
 .tropt-explore-card .sd-card-title {
-  font-size: 1.05rem !important;
+  font-size: 1.1rem !important;
   font-weight: 700 !important;
   color: var(--tropt-slate-900) !important;
   margin-bottom: 0.7rem !important;
@@ -548,7 +550,7 @@ html[data-theme="dark"] .tropt-card-icon {
 .tropt-feature-card p,
 .tropt-arch-card p,
 .tropt-explore-card p {
-  font-size: 0.92rem !important;
+  font-size: 0.98rem !important;
   line-height: 1.55 !important;
   color: var(--tropt-slate-700) !important;
   margin-bottom: 0 !important;
@@ -684,7 +686,7 @@ html[data-theme="dark"] .tropt-card-icon {
   margin: 0 !important;
   border-radius: 0 !important;
   padding: 1.1rem 1.2rem !important;
-  font-size: 0.86rem !important;
+  font-size: 0.9rem !important;
   line-height: 1.5 !important;
   width: 100% !important;
   box-sizing: border-box;
@@ -712,7 +714,7 @@ html[data-theme="dark"] .tropt-card-icon {
   max-width: 1140px;
   margin: 1.5rem auto 0 auto;
   text-align: left;
-  font-size: 1rem;
+  font-size: 1.05rem;
   color: var(--tropt-slate-700);
 }
 .tropt-arch-cta a {
@@ -819,4 +821,54 @@ html[data-theme="light"] .tropt-hero {
     radial-gradient(ellipse 75% 70% at 22% 35%, rgba(6, 182, 212, 0.22) 0%, transparent 70%),
     radial-gradient(ellipse 75% 70% at 78% 65%, rgba(124, 58, 237, 0.22) 0%, transparent 70%),
     #ffffff;
+}
+
+/* ==========================================================================
+   Dark-mode hero / banner
+   Mirrors the light treatment: same cyan→violet wash, but on the deep navy
+   page background. Balloons and dots get a touch more opacity so they read
+   against the darker base.
+   ========================================================================== */
+html[data-theme="dark"] .tropt-hero {
+  background:
+    radial-gradient(ellipse 75% 70% at 22% 35%, rgba(6, 182, 212, 0.18) 0%, transparent 70%),
+    radial-gradient(ellipse 75% 70% at 78% 65%, rgba(124, 58, 237, 0.22) 0%, transparent 70%),
+    #0F172A;
+}
+html[data-theme="dark"] .tropt-hero::before {
+  background: radial-gradient(circle, rgba(6, 182, 212, 0.28), rgba(6, 182, 212, 0) 62%);
+}
+html[data-theme="dark"] .tropt-hero::after {
+  background: radial-gradient(circle, rgba(124, 58, 237, 0.30), rgba(124, 58, 237, 0) 62%);
+}
+html[data-theme="dark"] .tropt-hero-dots {
+  background-image: radial-gradient(circle, rgba(148, 163, 184, 0.30) 1px, transparent 1.4px);
+}
+/* Subtitle on the SVG logo is hard-coded to slate-500 (#64748B). Lift it to
+   slate-300 in dark so it stays legible without competing with the violet title. */
+html[data-theme="dark"] .tropt-hero-logo text:last-of-type {
+  fill: #94A3B8;
+}
+/* Tagline body text under the logo. */
+html[data-theme="dark"] .tropt-hero-tagline {
+  color: #CBD5E1;
+}
+
+/* Optbar (the live "Optimize [verb] any [noun]" pill row) — dark glass. */
+html[data-theme="dark"] .tropt-optbar {
+  background: rgba(15, 23, 42, 0.55);
+  border-color: #334155;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.2),
+              0 12px 40px -20px rgba(124, 58, 237, 0.4);
+}
+html[data-theme="dark"] .tropt-tok-fixed {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: #334155 !important;
+  color: #E2E8F0;
+}
+html[data-theme="dark"] .tropt-tok-opt {
+  background:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.14), rgba(124, 58, 237, 0.18)),
+    rgba(30, 41, 59, 0.9);
+  border-color: rgba(124, 58, 237, 0.45);
 }

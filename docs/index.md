@@ -3,9 +3,14 @@ sd_hide_title: true
 myst:
   html_meta:
     description: "TROPT — Textual Trigger Optimization Toolbox. Optimize text triggers toward any goal, with any optimizer, against any NLP model, under a unified framework."
+    # twitter:* tags use `name=` (correct here — MyST's default).
+    "twitter:title": "TROPT — Textual Trigger Optimization Toolbox"
+    "twitter:description": "Optimize text triggers toward any goal, with any optimizer, against any NLP model — under a unified framework."
 ---
 
 # TROPT
+
+<!-- TODO make me more concise -->
 
 ```{raw} html
 <section class="tropt-hero">
@@ -33,7 +38,7 @@ myst:
       toward <em>any</em> goal,
       with <em>any</em> optimizer,<br>
       against <em>any</em> NLP model &mdash;
-      under a unified framework.
+      under a unified framework
     </p>
     <div class="tropt-optbar" aria-label="Easily optimize toward any goal, with any optimizer, against any model">
       <div class="tropt-tok tropt-tok-fixed">Easily</div>
@@ -865,6 +870,8 @@ Templates with `{{OPTIMIZED_TRIGGER}}` placeholders plus a typed `Targets` datac
 ```{raw} html
 </div>
 ```
+
+<!-- TODO add a section with summary of the paper results per application -->
 
 ## <svg class="tropt-h2-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg> Explore the docs
 

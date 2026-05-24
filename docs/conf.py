@@ -33,6 +33,10 @@ extensions = [
     'sphinx_codeautolink',
     'sphinx_design',
     'myst_parser',
+    # SEO: emits sitemap.xml + per-page Open Graph / Twitter card meta tags.
+    # Both extensions need `html_baseurl` (set below) to produce absolute URLs.
+    'sphinx_sitemap',
+    'sphinxext.opengraph',
 ]
 
 # sphinx-copybutton: strip shell prompts and Python REPL prefixes so the
@@ -68,6 +72,47 @@ html_static_path = ['_static']
 html_css_files = ['custom.css']
 html_js_files = ['skip_auto_theme.js']
 html_favicon = '_static/favicon.svg'
+
+# -- SEO ---------------------------------------------------------------------
+# Canonical URL of the deployed docs. sphinx-sitemap and sphinxext-opengraph
+# both read this; without it they silently produce relative URLs (which
+# Twitter/LinkedIn/Slack won't accept for og:url and og:image).
+html_baseurl = "https://matanbt.github.io/TROPT/"
+
+# Crisper window title — strips the noisy "TROPT 0.0.1a1 documentation" suffix.
+# Sphinx renders <title> as "{page_h1} — {html_title}", so setting this to the
+# tagline gives "TROPT — Textual Trigger Optimization Toolbox" on the landing
+# page and "<topic> — Textual Trigger Optimization Toolbox" elsewhere.
+html_title = "Textual Trigger Optimization Toolbox"
+
+# Pull robots.txt into the build output (extra_path copies files verbatim into
+# the html dir). The file lives at docs/_static/robots.txt; the build script
+# copies _static into the output anyway, but extra_path ensures it lands at
+# the SITE ROOT (matanbt.github.io/TROPT/robots.txt) which is where crawlers
+# look for it — placement inside _static/ wouldn't be discoverable.
+html_extra_path = ['robots.txt']
+
+# sphinx-sitemap config — emits sitemap.xml at the docs root.
+# `sitemap_url_scheme` template: {link} = relative URL of each page.
+sitemap_url_scheme = "{link}"
+
+# sphinxext-opengraph — auto-generates og:title, og:description, og:url, plus
+# Twitter Card tags. og:image is set globally; per-page overrides go via the
+# MyST `myst.html_meta` front-matter (see index.md).
+ogp_site_url = html_baseurl
+ogp_site_name = "TROPT — Textual Trigger Optimization Toolbox"
+ogp_image = html_baseurl + "_static/og-image.png"
+ogp_image_alt = "TROPT — Textual Trigger Optimization Toolbox"
+ogp_type = "website"
+ogp_enable_meta_description = True
+# Generate <meta name="twitter:card" content="summary_large_image"> so the
+# preview is the wide card layout (not the small thumbnail variant).
+ogp_social_cards = {"enable": False}  # don't auto-render; we ship our own.
+ogp_custom_meta_tags = [
+    '<meta name="twitter:card" content="summary_large_image">',
+    '<meta name="twitter:site" content="@matanbentov">',
+]
+
 html_theme_options = {
     "logo": {
         "image_light": "_static/logo.svg",
