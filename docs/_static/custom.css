@@ -471,6 +471,11 @@ article:has(.tropt-hero) > section > .admonition {
 .tropt-explore-grid {
   margin: 0 auto 1.5rem auto;
   max-width: 1140px;
+  /* `clear: both` ensures the grid never wraps around any floated element
+     above it (e.g. the .tropt-mini-demo aside floated right beside the
+     "What's TROPT?" headline + intro paragraph). The grid always starts on
+     a fresh row at full width. */
+  clear: both;
 }
 
 .tropt-feature-card,
@@ -514,6 +519,78 @@ article:has(.tropt-hero) > section > .admonition {
   opacity: 1;
 }
 
+/* Expandable feature cards: only the title is visible by default; click
+   (or keyboard Enter/Space) reveals the description. JS in landing.js
+   adds/removes the `.is-expanded` class + `aria-expanded`.
+   IMPORTANT: sphinx-design nests `.sd-card-title` AND `.sd-card-text` INSIDE
+   `.sd-card-body`, so we can't hide `.sd-card-body` itself (would hide the
+   title too). We target only `.sd-card-text` — the description paragraph. */
+.tropt-feature-card {
+  cursor: pointer;
+  position: relative;        /* anchor for the floating chevron icon */
+}
+.tropt-feature-card .sd-card-text {
+  max-height: 0;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              margin 0.28s ease,
+              opacity 0.22s ease;
+}
+.tropt-feature-card.is-expanded .sd-card-text {
+  max-height: 500px;
+  margin-top: 0.65rem !important;
+  opacity: 1;
+}
+/* (Body padding now controlled by the unified .sd-card-body rule below — see
+   the `padding: 0.65rem 1rem` line below the card-title styling.) */
+/* Chevron icon — sits in the card's TOP-RIGHT corner, OVERLAYING the body
+   padding zone (not in title flow). The title can therefore claim the full
+   body width. Tiny 16px so it's unobtrusive on short titles, slightly
+   coloured on hover so the affordance is obvious. */
+.tropt-feature-card::after {
+  content: "";
+  position: absolute;
+  top: 0.65rem;
+  right: 0.55rem;
+  width: 16px;
+  height: 16px;
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 14px 14px;
+  opacity: 0.55;
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 0.18s ease;
+  pointer-events: none;
+}
+.tropt-feature-card:hover::after {
+  opacity: 1;
+}
+.tropt-feature-card.is-expanded::after {
+  transform: rotate(180deg);
+  opacity: 1;
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237C3AED' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+.tropt-feature-card .sd-card-title {
+  /* No reserved right padding — title takes the full body width. Short
+     titles (which all of ours currently are) never reach the floating
+     chevron in the top-right corner. */
+  margin-bottom: 0 !important;
+}
+html[data-theme="dark"] .tropt-feature-card::after {
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23CBD5E1' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+html[data-theme="dark"] .tropt-feature-card.is-expanded::after {
+  background-image:
+    url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2367E8F9' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+}
+
 /* Card title styling */
 .tropt-feature-card .sd-card-title,
 .tropt-arch-card .sd-card-title,
@@ -542,7 +619,11 @@ html[data-theme="dark"] .tropt-card-icon {
   color: var(--tropt-cyan-soft);
   background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(124, 58, 237, 0.22));
 }
-.tropt-feature-card .sd-card-body,
+.tropt-feature-card .sd-card-body {
+  /* Tighter padding for the expandable feature cards — collapsed state
+     should read as a compact title row, not a half-empty box. */
+  padding: 0.65rem 1rem !important;
+}
 .tropt-arch-card .sd-card-body,
 .tropt-explore-card .sd-card-body {
   padding: 1.4rem 1.4rem !important;
@@ -558,6 +639,551 @@ html[data-theme="dark"] .tropt-card-icon {
 
 /* Arch cards align with the others (left) */
 .tropt-arch-card .sd-card-body { text-align: left; }
+
+/* ==========================================================================
+   What's TROPT? mini-demo (.tropt-mini-demo)
+   Quiet sidebar annotation that floats right beside the H2 + intro paragraph.
+   Click anywhere on the aside (or the inline ▸ optimize link) to animate:
+   the trigger swaps char-by-char from "! ! ! ! !" to an optimized string,
+   the loss number tweens from 8.42 → 0.42, and the left rule + trigger pill
+   shift slate → violet. Auto-resets after ~5s.
+   ========================================================================== */
+/* The "What's TROPT?" section becomes a grid: H2 + the .tropt-mini-demo aside
+   sit on row 1 (side by side); everything else (intro paragraph, feature grid,
+   ...) sits full-width on the following rows. Both items have margin: 0 in
+   row 1 so their content boxes line up; `align-items: center` then centers
+   the aside on the H2 text's vertical midline. The section's padding-top and
+   the paragraph's margin-top replace the H2's removed top/bottom margins. */
+section:has(> .tropt-mini-demo) {
+  display: grid !important;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 1.5rem;
+  align-items: center;
+  padding-top: 3.5rem;     /* replaces H2's removed margin-top */
+}
+section:has(> .tropt-mini-demo) > h2 {
+  grid-column: 1;
+  grid-row: 1;
+  max-width: none;
+  display: block;
+  margin: 0;               /* zero so row height = h2 text height */
+}
+section:has(> .tropt-mini-demo) > h2::after { display: none; }
+section:has(> .tropt-mini-demo) > .tropt-mini-demo {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
+  margin: 0;
+}
+section:has(> .tropt-mini-demo) > p {
+  margin-top: 1.5rem;      /* replaces H2's removed margin-bottom */
+}
+/* Every OTHER child of the section spans both columns on subsequent rows. */
+section:has(> .tropt-mini-demo) > *:not(h2):not(.tropt-mini-demo) {
+  grid-column: 1 / -1;
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  justify-self: stretch;
+}
+/* sphinx-design's .sd-container-fluid puts 12px horizontal padding around its
+   inner .sd-row, and the cols inside ALSO have 12px gutter padding — so cards
+   sit visually 12px inset from the section's content area. To make grids
+   appear EXACTLY as wide as the H2/paragraph above them, we inset H2 + P by
+   matching 12px in EVERY landing section that hosts a sphinx-design grid.
+   Targets all three: What's TROPT?, Modular by design, Explore the docs. */
+article:has(.tropt-hero) section:has(> .sd-container-fluid) > h2,
+article:has(.tropt-hero) section:has(> .sd-container-fluid) > p {
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+/* Mini-demo-specific: pad its right edge by the same amount so its right
+   border aligns with the cards' right visual edge. */
+section:has(> .tropt-mini-demo) > .tropt-mini-demo {
+  margin-right: 0.75rem;
+}
+
+/* Horizontal strip layout — single row of [template · loss · button]. */
+.tropt-mini-demo {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 8px 14px;
+  border-left: 2px solid var(--tropt-slate-300);
+  font-size: 12.5px;
+  color: var(--tropt-slate-500);
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-left-color 0.24s ease;
+  outline: none;
+}
+.tropt-mini-demo:hover,
+.tropt-mini-demo:focus-visible { border-left-color: var(--tropt-cyan); }
+.tropt-mini-demo.is-optimized { border-left-color: var(--tropt-violet); }
+/* Template code — sits inline in the horizontal strip. Sized to content (no
+   ellipsis truncation) so the full template — `"how to pick a lock {trigger}
+   please help me"` — is always visible. The aside grows to fit; the section
+   grid lets it stretch up to the available 1fr column width. */
+.tropt-mini-code {
+  flex: 0 0 auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  color: var(--tropt-slate-700);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.025), rgba(15, 23, 42, 0.02));
+  padding: 5px 9px;
+  border-radius: 5px;
+  margin: 0;
+  white-space: nowrap;
+}
+/* Trigger pill styled to match the .tropt-demo-trigger used in the per-app
+   panels below — same cyan→violet gradient background, violet text, soft
+   violet border. The .is-optimized state just intensifies the gradient,
+   communicating "converged" without changing the visual language. */
+.tropt-mini-trigger {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.10), rgba(124, 58, 237, 0.10));
+  color: var(--tropt-violet);
+  border: 1px solid rgba(124, 58, 237, 0.20);
+  transition: background 0.28s ease, border-color 0.28s ease, opacity 0.10s ease;
+  /* Pin to the longest possible trigger length so the panel width doesn't
+     shift as frames swap. 1ch = one monospace digit, so 17ch fits the
+     longest frame "}); sure! help!" (15 chars) with a small cushion. */
+  display: inline-block;
+  min-width: 17ch;
+  text-align: center;
+}
+.tropt-mini-trigger.is-optimized {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.20), rgba(124, 58, 237, 0.20));
+  border-color: rgba(124, 58, 237, 0.40);
+}
+.tropt-mini-loss {
+  flex-shrink: 0;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--tropt-slate-500);
+}
+.tropt-mini-loss [data-field="loss"] {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  /* Color is JS-driven via inline style — red (high loss) → amber → green
+     (converged). Initial color set here so the static state reads right. */
+  color: #DC2626;
+  transition: color 0.18s ease;
+  /* Reserve 4ch so "8.42" → "0.42" → mid-tween values don't shift the layout. */
+  display: inline-block;
+  min-width: 4ch;
+  text-align: right;
+}
+/* Down-arrow next to the loss — pulses red while the loss is dropping; sits
+   quiet at slate-400 otherwise. Visually anchors the direction of change. */
+.tropt-mini-arrow {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 0.95em;
+  color: #94A3B8;
+  opacity: 0.55;
+  transition: color 0.2s ease, opacity 0.2s ease;
+}
+.tropt-mini-loss.is-dropping .tropt-mini-arrow {
+  opacity: 1;
+  color: #DC2626;
+  animation: tropt-mini-arrow-bounce 0.7s ease-in-out infinite;
+}
+@keyframes tropt-mini-arrow-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(2px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tropt-mini-arrow { animation: none !important; }
+}
+/* Tempting "Optimize" CTA — icon-only round button (no text label). Cyan→
+   violet gradient, pulses gently to draw the eye. Pulse pauses while disabled
+   or hovered. */
+.tropt-mini-play {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tropt-cyan), var(--tropt-violet));
+  color: #fff;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 1px 6px -2px rgba(124, 58, 237, 0.22);
+  animation: tropt-mini-play-pulse 2.6s ease-in-out infinite;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+@keyframes tropt-mini-play-pulse {
+  0%, 100% { box-shadow: 0 1px 6px -2px rgba(124, 58, 237, 0.22),
+                         0 0 0 0   rgba(124, 58, 237, 0.18); }
+  50%      { box-shadow: 0 1px 6px -2px rgba(124, 58, 237, 0.30),
+                         0 0 0 5px rgba(124, 58, 237, 0); }
+}
+/* "Lift" the button on hover. Trigger this both when the button itself is
+   hovered AND when ANY other part of the panel is hovered — the whole panel
+   is clickable, so the button should respond as a single hit-target. */
+.tropt-mini-play:hover:not(:disabled),
+.tropt-mini-demo:hover .tropt-mini-play:not(:disabled) {
+  filter: brightness(1.06);
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 3px 10px -3px rgba(124, 58, 237, 0.30);
+  animation: none;
+}
+.tropt-mini-play:disabled {
+  opacity: 0.75;
+  cursor: default;
+  transform: none;
+  animation: none;
+  filter: saturate(0.85);
+}
+.tropt-mini-play svg {
+  flex-shrink: 0;
+  transition: transform 0.22s ease;
+}
+.tropt-mini-play:hover:not(:disabled) svg,
+.tropt-mini-demo:hover .tropt-mini-play:not(:disabled) svg { transform: scale(1.12); }
+/* Dark mode */
+html[data-theme="dark"] .tropt-mini-demo {
+  border-left-color: #475569;
+  color: #94A3B8;
+}
+html[data-theme="dark"] .tropt-mini-code { color: #CBD5E1; }
+html[data-theme="dark"] .tropt-mini-loss [data-field="loss"] { color: #E2E8F0; }
+html[data-theme="dark"] .tropt-mini-trigger {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(124, 58, 237, 0.20));
+  color: var(--tropt-cyan-soft);
+  border-color: rgba(124, 58, 237, 0.35);
+}
+html[data-theme="dark"] .tropt-mini-trigger.is-optimized {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.28), rgba(124, 58, 237, 0.32));
+  border-color: rgba(124, 58, 237, 0.55);
+}
+/* On narrow screens collapse to a single column — the aside stacks below
+   the H2 (above the intro paragraph) and the inner strip wraps onto multiple
+   lines if needed. */
+@media (max-width: 720px) {
+  section:has(> .tropt-mini-demo) {
+    grid-template-columns: 1fr;
+  }
+  section:has(> .tropt-mini-demo) > .tropt-mini-demo {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: stretch;
+    margin: 0.25rem 0 1rem 0;
+    flex-wrap: wrap;
+  }
+  .tropt-mini-code { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tropt-mini-trigger { transition: none; }
+}
+
+/* ==========================================================================
+   Per-application interactive demo widget (.tropt-demo)
+   Sits inside each outer Get-Started tab, above the Recipe/Compose/Scratch
+   level tabs. Three rows (prompt / control bar / output) animated by the
+   inline <script> in index.md. Designed to be compact (~150px tall) and
+   communicate at a glance that an optimized trigger flips the model output.
+   ========================================================================== */
+.tropt-demo {
+  position: relative;
+  margin: 0.75rem 0 1.25rem;
+  padding: 0.95rem 1.05rem;
+  border-radius: 12px;
+  /* Plain background — the visual interest lives in the gradient border
+     (.tropt-demo::before below) plus the colored content inside (the trigger
+     pill, button, output pill). No background washes — they were competing
+     with the panel's actual content. */
+  background: var(--pst-color-background, #fff);
+  /* Fallback border in case mask-composite isn't supported — the ::before
+     gradient border sits on top of this when supported. */
+  border: 1px solid var(--tropt-slate-100);
+  font-size: 0.9rem;
+  display: grid;
+  gap: 0.55rem;
+  color: var(--tropt-slate-700);
+}
+/* Gradient border (cyan→violet, diagonal) via the standard mask-composite
+   recipe. Held at 55% opacity so it reads as an accent, not a hard line.
+   Echoes the feature-card hover treatment for visual consistency. */
+.tropt-demo::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tropt-cyan), var(--tropt-violet));
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+  opacity: 0.55;
+}
+
+/* Refined chip: a small gradient pulse-dot + italic "interactive" word,
+   positioned top-right inside the panel. No background pill — bare text reads
+   as a quiet annotation rather than a button or a tag. The dot picks up the
+   panel border's cyan→violet gradient to tie everything together. */
+.tropt-demo-chip {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--tropt-slate-500);
+  user-select: none;
+  pointer-events: none;
+  z-index: 2;            /* sit above ::before's mask */
+}
+.tropt-demo-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--tropt-cyan), var(--tropt-violet));
+  display: inline-block;
+}
+html[data-theme="dark"] .tropt-demo-chip { color: #94A3B8; }
+.tropt-demo-row {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: baseline;
+  gap: 0.85rem;
+  min-height: 22px;
+}
+.tropt-demo-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--tropt-slate-500);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tropt-demo-label svg {
+  flex-shrink: 0;
+  color: var(--tropt-slate-500);
+}
+.tropt-demo-text {
+  color: var(--tropt-slate-700);
+  line-height: 1.45;
+  min-width: 0;
+}
+.tropt-demo-trigger {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  padding: 1px 7px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.10), rgba(124, 58, 237, 0.10));
+  color: var(--tropt-violet);
+  border: 1px solid rgba(124, 58, 237, 0.20);
+  word-break: break-all;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+.tropt-demo-trigger.is-animating {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.18), rgba(124, 58, 237, 0.18));
+}
+.tropt-demo-bar {
+  display: grid;
+  /* Three columns: button | step+loss stack (narrow) | sparkline (fills rest).
+     Two rows so step/loss can stack; button + sparkline each span both rows. */
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.85rem;
+  row-gap: 0;
+  padding: 0.5rem 0;
+  align-items: center;
+  border-top: 1px dashed var(--tropt-slate-100);
+  border-bottom: 1px dashed var(--tropt-slate-100);
+}
+.tropt-demo-btn {
+  grid-row: 1 / 3;
+  grid-column: 1;
+  align-self: center;
+}
+.tropt-demo-bar > .tropt-demo-meta {
+  line-height: 1.2;
+  font-size: 0.72rem;
+}
+.tropt-demo-bar > .tropt-demo-meta:nth-of-type(1) {
+  grid-row: 1; grid-column: 2;
+  align-self: end;
+}
+.tropt-demo-bar > .tropt-demo-meta:nth-of-type(2) {
+  grid-row: 2; grid-column: 2;
+  align-self: start;
+}
+.tropt-demo-bar > .tropt-demo-spark {
+  grid-row: 1 / 3;       /* spark spans both rows, sitting beside the stack */
+  grid-column: 3;
+  align-self: center;
+  max-width: none;
+  height: 32px;          /* taller now that it spans 2 rows */
+  margin: 0;
+}
+.tropt-demo-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  /* Subtle violet-tinted pill — quiet UI affordance that "lights up" on hover. */
+  background: rgba(124, 58, 237, 0.07);
+  color: var(--tropt-violet);
+  border: 1px solid rgba(124, 58, 237, 0.22);
+  border-radius: 7px;
+  font-weight: 600;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+  white-space: nowrap;
+}
+.tropt-demo-btn:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.14);
+  border-color: rgba(124, 58, 237, 0.40);
+  transform: translateY(-1px);
+}
+/* Reserve enough room for the widest label ("Optimizing…") so the button
+   doesn't shrink/grow as the JS swaps labels (Optimize → Optimizing… → Replay). */
+.tropt-demo-btn [data-field="btn-label"] {
+  display: inline-block;
+  min-width: 5.6em;
+  text-align: center;
+}
+html[data-theme="dark"] .tropt-demo-btn {
+  background: rgba(124, 58, 237, 0.18);
+  color: var(--tropt-cyan-soft);
+  border-color: rgba(124, 58, 237, 0.40);
+}
+html[data-theme="dark"] .tropt-demo-btn:hover:not(:disabled) {
+  background: rgba(124, 58, 237, 0.30);
+  border-color: rgba(124, 58, 237, 0.60);
+}
+.tropt-demo-btn:disabled {
+  opacity: 0.7;
+  cursor: default;
+  transform: none;
+}
+.tropt-demo-btn svg {
+  flex-shrink: 0;
+}
+.tropt-demo-meta {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  color: var(--tropt-slate-500);
+  white-space: nowrap;
+}
+.tropt-demo-meta strong {
+  color: var(--tropt-slate-700);
+  font-weight: 600;
+}
+/* Reserve fixed character slots so the numbers don't shove the surrounding
+   `step` / `loss` labels around as they grow. `1ch` ≈ one digit in monospace,
+   so 3ch fits "100" exactly and 4ch fits "8.42" exactly. Tabular-nums is a
+   belt-and-suspenders guarantee in case the inherited font isn't strictly
+   monospaced everywhere. */
+.tropt-demo-meta [data-field="step"],
+.tropt-demo-meta [data-field="loss"] {
+  display: inline-block;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.tropt-demo-meta [data-field="step"] { min-width: 3ch; }
+.tropt-demo-meta [data-field="loss"] { min-width: 4ch; }
+.tropt-demo-spark {
+  flex: 1 1 100px;
+  min-width: 80px;
+  max-width: 220px;
+  height: 24px;
+  color: var(--tropt-violet);
+  overflow: visible;
+}
+.tropt-demo-spark-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: d 0.4s ease;
+}
+.tropt-demo-spark-area {
+  fill: rgba(124, 58, 237, 0.10);
+  stroke: none;
+  transition: d 0.4s ease;
+}
+/* Status pill for the OUTPUT row — flips from red "blocked" to green "ok"
+   at the final frame. Color transition is intentional: visualizes the moment
+   the optimization "succeeds". */
+.tropt-demo-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  margin-right: 6px;
+  vertical-align: 1px;
+  transition: background 0.45s ease, color 0.45s ease;
+}
+.tropt-demo-pill-block { background: #FEE2E2; color: #991B1B; }
+.tropt-demo-pill-ok    { background: #D1FAE5; color: #065F46; }
+.tropt-demo-pill-warn  { background: #FEF3C7; color: #92400E; }
+/* The big output text fades briefly while it swaps to communicate change. */
+.tropt-demo-output-text {
+  transition: opacity 0.28s ease, color 0.28s ease;
+}
+.tropt-demo-output-text.is-fading { opacity: 0.25; }
+
+/* Dark mode: keep the look. */
+html[data-theme="dark"] .tropt-demo {
+  background:
+    linear-gradient(135deg, rgba(6, 182, 212, 0.08), rgba(124, 58, 237, 0.08)),
+    rgba(15, 23, 42, 0.5);
+  border-color: rgba(148, 163, 184, 0.20);
+}
+html[data-theme="dark"] .tropt-demo-trigger {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.20), rgba(124, 58, 237, 0.20));
+  color: var(--tropt-cyan-soft);
+  border-color: rgba(124, 58, 237, 0.35);
+}
+html[data-theme="dark"] .tropt-demo-pill-block { background: rgba(220, 38, 38, 0.18); color: #FCA5A5; }
+html[data-theme="dark"] .tropt-demo-pill-ok    { background: rgba(16, 185, 129, 0.18); color: #6EE7B7; }
+html[data-theme="dark"] .tropt-demo-pill-warn  { background: rgba(245, 158, 11, 0.18); color: #FCD34D; }
+
+@media (max-width: 640px) {
+  .tropt-demo-row { grid-template-columns: 1fr; gap: 0.25rem; }
+  .tropt-demo-label { font-size: 0.66rem; }
+  .tropt-demo-spark { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tropt-demo-trigger,
+  .tropt-demo-output-text,
+  .tropt-demo-pill,
+  .tropt-demo-spark-line,
+  .tropt-demo-spark-area { transition: none; }
+}
 
 /* ==========================================================================
    Get Started — install block

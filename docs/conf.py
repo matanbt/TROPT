@@ -70,7 +70,7 @@ language = 'en'
 html_theme = 'pydata_sphinx_theme'
 html_static_path = ['_static']
 html_css_files = ['custom.css']
-html_js_files = ['skip_auto_theme.js']
+html_js_files = ['skip_auto_theme.js', 'landing.js']
 html_favicon = '_static/favicon.svg'
 
 # -- SEO ---------------------------------------------------------------------
