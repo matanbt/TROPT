@@ -137,7 +137,7 @@ templates = [
 ]
 
 result = uat_classifier(
-    model_name="meta-llama/Llama-Prompt-Guard-2-86M"
+    model_name="meta-llama/Llama-Prompt-Guard-2-86M",
     templates=templates,
     target_class_idx=0,        # steer predictions toward BENIGN
     trigger_len=5,

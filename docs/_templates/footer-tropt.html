@@ -1,0 +1,15 @@
+{# Compact single-line footer for TROPT. Replaces the default
+   pydata-sphinx-theme copyright / sphinx-version / theme-version stack.
+   Wired up via conf.py:
+     html_theme_options["footer_center"] = ["footer-tropt"]
+     html_theme_options["footer_start"] = []
+     html_theme_options["footer_end"]   = []
+#}
+<p class="tropt-footer-line">
+  &copy; {{ copyright }}
+  &nbsp;&middot;&nbsp;
+  <a href="https://github.com/matanbt/TROPT/blob/main/LICENSE">MIT</a>
+  &nbsp;&middot;&nbsp;
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a>
+  + <a href="https://pydata-sphinx-theme.readthedocs.io/">PyData Theme</a>
+</p>
