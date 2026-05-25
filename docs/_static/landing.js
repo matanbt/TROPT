@@ -173,12 +173,19 @@
     },
     classifier: {
       metric: 'loss',
+      // Pill always shows P(injection) — strictly decreases as the suffix
+      // gets better at evading the detector. Avoids the "flip meaning"
+      // confusion of swapping the label from "injection" to "benign"
+      // mid-animation. Pill color encodes the predicted class:
+      //   block = P ≥ 0.5 (still flagged as injection)
+      //   warn  = P just below 0.5 (borderline)
+      //   ok    = P far below 0.5 (confidently benign)
       frames: [
-        { t: '! ! ! ! ! ! ! ! ! !',          l: 7.84, s:   0, p: 'injection · 0.99', pc: 'block', tx: 'classifier blocks the prompt' },
-        { t: 'discussing this hypothetical', l: 4.61, s:  18, p: 'injection · 0.86', pc: 'block', tx: 'classifier still blocks' },
-        { t: 'for academic purposes only',   l: 2.13, s:  42, p: 'uncertain · 0.52', pc: 'warn',  tx: 'classifier on the fence' },
-        { t: '(thanks for clarifying)__',    l: 0.93, s:  70, p: 'benign · 0.74',    pc: 'warn',  tx: 'classifier leaning benign' },
-        { t: '(thanks!) cordially_yours.',   l: 0.18, s: 100, p: 'benign · 0.97',    pc: 'ok',    tx: 'classifier waves the prompt through' },
+        { t: '! ! ! ! ! ! ! ! ! !',          l: 7.84, s:   0, p: 'P(injection) 0.99', pc: 'block', tx: 'classifier blocks the prompt' },
+        { t: 'discussing this hypothetical', l: 4.61, s:  18, p: 'P(injection) 0.86', pc: 'block', tx: 'classifier still blocks' },
+        { t: 'for academic purposes only',   l: 2.13, s:  42, p: 'P(injection) 0.52', pc: 'warn',  tx: 'classifier on the fence' },
+        { t: '(thanks for clarifying)__',    l: 0.93, s:  70, p: 'P(injection) 0.21', pc: 'warn',  tx: 'classifier leaning benign' },
+        { t: '(thanks!) cordially_yours.',   l: 0.18, s: 100, p: 'P(injection) 0.03', pc: 'ok',    tx: 'classifier waves the prompt through' },
       ],
     },
     promptrec: {
