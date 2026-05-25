@@ -6,6 +6,23 @@ If you only want to *use* TROPT (with custom losses, optimizers, models, or reci
 
 <!-- TODONOW REREAD IT  -->
 
+
+
+For contributors and developers: See [DESIGN.md](DESIGN.md) for comprehensive design philosophy and architectural details.
+
+
+```bash
+# Install in development mode
+uv sync --extra dev
+
+# Run tests
+uv run pytest
+
+# Run linting
+uv run ruff check .
+```
+
+
 ---
 
 ## Contributing a Loss
