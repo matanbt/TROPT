@@ -128,6 +128,17 @@ def prompt_recovery__wen2023(
             image=image,
             model_name=model_name,
         )
+    elif target_image_emb.shape[-1] != model_obj.d_model:
+        # Caller supplied a pre-computed embedding from a different CLIP than
+        # the text tower we just built. Without this check the failure surfaces
+        # deep inside the PEZ loss as a cryptic tensor-size error.
+        raise ValueError(
+            f"target_image_emb dim ({target_image_emb.shape[-1]}) does not "
+            f"match the text-tower projection dim ({model_obj.d_model}) for "
+            f"model_name={model_name!r}. Re-encode the image with the same "
+            f"model_name (e.g. pass `model_name={model_name!r}` to "
+            f"`get_image_embedding_for_clip_model`)."
+        )
 
     token_constraints = TokenConstraints()
 

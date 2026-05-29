@@ -1,0 +1,53 @@
+# Citation File Format (CFF) v1.2.0 — https://citation-file-format.github.io/
+# GitHub auto-renders this as a "Cite this repository" widget.
+cff-version: 1.2.0
+title: "TROPT: Textual Trigger Optimization Toolbox"
+message: >-
+  If you use TROPT in your research, please cite both the software (this file)
+  and the accompanying paper (see `preferred-citation` once available).
+type: software
+authors:
+  - family-names: Ben-Tov
+    given-names: Matan
+    # TODO: add orcid, affiliation, email
+  - family-names: Sharif
+    given-names: Mahmood
+    # TODO: add orcid, affiliation, email
+repository-code: "https://github.com/matanbt/tropt"
+url: "https://matanbt.github.io/TROPT"
+license: MIT
+version: 0.0.1a1
+# TODO: date-released (YYYY-MM-DD) once a tagged release is cut.
+keywords:
+  - discrete-optimization
+  - adversarial-attacks
+  - jailbreak
+  - red-teaming
+  - prompt-optimization
+  - language-models
+  - llm
+  - nlp
+  - interpretability
+abstract: >-
+  TROPT (Textual Trigger Optimization Toolbox) is an open framework for
+  unifying and advancing discrete text-trigger optimization. It provides a
+  modular interface for composing models, losses, optimizers, and
+  inputs/targets, and ships with 30+ ready-to-run recipes covering LLM
+  jailbreaks, prompt tuning, and model inspection.
+
+# TODO (Matan): add `preferred-citation` block when the paper is publicly
+# available (e.g. on arXiv or after NeurIPS 2026 acceptance). Template:
+#
+# preferred-citation:
+#   type: conference-paper           # or: article, misc
+#   title: "TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization"
+#   authors:
+#     - family-names: Ben-Tov
+#       given-names: Matan
+#     - family-names: Sharif
+#       given-names: Mahmood
+#   year: 2026
+#   # conference:
+#   #   name: "Conference on Neural Information Processing Systems (NeurIPS)"
+#   # url: "https://arxiv.org/abs/XXXX.XXXXX"
+#   # doi: "10.XXXX/XXXXX"

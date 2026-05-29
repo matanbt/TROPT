@@ -102,7 +102,7 @@ and applications (red-teaming, interpretability, etc.).
 
 :::{grid-item-card} ⚔️ &nbsp;Red-team out of the box
 :class-card: tropt-feature-card
-Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call — to evaluate model and defense robustness.
+Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spanning white- and black-box methods (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call, to evaluate model and defense robustness.
 :::
 
 :::{grid-item-card} 🔁 &nbsp;Extend to any NLP model
@@ -127,7 +127,7 @@ Run **head-to-head, fair, reproducible comparisons** of optimizers and their enh
 
 :::{grid-item-card} 🤖 &nbsp;Agent-ready
 :class-card: tropt-feature-card
-Ships a skill at [`skills/tropt/`](https://github.com/matanbt/TROPT/tree/main/skills/tropt) that teaches any AI coding assistant (Claude Code, Codex, Cursor, …) how to install, run, and extend TROPT.
+Ships a skill at [`skills/tropt/`](https://github.com/matanbt/TROPT/tree/main/skills/tropt) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT.
 :::
 
 ::::
@@ -162,7 +162,7 @@ Reproduce **GCG** ([Zou et&nbsp;al. 2023](https://arxiv.org/abs/2307.15043)) on 
 
 ```{raw} html
 <div class="tropt-demo" data-demo="gcg" aria-label="Interactive GCG jailbreak demo">
-  <span class="tropt-demo-chip">interactive</span>
+  <span class="tropt-demo-chip">illustration</span>
   <div class="tropt-demo-row">
     <span class="tropt-demo-label">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
@@ -328,7 +328,7 @@ Reproduce **GASLITE** ([Ben-Tov et&nbsp;al. 2024](https://arxiv.org/abs/2412.209
 
 ```{raw} html
 <div class="tropt-demo" data-demo="gaslite" aria-label="Interactive GASLITE corpus poisoning demo">
-  <span class="tropt-demo-chip">interactive</span>
+  <span class="tropt-demo-chip">illustration</span>
   <div class="tropt-demo-row">
     <span class="tropt-demo-label">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
@@ -520,7 +520,7 @@ Craft an adversarial suffix that flips a **prompt-injection detector**'s predict
 
 ```{raw} html
 <div class="tropt-demo" data-demo="classifier" aria-label="Interactive prompt-injection classifier evasion demo">
-  <span class="tropt-demo-chip">interactive</span>
+  <span class="tropt-demo-chip">illustration</span>
   <div class="tropt-demo-row">
     <span class="tropt-demo-label">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
@@ -678,7 +678,7 @@ Invert an image back into text via **PEZ** ([Wen et&nbsp;al. 2023](https://arxiv
 
 ```{raw} html
 <div class="tropt-demo" data-demo="promptrec" aria-label="Interactive PEZ image-to-prompt recovery demo">
-  <span class="tropt-demo-chip">interactive</span>
+  <span class="tropt-demo-chip">illustration</span>
   <div class="tropt-demo-row">
     <span class="tropt-demo-label">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
@@ -723,15 +723,10 @@ Invert an image back into text via **PEZ** ([Wen et&nbsp;al. 2023](https://arxiv
 :sync: recipe
 
 ```python
-from tropt.recipe_hub import (
-    prompt_recovery__wen2023,
-    get_image_embedding_for_clip_model,
-)
-
-target_image_emb = get_image_embedding_for_clip_model(image_path="cat_on_a_skateboard.jpg")
+from tropt.recipe_hub import prompt_recovery__wen2023
 
 result = prompt_recovery__wen2023(
-    target_image_emb=target_image_emb,
+    target_image_path="cat_on_a_skateboard.jpg",
     optimizer_type="pez",   # or "gcg", "mac", "adv_decoding"
     trigger_len=16,
 )
@@ -752,8 +747,11 @@ from tropt.model.huggingface.clip_encoder import CLIPTextEncoderHFModel
 from tropt.optimizer.pez_optimizer import PEZOptimizer
 from tropt.recipe_hub import get_image_embedding_for_clip_model
 
-model = CLIPTextEncoderHFModel(model_name="laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
-target_image_emb = get_image_embedding_for_clip_model(image_path="cat_on_a_skateboard.jpg")
+CLIP_MODEL = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+model = CLIPTextEncoderHFModel(model_name=CLIP_MODEL)
+target_image_emb = get_image_embedding_for_clip_model(
+    image_path="cat_on_a_skateboard.jpg", model_name=CLIP_MODEL,
+)
 
 optimizer = PEZOptimizer(
     model=model, loss=SimilarityLoss(),
@@ -833,8 +831,11 @@ class MyRandomSearchOptimizer(BaseOptimizer):
 
 
 # 3. Plug into CLIP's text encoder
-target_image_emb = get_image_embedding_for_clip_model(image_path="cat_on_a_skateboard.jpg")
-model = CLIPTextEncoderHFModel(model_name="laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+CLIP_MODEL = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+target_image_emb = get_image_embedding_for_clip_model(
+    image_path="cat_on_a_skateboard.jpg", model_name=CLIP_MODEL,
+)
+model = CLIPTextEncoderHFModel(model_name=CLIP_MODEL)
 optimizer = MyRandomSearchOptimizer(model=model, loss=MySimilarityLoss())
 result = optimizer.optimize_trigger(
     templates=["{{OPTIMIZED_TRIGGER}}"],
