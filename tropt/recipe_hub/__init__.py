@@ -57,6 +57,7 @@ from .QCG__hayase2024 import (
 from .RASLITEPlus import rasliteplus, rasliteplus_llm
 from .SoftPrompt__schwinn2024 import soft_prompt__schwinn2024, soft_prompt_encoder
 from .UAT import uat_classifier, uat_prompt_injection
+from .utils import generate_from_model
 
 
 # Naming: paper reproductions are written with first (with `__paperYYYY` tag), then variants/extensions/applications.

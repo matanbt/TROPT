@@ -1,7 +1,6 @@
 # Recipe Hub
 
-This directory contains self-contained recipes for various optimization methods on text models. These scripts are meant to serve as reproduction and "hacking" entry points.
-
+This directory contains self-contained recipes that glue together a model, loss, and optimizer to reproduce known attacks (jailbreaks, corpus poisoning, soft prompts, classifier evasion, image prompt recovery, and more). Each recipe exposes an entry point for quick use or hacking.
 
 ## Usage
 
@@ -145,4 +144,4 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `prompt_recovery__williams2025` | Recover text prompts from image embeddings via CLIP + a discrete optimiser. Defaults to vanilla GCG (paper's main run); `optimizer_type="adv_decoding"` is a non-paper extension. | CLIP (HF) | Gradient + Loss (Token) | [Williams et al., 2025](https://arxiv.org/abs/2408.06502) | [`PromptRecovery__williams2025.py`](PromptRecovery__williams2025.py) |
+| `prompt_recovery__wen2023` | Recover text prompts from image embeddings via CLIP + a discrete optimiser. Defaults to vanilla GCG (paper's main run); `optimizer_type="adv_decoding"` is a non-paper extension. | CLIP (HF) | Gradient + Loss (Token) | [Williams et al., 2025](https://arxiv.org/abs/2408.06502) | [`PromptRecovery__wen2023.py`](PromptRecovery__wen2023.py) |

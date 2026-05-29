@@ -3,6 +3,7 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 import os
+import re
 import sys
 sys.path.insert(0, os.path.abspath('..'))
 
@@ -172,5 +173,25 @@ def _copy_llm_artifacts(app, exception):
         shutil.copy2(llms_src, os.path.join(app.outdir, 'llms.txt'))
 
 
+# docs/api/recipe_hub.rst inlines tropt/recipe_hub/README.md via `.. include::`
+# so the registry can't drift from source. The README targets GitHub: its
+# relative `[FOO.py](FOO.py)` links become broken Sphinx cross-references and
+# its leading `---` becomes a transition warning. Sanitize on the `include-read`
+# event (Sphinx >= 8.0) so it runs for every build path, not just build_docs.py.
+def _sanitize_recipe_hub_readme(app, relative_path, parent_docname, content):
+    if not str(relative_path).replace("\\", "/").endswith("recipe_hub/README.md"):
+        return
+
+    def _strip_self_link(match):
+        text, target = match.group(1), match.group(2)
+        return f"`{target}`" if text.strip("`").strip() == target else match.group(0)
+
+    text = re.sub(  # relative self-links [FOO.py](FOO.py) -> `FOO.py`
+        r"\[([^\]]+)\]\((?!https?:|/|#)([^)]+\.(?:py|md))\)", _strip_self_link, content[0]
+    )
+    content[0] = re.sub(r"\n---\n", "\n\n", text, count=1)  # drop first divider
+
+
 def setup(app):
     app.connect('build-finished', _copy_llm_artifacts)
+    app.connect('include-read', _sanitize_recipe_hub_readme)
