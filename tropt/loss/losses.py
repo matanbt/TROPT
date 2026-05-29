@@ -5,7 +5,6 @@ Important note: The losses arguments must match the fields in ModelOutput and Mo
 for unified loss resolution to work properly.
 """
 import logging
-import math
 from abc import abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar, Optional
@@ -56,11 +55,11 @@ class PrefillCELoss(PrefillBasedLoss):
     """
 
     clamp_min_nll: Optional[float] = None
-    """Floor on per-token NLL before averaging; tokens already below the floor contribute zero-gradient, freeing the optimizer to focus on "unsolved" positions. 
+    """Floor on per-token NLL before averaging; tokens already below the floor contribute zero-gradient, freeing the optimizer to focus on "unsolved" positions.
     Defaults to None (no clamping), otherwise clamped at the given value.
-    
+
     FLRT
-    (https://arxiv.org/abs/2407.17447, Eq. 5) uses ``-log(0.6) ≈ 0.511``. 
+    (https://arxiv.org/abs/2407.17447, Eq. 5) uses ``-log(0.6) ≈ 0.511``.
     """
 
     def __call__(
@@ -106,7 +105,7 @@ class PrefillDistillationLoss(PrefillBasedLoss):
     temperature: float = 1.0
     reference_temperature: float = 1.0
     """Temperature applied to the reference logits before softmax (teacher sharpening)."""
-    
+
     clamp_min_nll: Optional[float] = None
     """Floor on the cross-entropy result to
     stop optimizing well-matched tokens.
@@ -354,7 +353,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
     Enable to instantiate the (different) losses from:
     https://arxiv.org/abs/2506.12880, https://arxiv.org/abs/2410.09040
 
-    Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also it 
+    Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also it
     is some slices are not supported when LM prefix caching is enabled, so it should be set to `use_prefix_cache=False` when loading the model.
     """
 

@@ -120,7 +120,7 @@ def prs__andriushchenko2024(
         loss=FirstTokenNLLLoss(target_token=target_token),
         tracker=tracker,
         seed=seed,
-        
+
         num_steps=10_000,
         n_candidates=128,
         patience=25,  # substitute for paper's LLM-judge stopping

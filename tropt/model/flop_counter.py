@@ -165,7 +165,7 @@ class ManualFlopCounter(FlopCounterBase):
         h = getattr(config, "hidden_size", None)
         # Some MoE configs (e.g. Gemma4) report the expert MLP width in a dedicated field.
         intermediate = (
-            getattr(config, "moe_intermediate_size", None) 
+            getattr(config, "moe_intermediate_size", None)
             or getattr(config, "intermediate_size", None
         ))
         n_layers = getattr(config, "num_hidden_layers", None)

@@ -10,7 +10,7 @@ Useful for attacks the suppress model refusals via activation steering (e.g., IR
 
 import io
 import logging
-from typing import Callable, List, Optional, Tuple
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import requests
@@ -18,8 +18,6 @@ import torch
 from datasets import load_dataset
 from jaxtyping import Float
 from sklearn.model_selection import train_test_split
-from jaxtyping import Float, Int
-from torch import Tensor
 
 from tropt.model.huggingface.lm import LMHFModel
 

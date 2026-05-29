@@ -2,7 +2,7 @@
 Reproduce Section 4.2.1 of Jones et al. (2023): reversing an LLM on toxic outputs.
 
 Given a fixed toxic target output `o*`, find a prompt `x` (with no token overlap)
-such that the model greedily completes `x` to `o*`.  
+such that the model greedily completes `x` to `o*`.
 Uses GCG with PrefillCELoss.
 
 Difference from paper: THe paper uses ARCA as optimizer, target GPT2 model, with toxic target outputs sampled from CivilComments dataset.
@@ -25,7 +25,6 @@ from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
-
 # ---------------------------------------------------------------------------
 # Default "toxic" target output
 # ---------------------------------------------------------------------------
@@ -42,7 +41,7 @@ def _get_no_overlap_constraints(
     """
     Build TokenConstraints that block all tokens appearing in the target output.
 
-    We block every token ID whose decoded string appears as a substring of any output token (case-insensitive) 
+    We block every token ID whose decoded string appears as a substring of any output token (case-insensitive)
     or vice versa, similar to ARCA's heuristic.
     """
     tokenizer = model.tokenizer

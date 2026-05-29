@@ -323,11 +323,11 @@ class BaseOptimizer(ABC):
         Args:
             limit: Integer upper bound on the ``metric``.
             metric: The metric the budget is set by. Defaults to the token usage count.
-            scope: What models to take the metric against. 
+            scope: What models to take the metric against.
                 In optimizers that accomodate multiple models (e.g., proxy models), this may be critical choice.
-                ``"all"``, sums the metric across all models found on ``self``. 
+                ``"all"``, sums the metric across all models found on ``self``.
                 ``"target"`` only considers the primary target model (``self.model``), which is useful if we only care about the target model API token usage.
-        
+
         Usage:
         ```python
         # Whitebox: cap compute by FLOPs (across target + any proxy LM)
@@ -367,7 +367,7 @@ class BaseOptimizer(ABC):
 
     def track_steps(self, *args, **kwargs):
         """Iterator for the optimization loop that handles progress bar and budget enforcement.
-        
+
         This supplement the optimziation loop with:
         - a ``tqdm`` progress bar (args/kwargs forwarded) that :meth:`log`
           calls auto-updates with the current loss and trigger string, and
@@ -376,7 +376,7 @@ class BaseOptimizer(ABC):
         The budget is checked at the top of each step, so overshoot is bounded
         by one step's work. Without a budget set, behaves like plain ``tqdm``.
 
-        Note: If you implement a personal-use custom optimizer for quick check, and don't care for 
+        Note: If you implement a personal-use custom optimizer for quick check, and don't care for
               fancy progress bar / budget, you may safely ignore this.
 
         Usage::

@@ -17,10 +17,10 @@ from tropt.common import (
 
 class InputsManager(ABC):
     """
-    Base class for maintaining the input template, corresponding targets, and the method for 
+    Base class for maintaining the input template, corresponding targets, and the method for
     injecting triggers into the inputs.
-    This class wraps `n_templates` templates (that contain the substring `OPTIMIZED_TRIGGER_PLACEHOLDER` as 
-    a trigger placeholder) and targets, and provides a unified interface for different types of inputs 
+    This class wraps `n_templates` templates (that contain the substring `OPTIMIZED_TRIGGER_PLACEHOLDER` as
+    a trigger placeholder) and targets, and provides a unified interface for different types of inputs
     (e.g., text-based, token-based) used in adversarial trigger optimization.
     """
 
@@ -34,14 +34,14 @@ class InputsManager(ABC):
     @abstractmethod
     def get_triggered_inputs(self, chosen_template_idx: int, *args, **kwargs) -> ModelInput:
         """
-        Returns the trigger-combined model inputs, for the specified template index. 
-        
-        Args: 
+        Returns the trigger-combined model inputs, for the specified template index.
+
+        Args:
             chosen_template_idx: Index of the template to use for generating the inputs.
             ... args for receiving the trigger candidates ...
 
         Returns:
-            A ModelInput object containing the crafted triggered-combined inputs, which includes the 
+            A ModelInput object containing the crafted triggered-combined inputs, which includes the
             corresponding targets for the specified template.
         """
         raise NotImplementedError

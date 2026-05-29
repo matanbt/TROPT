@@ -5,11 +5,10 @@ import torch
 from jaxtyping import Float
 from torch import Tensor
 from transformers import AutoTokenizer, CLIPTextModelWithProjection
-from transformers.models.clip.modeling_clip import CLIPTextModel
 from transformers.masking_utils import create_causal_mask
+from transformers.models.clip.modeling_clip import CLIPTextModel
 
 from tropt.common import (
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelOutput,
     Targets,
     TextTemplates,
@@ -65,7 +64,7 @@ class CLIPTextEncoderHFModel(
         Args:
             model_name: HuggingFace CLIP model name (e.g., "openai/clip-vit-large-patch14").
             without_final_projection: If True, skip the final ``text_projection`` layer and the default pooling.
-            This is relevant when CLIP is targeted as a backbone encoder for a downstream model; for instance, FLUX[dev] uses the non-projected CLIP text encoding -- so in this case, it is recommended to set `without_final_projection=True` to match the downstream architecture. 
+            This is relevant when CLIP is targeted as a backbone encoder for a downstream model; for instance, FLUX[dev] uses the non-projected CLIP text encoding -- so in this case, it is recommended to set `without_final_projection=True` to match the downstream architecture.
             We default to include project (=False), following CLIP's default in HF.
             device: Device to load the model onto.
             dtype: Data type for the model.

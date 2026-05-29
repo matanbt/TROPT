@@ -1,6 +1,6 @@
 """Prompt Recovery for Image Generation Models.
 
-Based on: Hard Prompts Made Easy: Gradient-Based Discrete Optimization for 
+Based on: Hard Prompts Made Easy: Gradient-Based Discrete Optimization for
 Prompt Tuning and Discovery (Wen et al. 2023) "Prompt Recovery for Image
 Generation Models: A Comparative Study of Discrete Optimizers" (Williams et al., 2025).
 
@@ -109,7 +109,7 @@ def prompt_recovery__wen2023(
             - `"mac"`: MAC = momentum-accelerated GCG+ (Wang 2024).
             - `"gcg"`: vanilla GCG.
             - `"adv_decoding"`: beam-search decoding with a utility LM.
-        trigger_len: Number of trigger tokens. 
+        trigger_len: Number of trigger tokens.
         util_lm_model_name: HF model id for the utility LM (only for adv_decoding).
         tracker: Optional experiment tracker.
         target_image_path: Path to an image file (used if `image` is None).

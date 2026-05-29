@@ -8,7 +8,6 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from transformers import BatchEncoding
 
 from tropt.common import (
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelOutput,
     Targets,
     TextTemplates,

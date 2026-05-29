@@ -203,7 +203,7 @@ class LMHFModel(
                 **self.chat_template_kwargs,
             )["input_ids"]
             for template in templates
-        ]  # type: ignore[assignment]  (`tokenize` returns List[List[int]])
+        ]  # `tokenize` returns List[List[int]]
 
         # Update targets (eg tokenize target response strs if toks not provided, move to device, etc.)
         targets = self._update_targets_by_model(targets)

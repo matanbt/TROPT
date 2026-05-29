@@ -82,9 +82,9 @@ class RandomSearchOptimizer(BaseOptimizer):
         Args:
             num_steps: Total optimization steps.
             n_candidates: Number of mutated candidates per step.
-            mutation_mode: 
+            mutation_mode:
                 ``"block_random"`` for random contiguous block mutation
-                    (original PRS), 
+                    (original PRS),
                 ``"single_cyclic"`` for single-token mutations
                     spread across positions (candidate ``i`` mutates position
                     ``i % trigger_len``).

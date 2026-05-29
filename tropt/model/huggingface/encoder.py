@@ -3,8 +3,6 @@ import logging
 from functools import cached_property
 from typing import Annotated, List, Optional
 
-import sentence_transformers
-import sentence_transformers.models
 import torch
 from jaxtyping import Float
 from sentence_transformers import SentenceTransformer
@@ -12,7 +10,6 @@ from torch import Tensor
 from transformers import PreTrainedModel
 
 from tropt.common import (
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelOutput,
     Targets,
     TextTemplates,
@@ -99,7 +96,7 @@ class EncoderHFModel(
         ``SentenceTransformer`` wrapper, used for HF-specific introspection
         (``.config``, ``.dtype``, FLOP counting, the ``inputs_embeds`` probe).
 
-        Note that while the _model may have additional modules (e.g., dense pooling) we assume these are negilible and exclude them here.  
+        Note that while the _model may have additional modules (e.g., dense pooling) we assume these are negilible and exclude them here.
         """
         try:
             inner = self._model._first_module().auto_model

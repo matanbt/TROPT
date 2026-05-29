@@ -96,7 +96,7 @@ class GCGPlusOptimizer(BaseOptimizer):
             momentum: Gradient momentum coefficient. When > 0, enables momentum:
                 m = mu*m + (1-mu)*grad for candidate ranking instead of raw gradient.
                 Defaults to 0.0 (no momentum).
-                Reference: https://arxiv.org/abs/2405.01229 . 
+                Reference: https://arxiv.org/abs/2405.01229 .
             buffer_size: If set, maintain a buffer of the best triggers seen (from QCG paper). Each step
                 starts from the best buffer entry and updates it with improved candidates.
                 Defaults to None (no buffer).
@@ -105,7 +105,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 Defaults to 1 (no averaging, like GCG).
             template_batch_size: If set, sample this many templates (and their
                 targets) per optimization step instead of using all templates
-                simultaneously. 
+                simultaneously.
                 Useful for large template sets.
                 Reference: https://arxiv.org/abs/1908.07125 . Defaults to None (use all templates).
         """

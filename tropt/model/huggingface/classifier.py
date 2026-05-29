@@ -7,7 +7,6 @@ from torch import Tensor
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 from tropt.common import (
-    OPTIMIZED_TRIGGER_PLACEHOLDER,
     ModelOutput,
     Targets,
     TextTemplates,

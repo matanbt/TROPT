@@ -297,7 +297,7 @@ class ExternalTriggerPerplexityLoss(BaseLoss):
     """Perplexity of trigger under an external LM.
 
     Notes:
-    - Scores the whole sequence. 
+    - Scores the whole sequence.
     """
 
     is_differentiable: ClassVar[bool] = False
