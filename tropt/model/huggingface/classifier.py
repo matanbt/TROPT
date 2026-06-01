@@ -47,7 +47,7 @@ class ClassifierHFModel(
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model=None,
-        set_model_to_eval: bool = True,
+        set_model_to_train: bool = False,
         **kwargs,
     ):
         if device is None:
@@ -130,7 +130,6 @@ class ClassifierHFModel(
 
     # ----------------------- invoke_from_texts -----------------------
 
-    @torch.no_grad()
     def invoke_from_texts(
         self,
         input_texts: List[str],

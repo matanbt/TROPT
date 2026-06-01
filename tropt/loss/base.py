@@ -26,6 +26,11 @@ class BaseLoss(ABC):
     """Whether this loss is back-propable. Set to False for losses that use external
     models, text generation, or other non-differentiable operations."""
 
+    require_gradients: ClassVar[bool] = False
+    """Whether the loss-ranking path (otherwise run under ``torch.no_grad``) must
+    keep a live autograd graph for this loss. Set True by losses whose *value* is
+    itself a gradient (e.g. gradient matching)."""
+
     require_target_prefill: ClassVar[bool] = False
     """Whether this loss requires the model to prefill the target response tokens (appending
     them to the input, as a response prefix)."""
@@ -145,6 +150,10 @@ class CombinedLoss(BaseLoss):
     @property
     def is_differentiable(self) -> bool:
         return all(lf.is_differentiable for lf in self.loss_funcs)
+
+    @property
+    def require_gradients(self) -> bool:
+        return any(lf.require_gradients for lf in self.loss_funcs)
 
     @property
     def require_target_prefill(self) -> bool:

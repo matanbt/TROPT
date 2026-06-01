@@ -40,8 +40,8 @@ class HuggingFaceTokenInputManager(TokenInputManager):
 
     Implementation Notes:
         - The inputs templates is split into *before* and *after* the trigger parts, and then maintained separately by the input manager. Then, given trigger candidates, we craft multiple inputs from the templates.
-        - HuggingFaceBackend ensures that the `OPTIMIZED_TRIGGER_PLACEHOLDER` token is registered 
-        in the tokenizer (as a _single_ token), so we can reliably split the templates into 
+        - HuggingFaceBackend ensures that the `OPTIMIZED_TRIGGER_PLACEHOLDER` token is registered
+        in the tokenizer (as a _single_ token), so we can reliably split the templates into
         before/after trigger parts by this input manager.
         - Each input template is handled separately, as it they may vary in length, have their own targets, etc.
     """
@@ -74,12 +74,12 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         Args:
             tokenizer: The HuggingFace tokenizer to use.
             device: The device to use for any tensors created by the input manager.
-            templates_ids: the user-provided input templates tokenized into token ids, as a list of lists of 
-            ints (n_templates, seq_len). These are expected to include all special tokens, including the 
+            templates_ids: the user-provided input templates tokenized into token ids, as a list of lists of
+            ints (n_templates, seq_len). These are expected to include all special tokens, including the
             chat template in the case of instruction-tuned LMs.
             embed_func: The embedding function (torch module) to use for embedding token ids into vectors.
 
-            use_prefix_cache: Whether to compute and use the prefix cache for the part before the trigger (as 
+            use_prefix_cache: Whether to compute and use the prefix cache for the part before the trigger (as
             it is static throughout optimization).
             model: The HuggingFace model, required if `use_prefix_cache` is True, to compute the prefix cache.
             targets: The Targets object containing the optimization targets for the input templates.
@@ -440,7 +440,7 @@ class HuggingFaceBackendModel:
 
         **After** the subclass ``__init__`` body runs (expects ``_model`` and
         ``_tokenizer`` to be set by then):
-        - Model set to eval mode and parameters frozen (if ``set_model_to_eval``).
+        - Model set to eval mode and parameters frozen, unless ``set_model_to_train``.
         - ``OPTIMIZED_TRIGGER_PLACEHOLDER`` registered as a special token.
         - Precision warning emitted when model dtype is float32/float64.
         """
@@ -464,12 +464,18 @@ class HuggingFaceBackendModel:
             original_init(self, *args, **kwargs)
 
             # --- post-init: eval, freeze, placeholder, warnings ---
-            set_model_to_eval = ba.arguments.get("set_model_to_eval", True)
+            # Default (set_model_to_train=False): eval mode + frozen weights, the
+            # common attack setting. Opt into train mode (trainable weights, no
+            # eval) only when an objective differentiates the weights themselves.
+            set_model_to_train = ba.arguments.get("set_model_to_train", False)
 
-            if set_model_to_eval:
+            if not set_model_to_train:
                 self._model.eval()
                 for param in self._model.parameters():
                     param.requires_grad = False
+            else:
+                for param in self._model.parameters():
+                    param.requires_grad = True
 
             if OPTIMIZED_TRIGGER_PLACEHOLDER not in self._tokenizer.get_vocab():
                 self._tokenizer.add_special_tokens(
@@ -568,7 +574,7 @@ class HuggingFaceBackendModel:
         # The effective vocab size, as determined by the emb matrix
         vocab_size = self._embedding_layer.num_embeddings
         assert isinstance(vocab_size, int)
-        return vocab_size 
+        return vocab_size
 
     @cached_property
     def embedding_matrix(self) -> Float[Tensor, "vocab_size embd_dim"]:
@@ -955,14 +961,15 @@ class HuggingFaceBackendModel:
         return all_grads
 
 
-    @torch.no_grad()
     def compute_loss_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
     ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_templates n_candidates"]:
-        """Computes the loss on all candidate token id sequences. Gradient computation is disabled.
+        """Computes the loss on all candidate token id sequences. Runs under
+        ``torch.no_grad`` unless the loss sets ``require_gradients`` (e.g. gradient
+        matching, whose value is itself a weight-gradient).
 
         Args:
             search_batch_size : int
@@ -1006,14 +1013,17 @@ class HuggingFaceBackendModel:
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
                 logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
-                model_input = input_manager.get_triggered_inputs(
-                    chosen_template_idx=template_idx,
-                    trigger_ids=batch_candidate_trigger_ids,
 
-                    # loss-conditional flags:
-                    do_append_embeds=loss_func.require_target_prefill,
-                )
-                model_output = self.invoke_from_tokens(
+                # Only enable gradient is it's required by the loss (e.g. for gradient matching losses); mostly false.
+                with torch.set_grad_enabled(loss_func.require_gradients):                
+                    model_input = input_manager.get_triggered_inputs(
+                        chosen_template_idx=template_idx,
+                        trigger_ids=batch_candidate_trigger_ids,
+
+                        # loss-conditional flags:
+                        do_append_embeds=loss_func.require_target_prefill,
+                    )
+                    model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
                         # loss-conditional flags:
@@ -1022,7 +1032,7 @@ class HuggingFaceBackendModel:
                         require_hidden_states=loss_func.require_hidden_states,
                         require_attentions=loss_func.require_attentions,
                     )
-                loss = resolve_and_compute_loss(model_output, model_input, loss_func)
+                    loss = resolve_and_compute_loss(model_output, model_input, loss_func)
                 all_loss[template_idx].append(loss)
 
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)

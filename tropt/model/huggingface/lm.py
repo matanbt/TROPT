@@ -90,7 +90,7 @@ class LMHFModel(
         backward_pass_batch_size: int = 32,
         # more args:
         use_prefix_cache: bool = True,
-        set_model_to_eval: bool = True,
+        set_model_to_train: bool = False,
         use_eager_attention: bool = False,
         loaded_model: Optional[AutoModelForCausalLM] = None,
         chat_template_kwargs: Optional[Dict[str, Any]] = None,
@@ -486,7 +486,7 @@ class LMHFModel(
 
         Args:
             input_texts: list of plain-text prompts.
-            message_targets: Optional MessageTargets object. Only relevant if `require_target_prefill` is True, in which case the target responses will be prefixed to the model output.
+            message_targets: Optional MessageTargets object. Mainly relevant if `require_target_prefill` is True, in which case the target responses will be prefixed to the model output.
 
             greedy_decode: Whether to use greedy decoding (vs. sampling) for generation.
             max_new_tokens: The maximum number of new tokens to generate.
@@ -498,6 +498,7 @@ class LMHFModel(
         assert input_texts is not None, "input_texts must be provided."
         if require_target_prefill:
             assert message_targets is not None, "message_targets must be provided if require_target_prefill is True."
+            assert isinstance(message_targets, MessageTargets), "message_targets must be an instance of MessageTargets."
             assert message_targets.target_response_toks is not None and message_targets.target_response_strs is not None, "message_targets must include target_response_toks and target_response_strs if require_target_prefill is True."
 
         # 1. Apply chat template (user turn only; generation prompt adds assistant role marker)

@@ -107,6 +107,17 @@ def resolve_and_compute_loss(
         if param_name == 'self':
             continue
 
+        # Reserved names: a loss may request the whole ModelOutput / ModelInput
+        # container (not just a field of it) — e.g. wrapper losses that resolve a
+        # nested loss themselves. This extends the field-name convention to the
+        # containers.
+        if param_name == 'model_output':
+            kwargs[param_name] = model_output
+            continue
+        if param_name == 'model_input':
+            kwargs[param_name] = model_input
+            continue
+
         # Try to find this parameter in model_output first
         if hasattr(model_output, param_name):
             value = getattr(model_output, param_name)

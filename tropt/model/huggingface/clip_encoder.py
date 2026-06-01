@@ -57,7 +57,7 @@ class CLIPTextEncoderHFModel(
         without_final_projection: bool = False,
         device: Optional[str] = None,
         dtype: Optional[Union[str, torch.dtype]] = None,
-        set_model_to_eval: bool = True,
+        set_model_to_train: bool = False,
         **kwargs,
     ):
         """
@@ -70,7 +70,7 @@ class CLIPTextEncoderHFModel(
             dtype: Data type for the model.
             forward_pass_batch_size: Batch size for forward passes.
             backward_pass_batch_size: Batch size for backward passes.
-            set_model_to_eval: Whether to set the model to evaluation mode.
+            set_model_to_train: Keep the model trainable (train mode + unfrozen weights). Default False (eval + frozen).
         """
         model_kwargs = {}
         if dtype is not None:
@@ -175,7 +175,6 @@ class CLIPTextEncoderHFModel(
 
     # ----------------------- invoke_from_texts -----------------------
 
-    @torch.no_grad()
     def invoke_from_texts(
         self,
         input_texts: Annotated[List[str], "n_texts"],

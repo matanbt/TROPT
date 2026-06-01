@@ -81,6 +81,14 @@ class MessageTargets(pydantic.BaseModel):
     Used by steering losses (e.g., representation engineering).
     """
 
+    # ── Weight-gradient targets ────────────────────────────────────────────
+    # Consumed by gradient-matching losses.
+
+    target_gradient: Optional[Float[Tensor, "n_params"]] = None
+    """Target weight-gradient to align with, flattened over the trainable params.
+    Precompute via ``tropt.loss.gradient_matching.compute_weight_gradient``.
+    """
+
     # ── Classifier targets ─────────────────────────────────────────────────
     # Consumed by losses that operate on classifier logits.
 
@@ -155,6 +163,18 @@ class Targets(pydantic.BaseModel):
     Used by: Steering losses (e.g., refusal suppression).
     Note: if you need per-layer directions, store as (n_templates, n_layers, d_model)
     and update this annotation accordingly.
+    """
+
+    # ── Weight-gradient targets ────────────────────────────────────────────
+    # Consumed by gradient-matching losses.
+
+    target_gradient: Optional[Float[Tensor, "n_templates n_params"]] = None
+    """Target weight-gradients, one per template (flattened over the trainable params).
+
+    Shape: (n_templates, n_params).
+    Used by: gradient-matching losses. Precompute via
+    ``tropt.loss.gradient_matching.compute_weight_gradient`` and stack/replicate
+    across templates.
     """
 
     # ── Classifier targets ─────────────────────────────────────────────────

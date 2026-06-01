@@ -51,7 +51,7 @@ class EncoderHFModel(
         forward_pass_batch_size: int = 512,
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
-        set_model_to_eval: bool = True,
+        set_model_to_train: bool = False,
         run_additional_checks: bool = True,
         **kwargs,
     ):
@@ -65,7 +65,7 @@ class EncoderHFModel(
             forward_pass_batch_size (int): Batch size for forward passes.
             backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
-            set_model_to_eval (bool): Whether to set the model to evaluation mode.
+            set_model_to_train (bool): Keep the model trainable (train mode + unfrozen weights). Default False (eval + frozen).
             run_additional_checks (bool): Whether to run additional checks on the model to ensure compliance with this module computations. Can be disabed for faster initialization, but is good for identfying incompatability issues (mostly with models overriding HF default code).
             **kwargs: Additional arguments for SentenceTransformer.
         """
@@ -206,7 +206,6 @@ class EncoderHFModel(
 
     # ----------------------- invoke_from_texts -----------------------
 
-    @torch.no_grad()
     def invoke_from_texts(
         self,
         input_texts: Annotated[List[str], "n_texts"],

@@ -55,7 +55,7 @@ class BaseModel(ABC):
     """Starting batch size for forward-pass compute methods (loss / logits / ... ).
 
     Used as ``starting_batch_size`` for ``find_executable_batch_size`` in
-    ``compute_loss_from_*`` methods. 
+    ``compute_loss_from_*`` methods.
     Intentionally set high -- on GPU backends
     it is automatically halved on OOM, and for API backends
     it simply caps the chunk size sent to ``invoke_from_texts`` per step.
@@ -66,7 +66,7 @@ class BaseModel(ABC):
     """Starting batch size for backward-pass compute methods (gradients).
 
     Used as ``starting_batch_size`` for ``find_executable_batch_size`` in
-    ``compute_grad_from_*`` methods. 
+    ``compute_grad_from_*`` methods.
     Intentionally set high -- automatically
     halved on OOM. Any subclass may override.
     """
@@ -86,7 +86,7 @@ class BaseModel(ABC):
                 -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires the model to expose an inner HuggingFace ``PreTrainedModel`` (via ``_hf_model`` on HF backends). This option the default.
                 -> "none": Disables FLOP counting.
 
-        Note: 
+        Note:
         - FLOP counting will appear in :meth:`get_usage_stats` under ``"usage/total_flops"``.
         - Since the optimizer logs all entries under `model.get_usage_stats()`, this makes self.log() automatically include FLOP counts in all optimizer logs, without needing to explicitly log it in each optimizer method.
         - FLOPs are counted at the model `invoke_from_tokens` / `invoke_from_texts` level only -- the cost of optimizer-internal and loss-internal computation (e.g. candidate sampling, sorting, Gumbel draws) is knowingly excluded.
@@ -352,11 +352,11 @@ class BaseTokenizer(ABC):
     def batch_decode(self, ids: List[int] | List[List[int]] | torch.Tensor, **kwargs) -> List[str]:
         """Converts a batch of token IDs back to a list of strings."""
         pass
-    
+
     @property
     @abstractmethod
     def name_or_path(self) -> str:
-        pass 
+        pass
 
     # --- Specific helpers (concrete, build on abstract primitives above) ---
 

@@ -7,8 +7,6 @@ from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from torch import Tensor
 
-logger = logging.getLogger(__name__)
-
 from tropt.common import (
     MessageTargets,
     ModelInput,
@@ -25,6 +23,8 @@ from .inputs_manager import (
     TokenInputManager,
 )
 from .model_base import BaseTokenizer
+
+logger = logging.getLogger(__name__)
 
 # ======================================================================
 # Token Access Flow
@@ -176,7 +176,6 @@ class TextAccessMixin(ABC):
 class LossTextAccessMixin(TextAccessMixin):
     """Mixin for models that compute losses based on text-level inputs (black-box access)."""
 
-    @torch.no_grad()  # in case using torch model
     def compute_loss_from_texts(
         self,
         candidate_trigger_strs: List[str],
