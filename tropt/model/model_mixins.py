@@ -176,6 +176,7 @@ class TextAccessMixin(ABC):
 class LossTextAccessMixin(TextAccessMixin):
     """Mixin for models that compute losses based on text-level inputs (black-box access)."""
 
+    @torch.no_grad()
     def compute_loss_from_texts(
         self,
         candidate_trigger_strs: List[str],
@@ -213,35 +214,26 @@ class LossTextAccessMixin(TextAccessMixin):
                     end = min(start + batch_size, n_candidates)
                     chunk_strs = candidate_trigger_strs[start:end]
 
-                    curr_model_input = input_manager.get_triggered_inputs(
+                    model_input: ModelInput = input_manager.get_triggered_inputs(
                         chosen_template_idx=template_idx, trigger_strs=chunk_strs,
                     )
-                    curr_texts, curr_targets = (
-                        curr_model_input.input_texts,
-                        curr_model_input.message_targets,
-                    )
 
-                    # Forward pass for this candidate chunk
-                    model_output = self.invoke_from_texts(
-                        input_texts=curr_texts,
-                        message_targets=curr_targets,
-                        require_target_prefill=loss_func.require_target_prefill,
-                        require_generation=loss_func.require_generation,
-                        require_first_token_logprobs=loss_func.require_first_token_logprobs,
-                    )  # Returns ModelOutput with available data
+                    # Only enable gradient is it's required by the loss (e.g. for gradient matching losses); mostly false.
+                    with torch.set_grad_enabled(loss_func.require_gradients):
+                        # Forward pass for this candidate chunk
+                        model_output: ModelOutput = self.invoke_from_texts(
+                            input_texts=model_input.input_texts,
+                            message_targets=model_input.message_targets,
+                            require_target_prefill=loss_func.require_target_prefill,
+                            require_generation=loss_func.require_generation,
+                            require_first_token_logprobs=loss_func.require_first_token_logprobs,
+                        )
 
-                    # Create ModelInput wrapper
-                    model_input = ModelInput(
-                        input_texts=curr_texts,
-                        input_trigger_strs=chunk_strs,
-                        message_targets=curr_targets,
-                    )
-
-                    # Use unified loss resolution
-                    chunk_loss = resolve_and_compute_loss(
-                        model_output, model_input, loss_func
-                    )  # shape: (chunk_size,)
-                    chunk_losses.append(chunk_loss)
+                        # Use unified loss resolution
+                        chunk_loss = resolve_and_compute_loss(
+                            model_output, model_input, loss_func
+                        )  # shape: (chunk_size,)
+                        chunk_losses.append(chunk_loss)
 
                 return torch.cat(chunk_losses, dim=0)  # shape: (n_candidates,)
 

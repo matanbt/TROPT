@@ -198,6 +198,9 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             (they must share `trigger_seq_len`).
         - for *specific* use cases, the following method is suboptimal; however,
             currently generality and support for different input types/shapes are prioritized.
+        - Allows gradient flow through `trigger_embeds`, which can be useful for combining backporable trigger 
+            candidates (e.g., for `compute_grad_from_*()` methods).
+
 
         Args:
             trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
@@ -960,7 +963,7 @@ class HuggingFaceBackendModel:
 
         return all_grads
 
-
+    @torch.no_grad()
     def compute_loss_from_tokens(
         self,
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
@@ -1014,15 +1017,16 @@ class HuggingFaceBackendModel:
 
                 logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
 
+                model_input = input_manager.get_triggered_inputs(
+                    chosen_template_idx=template_idx,
+                    trigger_ids=batch_candidate_trigger_ids,
+
+                    # loss-conditional flags:
+                    do_append_embeds=loss_func.require_target_prefill,
+                )
+
                 # Only enable gradient is it's required by the loss (e.g. for gradient matching losses); mostly false.
                 with torch.set_grad_enabled(loss_func.require_gradients):
-                    model_input = input_manager.get_triggered_inputs(
-                        chosen_template_idx=template_idx,
-                        trigger_ids=batch_candidate_trigger_ids,
-
-                        # loss-conditional flags:
-                        do_append_embeds=loss_func.require_target_prefill,
-                    )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
 
