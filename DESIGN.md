@@ -17,7 +17,7 @@ TROPT's design is guided by two technical principles:
 
 These two principles together address the *accessibility*, *adaptability*, *comparability*, and *extensibility* requirements motivated in the companion paper; this document is the technical complement, focusing on *how* the design realizes them rather than re-arguing *why* they matter.
 
-In the next segment I describe each of the ==four components==, starting from the lower-level model integration, through the loss modules, the optimizers that drive search, and finally the user-supplied inputs and targets. Crucially, one may abstract the internal design of these components, and merely compose attacks by combining different instances of them.
+In the next segment I describe each of the **four components**, starting from the lower-level model integration, through the loss modules, the optimizers that drive search, and finally the user-supplied inputs and targets. Crucially, one may abstract the internal design of these components, and merely compose attacks by combining different instances of them.
 
 In the final segment, I describe the glue: the **recipe**—an executable instantiation of all four components—along with the two existing interfaces (Recipe Hub and the config-driven runner) to run end-to-end optimization in the repo.
 

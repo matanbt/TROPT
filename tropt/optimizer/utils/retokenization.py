@@ -158,9 +158,6 @@ def full_messages_retokenize_filtering(
                 [triggered_template], add_special_tokens=False
             ).input_ids[0]
 
-            print("old texts:", tokenizer.decode(triggered_template_ids))
-            print("new texts:", tokenizer.decode(triggered_template_new_ids))
-
             # 3. We want the original to match the (re)tokenization:
             if triggered_template_ids != triggered_template_new_ids:
                 is_curr_trigger_valid = False

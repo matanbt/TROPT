@@ -468,7 +468,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
 
     targeted_layers: slice = slice(None)
     steer_away: bool = False
-    slc_name: str = SliceKey.INPUT_LAST_TOKEN
+    slc_name: SliceKey = SliceKey.INPUT_LAST_TOKEN
     do_cosine_sim: bool = False
     apply_square: bool = False
     apply_abs: bool = False

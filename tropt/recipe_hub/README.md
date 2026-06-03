@@ -51,6 +51,7 @@ All recipes in this section use HuggingFace models.
 | `arca__jones2023` | Cyclic coordinate descent with gradient averaging. | LM | Gradient + Loss (Token) | [Jones et al., 2023](https://arxiv.org/abs/2303.04381) | [`ARCA__jones2023.py`](ARCA__jones2023.py) |
 | `arca_toxic_reverse` | Reverse an LLM on a fixed toxic output (Jones et al. §4.2.1, ported to GCG). | LM | Gradient + Loss (Token) | [Jones et al., 2023](https://arxiv.org/abs/2303.04381) | [`ARCAToxicReverse.py`](ARCAToxicReverse.py) |
 | `hotflip__ebrahimi2018` | Greedy single (position, token) flip via first-order Taylor approximation. | LM | Gradient + Loss (Token) | [Ebrahimi et al., 2018](https://arxiv.org/abs/1712.06751) | [`HotFlip__ebrahimi2018.py`](HotFlip__ebrahimi2018.py) |
+| `mac__wang2024` | Momentum-accelerated GCG (momentum over the coordinate-gradient signal). | LM | Gradient + Loss (Token) | [Wang et al., 2024](https://arxiv.org/abs/2405.01229) | [`MAC__wang2024.py`](MAC__wang2024.py) |
 
 #### Continuous Relaxation Jailbreaks (White-Box)
 
@@ -59,15 +60,14 @@ All recipes in this section use HuggingFace models.
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `gbda__guo2021` | Gumbel-Softmax continuous relaxation of discrete tokens. | LM | Gradient + Loss (Token) | [Guo et al., 2021](https://arxiv.org/abs/2104.13733) | [`GBDA__guo2021.py`](GBDA__guo2021.py) |
-| `soft_gcg` | Improved GBDA with 3-phase temperature schedule, CW loss, and gradient clipping. | LM | Gradient + Loss (Token) | [ImprovingGCG](https://github.com/Ege-Cakar/ImprovingGCG) | [`SoftGCG.py`](SoftGCG.py) |
-| `pgd__geisler2024` | Projected Gradient Descent with simplex + Tsallis entropy projections. | LM | Gradient + Loss (Token) | [Geisler et al., 2024](https://arxiv.org/abs/2402.09154) | [`PGD__geisler2024.py`](PGD__geisler2024.py) |
 | `pez__wen2023` | Continuous embedding optimisation projected back to nearest tokens. | LM | Gradient (Embed) + Loss (Token) | [Wen et al., 2023](https://arxiv.org/abs/2302.03668) | [`PEZ__wen2023.py`](PEZ__wen2023.py) |
 
 #### Attention-Enhancing Jailbreaks (White-Box)
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `gcg_hij` | GCG + attention enhancement toward chat-template tokens ("Hijacking"). Two flavors: Hijack and AttnGCG. | LM | Gradient + Loss (Token) | [Ben-Tov et al., 2025](https://arxiv.org/abs/2506.12880), [Wang et al., 2024](https://arxiv.org/abs/2410.09040) | [`GCGHij.py`](GCGHij.py) |
+| `gcg_hij__bentov2025` | GCG + middle-layer attention enhancement toward chat-template tokens ("Hijacking"). | LM | Gradient + Loss (Token) | [Ben-Tov et al., 2025](https://arxiv.org/abs/2506.12880) | [`GCGHij.py`](GCGHij.py) |
+| `attn_gcg__wang2024` | GCG + last-layer attention enhancement toward the affirmative prefix (AttnGCG). | LM | Gradient + Loss (Token) | [Wang et al., 2024](https://arxiv.org/abs/2410.09040) | [`GCGHij.py`](GCGHij.py) |
 
 #### Activation-Steering Jailbreaks (White-Box)
 
@@ -75,7 +75,7 @@ All recipes in this section use HuggingFace models.
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `iris__huang2025` | GCG + activation steering away from refusal directions (combined CE + steering loss). | LM | Gradient + Loss (Token) | [Huang et al., 2025](https://aclanthology.org/2025.naacl-long.302/) | [`IRIS__huang2025.py`](IRIS__huang2025.py) |
 | `iris2` | IRIS variant with single-layer targeting, following the 'ImprovingGCG' report. | LM | Gradient + Loss (Token) | [ImprovingGCG](https://github.com/Ege-Cakar/ImprovingGCG/tree/main/Soft-GCG) | [`IRIS__huang2025.py`](IRIS__huang2025.py) |
-| `flrt_distill` | Logits-distillation attack: match the victim's next-token distribution to a refusal-ablated teacher. | LM | Gradient + Loss (Token) | [Thompson & Sklar, 2024](https://arxiv.org/abs/2407.17447) | [`FLRTDistill.py`](FLRTDistill.py) |
+| `flrt_distill` | Logits-distillation attack: match the victim's next-token distribution to a refusal-ablated teacher. | LM | Gradient + Loss (Token) | [Thompson & Sklar, 2024](https://arxiv.org/abs/2407.17447) | [`FLRT__thompson2024.py`](FLRT__thompson2024.py) |
 
 #### Proxy-Guided Jailbreaks (Grey-Box)
 
@@ -97,9 +97,9 @@ No gradient access required. Target model is queried only via text input/output.
 | `beast__sadasivan2024` | Beam search using utility-LM logits to construct adversarial triggers. | LM (HF) | Loss (Text) | [Sadasivan et al., 2024](https://arxiv.org/abs/2402.15570) | [`BEAST__sadasivan2024.py`](BEAST__sadasivan2024.py) |
 | `ral__sitawarin2024` | Random candidate sampling (no proxy gradients); proxy used only for tokenisation. | LM (any) | Loss (Text) | [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) | [`PAL__sitawarin2024.py`](PAL__sitawarin2024.py) |
 | `gcgp_blackbox__hayase2024` | GCG+ proxy-free variant: focused position sampling, retains buffer per Sec 4.4. | LM (any) | Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`QCG__hayase2024.py`](QCG__hayase2024.py) |
-| `prs` | Random search with coarse-to-fine schedule and patience-based restarts. | LM (any) | Loss (Text) | [Andriushchenko et al., 2024](https://arxiv.org/abs/2404.02151) | [`PRS.py`](PRS.py) |
+| `prs__andriushchenko2024` | Random search with coarse-to-fine schedule and patience-based restarts. | LM (any) | Loss (Text) | [Andriushchenko et al., 2024](https://arxiv.org/abs/2404.02151) | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 | `advdecoding_jailbreak__zhang2024` | Beam-search decoding under combined CE + utility-LM fluency for LM jailbreak. | LM (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding__zhang2024.py`](AdvDecoding__zhang2024.py) |
-| `gasliteplus_llm` | GASLITE+ applied to causal LMs for jailbreaking. | LM (HF) | Gradient + Loss (Token) | — | [`GASLITEPlus.py`](GASLITEPlus.py) |
+| `gasliteplus_llm` | GASLITE+ applied to causal LMs for jailbreaking. | LM (HF) | Gradient + Loss (Token) | — | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
 | `rasliteplus_llm` | Black-box LM jailbreak using RASLITE+. | LM (HF) | Loss (Text) | — | [`RASLITEPlus.py`](RASLITEPlus.py) |
 
 ---
@@ -111,11 +111,11 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `gaslite__bentov2024` | Gradient + multi-coordinate ascent for corpus poisoning of embedding models. | Encoder (HF) | Gradient + Loss (Token) | [Ben-Tov et al., 2024](https://arxiv.org/abs/2412.20953) | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
-| `gasliteplus_encoder` | Extension of GASLITE with buffer and adaptive parameters. | Encoder (HF) | Gradient + Loss (Token) | — | [`GASLITEPlus.py`](GASLITEPlus.py) |
-| `gcg_emb` | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCGEmb.py`](GCGEmb.py) |
+| `gasliteplus_encoder` | Extension of GASLITE with buffer and adaptive parameters. | Encoder (HF) | Gradient + Loss (Token) | — | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
+| `gcg_emb` | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `advdecoding_retrieval__zhang2024` | Beam-search decoding under combined similarity + utility-LM fluency for retrieval poisoning. | Encoder (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding__zhang2024.py`](AdvDecoding__zhang2024.py) |
 | `rasliteplus` | Black-box variant of GASLITE+ (random logits instead of gradients). | Encoder (HF / OpenAI) | Loss (Text) | — | [`RASLITEPlus.py`](RASLITEPlus.py) |
-| `rs_emb` | Black-box Random Search with coarse-to-fine block mutations toward a target vector. Supports HF and OpenAI encoders. | Encoder (HF / OpenAI) | Loss (Text) | — | [`RSEmb.py`](RSEmb.py) |
+| `rs_emb` | Black-box Random Search with coarse-to-fine block mutations toward a target vector. Supports HF and OpenAI encoders. | Encoder (HF / OpenAI) | Loss (Text) | — | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 
 ---
 
@@ -125,8 +125,8 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `soft_prompt` | Embedding-level optimisation via SignSGD for jailbreaking LMs. | LM | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
-| `soft_prompt_encoder` | Embedding-level optimisation via SignSGD for corpus poisoning of encoder models. | Encoder (HF) | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt.py`](SoftPrompt.py) |
+| `soft_prompt__schwinn2024` | Embedding-level optimisation via SignSGD for jailbreaking LMs. | LM | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt__schwinn2024.py`](SoftPrompt__schwinn2024.py) |
+| `soft_prompt_encoder` | Embedding-level optimisation via SignSGD for corpus poisoning of encoder models. | Encoder (HF) | Gradient (Embed) | [Schwinn et al.](https://github.com/SchwinnL/circuit-breakers-eval/blob/main/evaluation/softopt.py) | [`SoftPrompt__schwinn2024.py`](SoftPrompt__schwinn2024.py) |
 
 ---
 
@@ -134,7 +134,7 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `classifier_gcg` | GCG for untargeted misclassification against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`ClassifierGCG.py`](ClassifierGCG.py) |
+| `classifier_gcg` | GCG for untargeted misclassification against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `uat_classifier` | UAT framework on a classifier; uses GCG-style optimisation instead of the original HotFlip variant. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 | `uat_prompt_injection` | UAT applied to a prompt-injection detector (Llama-Prompt-Guard-2); held-in/held-out/benign evaluation included. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 

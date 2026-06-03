@@ -118,7 +118,7 @@ class GCGOptimizer(BaseOptimizer):
             # Compute loss on all candidate sequences
             losses = self.model.compute_loss_from_tokens(
                 candidate_trigger_ids, loss_func=self.loss_func
-            )  # shape: (n_templates, n_candidates)
+            )  # shape: (n_candidates,)
             current_loss = losses.min().item()
             trigger_ids = candidate_trigger_ids[losses.argmin()]
             trigger_str = tokenizer.decode_trigger(trigger_ids)

@@ -18,8 +18,8 @@
 
 <p align="center">
   <a href="https://pypi.org/project/tropt/"><img src="https://img.shields.io/pypi/v/tropt?logo=python&logoColor=white&color=3776ab" alt="PyPI"></a>
-  <a href="https://github.com/matanbt/tropt"><img src="https://img.shields.io/github/stars/matanbt/tropt?style=flat&logo=github&color=181717" alt="GitHub stars"></a>
-  <a href="https://github.com/matanbt/tropt/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/matanbt/tropt/test.yml?branch=main&label=tests" alt="Tests"></a>
+  <a href="https://github.com/matanbt/TROPT"><img src="https://img.shields.io/github/stars/matanbt/TROPT?style=flat&logo=github&color=181717" alt="GitHub stars"></a>
+  <a href="https://github.com/matanbt/TROPT/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/matanbt/TROPT/test.yml?branch=main&label=tests" alt="Tests"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green?style=flat" alt="License"></a>
 </p>
 
@@ -61,7 +61,7 @@ TROPT lets you run an optimization scheme — a _recipe_ — in a single functio
 For instance, you can import the GCG jailbreak ([Zou et al., 2023](https://arxiv.org/abs/2307.15043)) and reproduce it on `gemma-3-1b-it` in a few lines:
 
 ```python
-from tropt.recipe_hub.GCG import gcg__zou2023
+from tropt.recipe_hub import gcg__zou2023
 
 result = gcg__zou2023(
     model_name="google/gemma-3-1b-it",
@@ -142,6 +142,6 @@ If you find this package useful, please cite our paper as follows:
 @misc{tropt2026,
   title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
   year         = {2026},
-  howpublished = {\url{https://github.com/matanbt/tropt}},
+  howpublished = {\url{https://github.com/matanbt/TROPT}},
 }
 ```

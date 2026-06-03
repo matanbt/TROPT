@@ -972,10 +972,10 @@ class HuggingFaceBackendModel:
         matching, whose value is itself a weight-gradient).
 
         Args:
-            search_batch_size : int
-                the number of candidate sequences to evaluate in a given batch
-            inputs_embeds : Tensor, shape = (search_width, seq_len, embd_dim)
-                the embeddings of the `search_width` candidate sequences to evaluate
+            candidate_trigger_ids : Tensor, shape = (n_candidates, trigger_seq_len)
+                candidate trigger token ids to evaluate
+            loss_func : BaseLoss
+                the loss to compute for each candidate
             keep_message_dim : bool
                 whether to return the loss per message (shape = (n_templates, n_candidates))
         Returns:
@@ -1015,7 +1015,7 @@ class HuggingFaceBackendModel:
                 logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
 
                 # Only enable gradient is it's required by the loss (e.g. for gradient matching losses); mostly false.
-                with torch.set_grad_enabled(loss_func.require_gradients):                
+                with torch.set_grad_enabled(loss_func.require_gradients):
                     model_input = input_manager.get_triggered_inputs(
                         chosen_template_idx=template_idx,
                         trigger_ids=batch_candidate_trigger_ids,

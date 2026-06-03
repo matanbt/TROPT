@@ -1,8 +1,6 @@
 import logging
 from typing import Dict, List, Optional
 
-import litellm
-
 from tropt.common import ModelOutput
 from tropt.model import BaseTokenizer, LMBaseModel, LossTextAccessMixin
 from tropt.model.openai.encoder import OpenAITokenizer
@@ -133,6 +131,9 @@ class LiteLLMModel(LMBaseModel, LossTextAccessMixin):
         if require_first_token_logprobs:
             generation_kwargs["logprobs"] = True
             generation_kwargs["top_logprobs"] = _MAX_TOP_LOGPROBS
+
+        # Import litellm lazily: optional dependency (`tropt[litellm]`).
+        import litellm
 
         outputs = litellm.batch_completion(
             model=self.model_name,

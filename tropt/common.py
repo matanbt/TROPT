@@ -86,7 +86,7 @@ class MessageTargets(pydantic.BaseModel):
 
     target_gradient: Optional[Float[Tensor, "n_params"]] = None
     """Target weight-gradient to align with, flattened over the trainable params.
-    Precompute via ``tropt.loss.gradient_matching.compute_weight_gradient``.
+    Precompute the target weight-gradient externally and pass it here.
     """
 
     # ── Classifier targets ─────────────────────────────────────────────────
@@ -172,9 +172,8 @@ class Targets(pydantic.BaseModel):
     """Target weight-gradients, one per template (flattened over the trainable params).
 
     Shape: (n_templates, n_params).
-    Used by: gradient-matching losses. Precompute via
-    ``tropt.loss.gradient_matching.compute_weight_gradient`` and stack/replicate
-    across templates.
+    Used by: gradient-matching losses. Precompute the per-template target
+    weight-gradients externally and stack across templates.
     """
 
     # ── Classifier targets ─────────────────────────────────────────────────

@@ -4,11 +4,7 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, Optional
 
-import livelossplot
-import trackio
-from livelossplot.outputs import MatplotlibPlot
-
-import wandb
+import torch
 
 from .base import DEFAULT_EXPERIMENT_NAME, BaseTracker
 
@@ -85,6 +81,8 @@ class WandbTracker(BaseTracker):
         self._wandb_kwargs = wandb_kwargs
 
     def _init(self, config: Optional[dict] = None):
+        import wandb
+
         wandb.init(
             project=self.project_name,
             name=self.experiment_name,
@@ -93,7 +91,8 @@ class WandbTracker(BaseTracker):
         )
 
     def _log(self, data: Dict[str, Any]):
-        import torch
+        import wandb
+
         sanitized = {}
         for k, v in data.items():
             if isinstance(v, torch.Tensor):
@@ -105,6 +104,8 @@ class WandbTracker(BaseTracker):
         wandb.log(sanitized)
 
     def _finish(self, summary: Optional[dict] = None):
+        import wandb
+
         if summary:
             wandb.run.summary.update(summary)
         wandb.finish()
@@ -173,6 +174,8 @@ class TrackioTracker(BaseTracker):
         self._trackio_kwargs = trackio_kwargs
 
     def _init(self, config: Optional[dict] = None):
+        import trackio
+
         trackio.init(
             project=self.project_name,
             name=self.experiment_name,
@@ -182,7 +185,8 @@ class TrackioTracker(BaseTracker):
         )
 
     def _log(self, data: Dict[str, Any]):
-        import torch
+        import trackio
+
         sanitized = {}
         for k, v in data.items():
             if isinstance(v, torch.Tensor):
@@ -194,6 +198,8 @@ class TrackioTracker(BaseTracker):
         trackio.log(sanitized)
 
     def _finish(self, summary: Optional[dict] = None):
+        import trackio
+
         if summary:
             trackio.log({f"summary/{k}": v for k, v in summary.items()})
         trackio.finish()
@@ -253,9 +259,12 @@ class LiveLossPlotTracker(BaseTracker):
     ):
         super().__init__(experiment_name)
         self.focus_on_metrics = focus_on_metrics
-        self._plotlosses: Optional[livelossplot.PlotLosses] = None
+        self._plotlosses: Optional["livelossplot.PlotLosses"] = None
 
     def _init(self, config: Optional[dict] = None):
+        import livelossplot
+        from livelossplot.outputs import MatplotlibPlot
+
         def _after_subplot(ax, group_name, x_label):
             ax.set_title(group_name)
             ax.set_xlabel("step")

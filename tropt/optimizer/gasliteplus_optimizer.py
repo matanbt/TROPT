@@ -216,7 +216,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             losses=[losses[i].item() for i in range(self.buffer_size)],
         )
 
-        trigger_str = tokenizer.decode(buffer.get_best_trigger(), skip_special_tokens=True)
+        trigger_str = tokenizer.decode_trigger(buffer.get_best_trigger())
         self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
         for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE..."):
