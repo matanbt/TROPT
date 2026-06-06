@@ -12,6 +12,28 @@ license = {text = "MIT"}
 authors = [
   {name = "Matan Ben-Tov"}
 ]
+keywords = [
+  "adversarial-attacks",
+  "jailbreak",
+  "red-teaming",
+  "trigger-optimization",
+  "discrete-optimization",
+  "prompt-optimization",
+  "llm",
+  "nlp",
+  "robustness",
+  "ai-safety",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 # Core dependencies - minimal for basic HuggingFace model optimization
 dependencies = [
@@ -37,8 +59,9 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/matanbt/tropt"
-Issues = "https://github.com/matanbt/tropt/issues"
+Homepage = "https://matanbt.github.io/TROPT"
+Repository = "https://github.com/matanbt/TROPT"
+Issues = "https://github.com/matanbt/TROPT/issues"
 
 [project.optional-dependencies]
 # API model integrations (install separately as needed)
@@ -133,6 +156,15 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["tropt"]
+
+# Explicit allowlist so the sdist ships only the package + metadata.
+[tool.hatch.build.targets.sdist]
+include = [
+  "tropt/",
+  "README.md",
+  "LICENSE",
+  "pyproject.toml",
+]
 
 [tool.ruff]
 include = ["tropt/**/*.py", "tests/**/*.py"]

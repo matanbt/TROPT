@@ -406,7 +406,17 @@ html[data-theme="dark"] .tropt-cta-secondary:hover {
 /* (Dot-grid layer is now `.tropt-hero-dots` defined above with the hero.) */
 
 @media (max-width: 720px) {
-  .tropt-optbar { gap: 6px; padding: 8px 10px; }
+  /* The slot-machine row is wider than a phone viewport when forced onto one
+     line, so it gets clipped at the screen edge (the trailing "!" disappears)
+     and reads as a broken banner. Let it wrap onto multiple lines and never
+     exceed the viewport. */
+  .tropt-optbar {
+    gap: 6px;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
   .tropt-tok { font-size: 12.5px; padding: 7px 10px; }
   .tropt-tok-opt { min-width: 100px; }
 }

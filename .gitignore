@@ -24,3 +24,10 @@ tropt/recipe_hub/PGD.py
 tropt/recipe_hub/PGD__geisler2024.py
 tropt/optimizer/pgd_optimizer.py
 
+# Local artifacts & dev scratch — never tracked or published
+wandb/
+logs/
+claude_stuff/
+.claude/
+*.egg-info/
+

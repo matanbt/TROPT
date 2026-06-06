@@ -231,7 +231,7 @@ class Targets(pydantic.BaseModel):
         for k, v in self:
             if isinstance(v, Tensor):
                 updates[k] = v.to(device)
-            if isinstance(v, list) and isinstance(v[0], Tensor):
+            elif isinstance(v, list) and v and isinstance(v[0], Tensor):
                 updates[k] = [t.to(device) for t in v]
         return self.model_copy(update=updates)
 

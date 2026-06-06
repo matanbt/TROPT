@@ -70,6 +70,9 @@ class GCGOptimizer(BaseOptimizer):
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
 
+        # validations:
+        assert self.loss_func.is_differentiable, "GCGOptimizer requires a differentiable loss function."
+
     def optimize_trigger(
         self,
         templates: TextTemplates,

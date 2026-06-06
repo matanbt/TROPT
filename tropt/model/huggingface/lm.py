@@ -531,6 +531,7 @@ class LMHFModel(
         ).to(self.device)
         padded_seq_len = inputs.input_ids.shape[1]
         n_prompt_tokens = inputs.input_ids.numel()
+        # n_prompt_tokens = int(inputs.attention_mask.sum().item())  # [Disabled] an alternative that excludes padding tokens
 
         # ---- Shared forward pass (prefill logits and/or first-token logprobs) ----
         prefill_response_logits = None

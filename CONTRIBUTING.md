@@ -58,7 +58,7 @@ Open an issue with `[feature]` or `[recipe]` before writing code, especially for
 A contribution that touches a component must conform to its interface contract. Read in this order:
 
 - [`DESIGN.md`](DESIGN.md) — full design philosophy (modularity, backend vs. frontend, why the contracts are the way they are).
-- [`docs/guides/`](docs/guides/) — step-by-step per-component walkthroughs (source of truth for each contribution type).[TODO link to the actual docs]
+- [`docs/guides/`](docs/guides/) — step-by-step per-component walkthroughs (source of truth for each contribution type).
 - **Agent files.**
     - [`CLAUDE.md`](CLAUDE.md) — fast-path orientation: the four components, mixin contract, `ModelInput`/`ModelOutput`/`Targets`, setup-then-compute.
     - [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) — task-routed pointers and cross-cutting pitfalls (mixin mismatches, thinking-model alignment, multi-model OOM, etc.).
@@ -75,7 +75,7 @@ A contribution that touches a component must conform to its interface contract. 
 
 For every contribution:
 
-1. **Mirror the source layout in `tests/`.** Cover output shape, sign conventions, mixin requirements, and known input/output pairs. See [`TESTING.md`](TESTING.md) for tolerances and per-component checklists.
+1. **Add tests** following the conventions and per-component checklists in [`TESTING.md`](TESTING.md); match the layout of the existing tests under [`tests/`](tests/). Cover output shape, sign conventions, mixin requirements, and known input/output pairs. Note that the end-to-end suite runs tiny CPU models with few steps, so tests assert shapes and finiteness — not loss decrease or trigger content, which are flaky at that scale.
 2. **Regenerate the compatibility matrix** if you touched a model, optimizer, mixin, or loss `require_*` flag: `python docs/scripts/generate_compat_matrix.py`. Commit the regenerated [`docs/guides/compatibility_matrix.md`](docs/guides/compatibility_matrix.md).
 3. **Update the relevant README row** — recipes need an entry in [`tropt/recipe_hub/README.md`](tropt/recipe_hub/README.md) (key, description, target model, required access, paper, file).
 4. **Smoke-test end-to-end** on a small model (e.g. `google/gemma-3-270m-it`) before submitting.

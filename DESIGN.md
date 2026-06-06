@@ -287,8 +287,6 @@ The repository exposes two interfaces for managing recipes:
 
 <!-- * **Config Runner [`runner/main.py`].** A flexible runner that constructs a recipe from a YAML configuration file. The runner uses [Hydra](https://hydra.cc/) to manage configurations, allowing users to specify the model, loss, optimizer, and their parameters in a structured way without writing new code. -->
 
-* **Full evaluations [WIP].** [TODO]
-
 ## Summary
 
 
