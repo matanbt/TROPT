@@ -59,7 +59,7 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://matanbt.github.io/TROPT"
+Homepage = "https://tropt.dev"
 Repository = "https://github.com/matanbt/TROPT"
 Issues = "https://github.com/matanbt/TROPT/issues"
 

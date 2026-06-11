@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://matanbt.github.io/TROPT/sitemap.xml
+Sitemap: https://tropt.dev/sitemap.xml

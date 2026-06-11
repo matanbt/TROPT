@@ -14,7 +14,7 @@ authors:
     given-names: Mahmood
     # TODO: add orcid, affiliation, email
 repository-code: "https://github.com/matanbt/tropt"
-url: "https://matanbt.github.io/TROPT"
+url: "https://tropt.dev"
 license: MIT
 version: 0.0.1a1
 # TODO: date-released (YYYY-MM-DD) once a tagged release is cut.

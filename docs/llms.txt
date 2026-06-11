@@ -14,21 +14,21 @@ This is defensive-security research tooling: use it for robustness evaluation, r
 
 ## Usage guides
 
-- [Running a recipe](https://matanbt.github.io/TROPT/guides/running_a_recipe.md): the most common entry point — pick a recipe from `tropt.recipe_hub`, call it with `model_name` + `instruction` + `target_response`, get back an `OptimizerResult`.
-- [Composing a recipe](https://matanbt.github.io/TROPT/guides/adding_a_recipe.md): write your own recipe by wiring Model + Loss + Optimizer + Inputs. Covers trackers, token constraints, token initializers, `CombinedLoss`, paper-faithful defaults.
-- [Adding a loss](https://matanbt.github.io/TROPT/guides/adding_a_loss.md): the one rule — your `__call__` parameter names must match field names on `ModelOutput` / `ModelInput` / `MessageTargets`. The resolver auto-wires data into your loss.
-- [Adding an optimizer](https://matanbt.github.io/TROPT/guides/adding_an_optimizer.md): self-contained one-file optimizer with explicit `model_requirements = (Mixin1, Mixin2, ...)`. Backend handles tokenization, batching, gradients; you write only the search algorithm.
-- [Adding a model](https://matanbt.github.io/TROPT/guides/adding_a_model.md): implement the three method families (`invoke_from_*`, `set_inputs_from_*`/`reset_inputs_from_*`, `compute_{value}_from_{input_type}`) for whichever access mixins your backend can support.
-- [Compatibility matrix](https://matanbt.github.io/TROPT/guides/compatibility_matrix.md): auto-generated table of which (Model, Loss, Optimizer) triples actually work together.
+- [Running a recipe](https://tropt.dev/guides/running_a_recipe.md): the most common entry point — pick a recipe from `tropt.recipe_hub`, call it with `model_name` + `instruction` + `target_response`, get back an `OptimizerResult`.
+- [Composing a recipe](https://tropt.dev/guides/adding_a_recipe.md): write your own recipe by wiring Model + Loss + Optimizer + Inputs. Covers trackers, token constraints, token initializers, `CombinedLoss`, paper-faithful defaults.
+- [Adding a loss](https://tropt.dev/guides/adding_a_loss.md): the one rule — your `__call__` parameter names must match field names on `ModelOutput` / `ModelInput` / `MessageTargets`. The resolver auto-wires data into your loss.
+- [Adding an optimizer](https://tropt.dev/guides/adding_an_optimizer.md): self-contained one-file optimizer with explicit `model_requirements = (Mixin1, Mixin2, ...)`. Backend handles tokenization, batching, gradients; you write only the search algorithm.
+- [Adding a model](https://tropt.dev/guides/adding_a_model.md): implement the three method families (`invoke_from_*`, `set_inputs_from_*`/`reset_inputs_from_*`, `compute_{value}_from_{input_type}`) for whichever access mixins your backend can support.
+- [Compatibility matrix](https://tropt.dev/guides/compatibility_matrix.md): auto-generated table of which (Model, Loss, Optimizer) triples actually work together.
 
 ## API reference
 
-- [API index](https://matanbt.github.io/TROPT/api/index.html): auto-generated reference for all public modules.
-- [`tropt.common`](https://matanbt.github.io/TROPT/api/common.html): `ModelInput`, `ModelOutput`, `Targets`, `MessageTargets`, `SliceKey`, `OPTIMIZED_TRIGGER_PLACEHOLDER`. Start here when reading loss / optimizer signatures.
-- [`tropt.model`](https://matanbt.github.io/TROPT/api/models.html): base classes, access mixins, and concrete backends (`LMHFModel`, `EncoderHFModel`, `EncoderOpenAIModel`, `LiteLLMModel`, `EncoderGeminiModel`, `EncoderVoyageModel`).
-- [`tropt.loss`](https://matanbt.github.io/TROPT/api/loss.html): base classes (`LogitBasedLoss`, `EmbeddingBasedLoss`, `TextBasedLoss`, `AttentionBasedLoss`, `HiddenStateBasedLoss`, `CombinedLoss`) and the resolver (`resolve_and_compute_loss`).
-- [`tropt.optimizer`](https://matanbt.github.io/TROPT/api/optimizer.html): `BaseOptimizer`, `OptimizerResult`, and every concrete optimizer (one per file).
-- [`tropt.recipe_hub`](https://matanbt.github.io/TROPT/api/recipe_hub.html): the full registry of one-call recipes and `list_recipes()`.
+- [API index](https://tropt.dev/api/index.html): auto-generated reference for all public modules.
+- [`tropt.common`](https://tropt.dev/api/common.html): `ModelInput`, `ModelOutput`, `Targets`, `MessageTargets`, `SliceKey`, `OPTIMIZED_TRIGGER_PLACEHOLDER`. Start here when reading loss / optimizer signatures.
+- [`tropt.model`](https://tropt.dev/api/models.html): base classes, access mixins, and concrete backends (`LMHFModel`, `EncoderHFModel`, `EncoderOpenAIModel`, `LiteLLMModel`, `EncoderGeminiModel`, `EncoderVoyageModel`).
+- [`tropt.loss`](https://tropt.dev/api/loss.html): base classes (`LogitBasedLoss`, `EmbeddingBasedLoss`, `TextBasedLoss`, `AttentionBasedLoss`, `HiddenStateBasedLoss`, `CombinedLoss`) and the resolver (`resolve_and_compute_loss`).
+- [`tropt.optimizer`](https://tropt.dev/api/optimizer.html): `BaseOptimizer`, `OptimizerResult`, and every concrete optimizer (one per file).
+- [`tropt.recipe_hub`](https://tropt.dev/api/recipe_hub.html): the full registry of one-call recipes and `list_recipes()`.
 
 ## Source code (single source of truth)
 

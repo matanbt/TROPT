@@ -78,7 +78,7 @@ html_favicon = '_static/favicon.svg'
 # Canonical URL of the deployed docs. sphinx-sitemap and sphinxext-opengraph
 # both read this; without it they silently produce relative URLs (which
 # Twitter/LinkedIn/Slack won't accept for og:url and og:image).
-html_baseurl = "https://matanbt.github.io/TROPT/"
+html_baseurl = "https://tropt.dev/"
 
 # Crisper window title — strips the noisy "TROPT 0.0.1a1 documentation" suffix.
 # Sphinx renders <title> as "{page_h1} — {html_title}", so setting this to the
@@ -89,7 +89,7 @@ html_title = "Textual Trigger Optimization Toolbox"
 # Pull robots.txt into the build output (extra_path copies files verbatim into
 # the html dir). The file lives at docs/_static/robots.txt; the build script
 # copies _static into the output anyway, but extra_path ensures it lands at
-# the SITE ROOT (matanbt.github.io/TROPT/robots.txt) which is where crawlers
+# the SITE ROOT (tropt.dev/robots.txt) which is where crawlers
 # look for it — placement inside _static/ wouldn't be discoverable.
 html_extra_path = ['robots.txt']
 
