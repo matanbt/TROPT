@@ -96,7 +96,7 @@ result = optimizer.optimize_trigger(
 ```
 
 You can replace any component in this recipe code with another compatible one; e.g., swap the loss or optimizer with a more sophisticated one to enhance the jailbreak. 
-For more examples see [quickstart.ipynb](quickstart.ipynb) notebook, and the detailed guide on [adding a recipe](docs/guides/adding_a_recipe.md).
+For more examples see [quickstart.ipynb](quickstart.ipynb) notebook, and the detailed guide on [adding a recipe](https://tropt.dev/guides/adding_a_recipe.html).
 
 ### Build New Optimizers & Losses 🔬
 
@@ -104,7 +104,7 @@ TROPT is designed as a **factory for new optimizers and losses**. Each is a self
 TROPT internally handles the repeated logic required to operate these modules, including input--trigger management, batching, tokenization blocking, trigger gradient computation, etc.
 Your new optimizer or loss then composes automatically with every existing model and counterpart component.
 
-Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickstart.ipynb); the docs have more detailed guides on building [optimizers](docs/guides/adding_an_optimizer.md) and [losses](docs/guides/adding_a_loss.md).
+Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickstart.ipynb); the docs have more detailed guides on building [optimizers](https://tropt.dev/guides/adding_an_optimizer.html) and [losses](https://tropt.dev/guides/adding_a_loss.html).
 
 
 ## 🤖 Use TROPT with Your Coding Agent

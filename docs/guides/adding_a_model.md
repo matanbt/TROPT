@@ -418,14 +418,5 @@ class MyHFLMModel(
     def invoke_from_texts(self, input_texts, **kwargs): ...
 ```
 
-You do **not** implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `HuggingFaceBackendModel`.
+You do **not** need to implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `HuggingFaceBackendModel`.
 
----
-
-## Checklist
-
-1. **Verify optimizer compatibility** — Instantiate an optimizer that requires your model's mixins and confirm `model_requirements` validation passes.
-2. **Usage stats** — Confirm `invoke_from_tokens` calls `_update_invoke_stats` with `n_tokens`, `n_samples`, and `count_backward`. Gradient methods should pass `count_backward=True` to `invoke_from_tokens`. For HuggingFace models this is already handled by `HuggingFaceBackendModel`. This takes care of usage tracking and FLOPs.
-3. **Test** — Write tests covering initialization, the inference method, and each mixin method. Test both single and multi-template cases. See `tests/models/` for examples.
-
-> Want to contribute your model backend back to the TROPT package? See [CONTRIBUTING.md](https://github.com/matanbt/TROPT/blob/main/CONTRIBUTING.md) for the file placement, export, and testing steps.

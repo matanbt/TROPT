@@ -70,6 +70,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
         candidate_oversample_factor: float = 1.1,
         momentum: float = 0.0,
+        skip_visited: bool = False,
         # Trigger buffer size:
         buffer_size: Optional[int] = None,
         n_grad_avg: int = 1,
@@ -97,6 +98,8 @@ class GCGPlusOptimizer(BaseOptimizer):
                 m = mu*m + (1-mu)*grad for candidate ranking instead of raw gradient.
                 Defaults to 0.0 (no momentum).
                 Reference: https://arxiv.org/abs/2405.01229 .
+            skip_visited: If True, never re-select a previously accepted trigger
+                (PAL-style); avoids cycling/stalling. Defaults to False.
             buffer_size: If set, maintain a buffer of the best triggers seen (from QCG paper). Each step
                 starts from the best buffer entry and updates it with improved candidates.
                 Defaults to None (no buffer).
@@ -147,6 +150,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.use_retokenize = use_retokenize
         self.candidate_oversample_factor = candidate_oversample_factor
         self.momentum = momentum
+        self.skip_visited = skip_visited
         self.use_token_input_for_loss = use_token_input_for_loss
         self.buffer_size = buffer_size
         self.n_grad_avg = n_grad_avg
@@ -185,6 +189,7 @@ class GCGPlusOptimizer(BaseOptimizer):
 
         best = RunningBest()
         momentum_buffer: Optional[Tensor] = None
+        visited: set[str] = set()
 
         # Buffer initialization
         buffer: Optional[TriggerBuffer] = None
@@ -202,6 +207,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         ).item()
         trigger_str = proxy_tokenizer.decode_trigger(trigger_ids)
         self.log(loss=current_loss, trigger_str=trigger_str)
+        if self.skip_visited:
+            visited.add(trigger_str)
 
         n_replace_start, n_replace_end = self.sample_n_replace
 
@@ -286,6 +293,14 @@ class GCGPlusOptimizer(BaseOptimizer):
                 candidate_trigger_ids = retokenize_filtering(
                     candidate_trigger_ids, proxy_tokenizer
                 )
+            # Drop already-accepted triggers (PAL-style) before truncating
+            if self.skip_visited and len(candidate_trigger_ids) > 0:
+                cand_strs = proxy_tokenizer.decode_triggers(candidate_trigger_ids)
+                keep = torch.tensor(
+                    [s not in visited for s in cand_strs],
+                    device=candidate_trigger_ids.device,
+                )
+                candidate_trigger_ids = candidate_trigger_ids[keep]
             # Truncate to n_candidates (after oversample + filter)
             candidate_trigger_ids = candidate_trigger_ids[: self.n_candidates]
 
@@ -314,6 +329,8 @@ class GCGPlusOptimizer(BaseOptimizer):
 
             best.update(loss=current_loss, trigger_ids=trigger_ids, trigger_str=trigger_str)
             self.log(loss=current_loss, trigger_str=trigger_str)
+            if self.skip_visited:
+                visited.add(trigger_str)
 
         # --- Finalize ---
         result = best.to_result()

@@ -31,6 +31,15 @@ html[data-theme="dark"] {
 /* ==========================================================================
    Base API-page tweaks (kept from previous custom.css)
    ========================================================================== */
+/* Sphinx's basic.css bolds any inline code that's a cross-reference link
+   (`code.xref, a code { font-weight: bold }`). With autodoc xrefs all over the
+   guides this made most inline code look bold by default — match the weight
+   of plain (unlinked) inline literals instead. */
+code.xref,
+a code {
+  font-weight: inherit;
+}
+
 dl.class {
   margin: 20px 0;
   border: 0;
