@@ -1,5 +1,7 @@
 # Adding a New Model
 
+> This article is a Work In Progress draft.
+
 This guide walks you through wrapping a new model backend. Pick the section that matches your situation:
 
 - **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case we expect for model backend addition, and it is also the most straightfotward easiest. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
@@ -419,4 +421,5 @@ class MyHFLMModel(
 ```
 
 You do **not** need to implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `HuggingFaceBackendModel`.
+
 

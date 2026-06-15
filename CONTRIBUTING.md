@@ -38,11 +38,11 @@ Before opening a PR, make sure these pass locally:
 ```bash
 uv run ruff check                       # lint        (enforced in CI)
 uv run ruff format --check              # formatting   (local-only)
-uv run ty check                         # type-check   (local-only)
+uv run ty check                         # type-check  (enforced in CI)
 uv run pytest                           # tests       (enforced in CI)
 ```
 
-CI enforces `ruff check` and `pytest` on every PR; `ruff format --check` and `ty check` are local-only but expected to pass.
+CI enforces `ruff check`, `ty check`, and `pytest` on every PR; `ruff format --check` is local-only but expected to pass.
 
 
 ### 2. Adhere to TROPT Convention

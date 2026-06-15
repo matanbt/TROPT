@@ -12,6 +12,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      # Pinned to the ruff version in uv.lock. Bump both together.
+      # `ruff format --check` is intentionally not gated yet (repo not format-clean).
+      - name: Ruff lint
+        run: uvx ruff@0.15.8 check
+
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -27,6 +41,9 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --all-extras
+
+      - name: Type-check (ty)
+        run: uv run ty check
 
       - name: Cache HuggingFace models
         uses: actions/cache@v4
