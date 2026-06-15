@@ -259,7 +259,7 @@ class LiveLossPlotTracker(BaseTracker):
     ):
         super().__init__(experiment_name)
         self.focus_on_metrics = focus_on_metrics
-        self._plotlosses: Optional["livelossplot.PlotLosses"] = None
+        self._plotlosses = None  # of type `livelossplot.PlotLosses`
 
     def _init(self, config: Optional[dict] = None):
         import livelossplot

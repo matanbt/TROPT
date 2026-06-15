@@ -148,31 +148,31 @@ class CombinedLoss(BaseLoss):
         }
 
     @property
-    def is_differentiable(self) -> bool:
+    def is_differentiable(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return all(lf.is_differentiable for lf in self.loss_funcs)
 
     @property
-    def require_gradients(self) -> bool:
+    def require_gradients(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_gradients for lf in self.loss_funcs)
 
     @property
-    def require_target_prefill(self) -> bool:
+    def require_target_prefill(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_target_prefill for lf in self.loss_funcs)
 
     @property
-    def require_generation(self) -> bool:
+    def require_generation(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_generation for lf in self.loss_funcs)
 
     @property
-    def require_hidden_states(self) -> bool:
+    def require_hidden_states(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_hidden_states for lf in self.loss_funcs)
 
     @property
-    def require_attentions(self) -> bool:
+    def require_attentions(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_attentions for lf in self.loss_funcs)
 
     @property
-    def require_first_token_logprobs(self) -> bool:
+    def require_first_token_logprobs(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_first_token_logprobs for lf in self.loss_funcs)
 
     def contains_loss_type(self, loss_type: type) -> bool:

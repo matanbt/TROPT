@@ -387,7 +387,7 @@ class BaseOptimizer(ABC):
         self._pbar = tqdm(*args, **kwargs)
         for item in self._pbar:
             if self._budget_exhausted():
-                limit, metric, scope = self._budget  # type: ignore[misc]
+                limit, metric, scope = self._budget  # ty: ignore[not-iterable] (non-None once budget is exhausted)
                 logger.info(
                     f"[{type(self).__name__}] budget reached "
                     f"({metric}[{scope}]={self._budget_usage():.3g} >= {limit:.3g}); stopping early."
