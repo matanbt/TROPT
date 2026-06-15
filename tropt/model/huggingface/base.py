@@ -198,7 +198,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             (they must share `trigger_seq_len`).
         - for *specific* use cases, the following method is suboptimal; however,
             currently generality and support for different input types/shapes are prioritized.
-        - Allows gradient flow through `trigger_embeds`, which can be useful for combining backporable trigger 
+        - Allows gradient flow through `trigger_embeds`, which can be useful for combining backporable trigger
             candidates (e.g., for `compute_grad_from_*()` methods).
 
 

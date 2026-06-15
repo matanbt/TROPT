@@ -89,7 +89,7 @@ vision = [
 
 # Experiment tracking and visualization
 tracking = [
-  "wandb>=0.15.0",
+  "wandb>=0.25.1",
   "livelossplot>=0.5.0",
   "trackio>=0.3.0",
 ]

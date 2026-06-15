@@ -1,68 +1,75 @@
 # Contributing to TROPT
 
-This document covers contributions back to the **TROPT package itself**: registering new components, naming conventions, tests, and Recipe Hub entries.
+TROPT enables a wide range of contributions: from adding new recipes of published work (to the Recipe Hub), to adding a useful, new loss or optimizer, or additional model integrations, to resolving bugs or adding new features to the package.
 
-If you only want to *use* TROPT — with custom losses, optimizers, models, or recipes living in your own scripts — the user-facing guides under [`docs/guides/`](docs/guides/) are what you want; they are intentionally scoped to library use, with no contribution boilerplate. The sections below assume you have already followed the relevant guide and have a working component.
+While the [guides](https://www.tropt.dev/guides/index.html) in our docs should be helpful in *implementing* new TROPT components (e.g., new recipe, loss, optimizer, etc.), they do not refer to the *integration* of new components within the package's code, which we also touch upon below.
 
-## Code of Conduct
+TROPT aims to be a growing library and a research hub. You are encouraged to contribute your own research, or implementations of existing works, under the TROPT framework. 
 
-We follow the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/) (v2.1). Be respectful, assume good faith, and keep discussion technical. Report concerns to the maintainer listed in [`pyproject.toml`](pyproject.toml).
 
-## Setup
+---
 
+## Opening Issues
+
+To report a **bug**, open an issue with `[bug]` in the title. Include an informative description of the bug, the full logs of the run, the environment you run on, and provide means of reproducing it (e.g., a minimal reproduction script with a lightweight model). Clearly articulate the expected behavior vs. what happens.
+
+You may also open issues to request/suggest adding a **new optimizer or loss**, a **new model** backend, a **new recipe** to the Recipe Hub, or a general **feature** proposal; please use an appropriate title prefix (`[model]`, `[loss]`, `[recipe]`, `[feature]`, ...). Please ensure the motivation for the inclusion of this addition in TROPT is clear; e.g., in the case of adding a new component/recipe, clearly cite the relevant paper and/or use case driving your suggestion.
+
+
+## Opening PR
+
+### 1. Developer Setup & Checks
+
+Make sure that you are developing in TROPT's common dev env and run the required checks before opening the PR.
+
+**Setup.**
 ```bash
 git clone https://github.com/matanbt/tropt.git
 cd tropt
 uv sync --all-extras    # dev install with all optional extras
-pre-commit install      # optional today (hook config WIP)
 ```
 
-We use [`uv`](https://docs.astral.sh/uv/) for dependency management — always invoke tools via `uv run` (e.g. `uv run pytest`).
 
-## Required checks
+**Required checks**
 
-Before opening a PR, run these locally — they cover what the maintainers will check first:
+
+Before opening a PR, make sure these pass locally:
 
 ```bash
-uv run ruff check                       # lint
-uv run ruff format --check              # formatting
-uv run ty check                         # type-check
-uv run pytest                           # tests (CI runs this on every PR)
-python docs/scripts/generate_compat_matrix.py   # if you touched model/, optimizer/, or any mixin
+uv run ruff check                       # lint        (enforced in CI)
+uv run ruff format --check              # formatting   (local-only)
+uv run ty check                         # type-check   (local-only)
+uv run pytest                           # tests       (enforced in CI)
 ```
 
-CI today enforces only `pytest`; the others are local-only but expected to pass.
+CI enforces `ruff check` and `pytest` on every PR; `ruff format --check` and `ty check` are local-only but expected to pass.
 
-## Reporting bugs
 
-Open an issue with `[bug]` in the title. Include:
-- Python + TROPT versions and platform (`uv pip show tropt`, OS).
-- Minimal repro (the smallest model and shortest script that triggers it — `google/gemma-3-270m-it` is fine for white-box paths).
-- Full traceback, not a summary.
-- What you expected vs. what happened.
+### 2. Adhere to TROPT Convention
 
-## Requesting features / proposing recipes
+In your implementation it is important that you'd adhere to existing convention followed by TROPT. Specifically, if you are adding a new component (model, loss, recipe, etc.), you must refer to the section on component integration into TROPT below.
 
-Open an issue with `[feature]` or `[recipe]` before writing code, especially for non-trivial changes. Include motivation, the paper or use case driving it, and (for new recipes) which existing component is missing or needs extending. This avoids wasted effort when a request doesn't fit the four-component design.
+**Tests.** If your implementation includes general additions to TROPT's core logic (e.g., modifying HuggingFace's backend to support a new feature), consider backing the change with a **test**.
 
-## PR workflow
+**Docs.** If your addition makes existing documentation (whether it's a guide or a docstring within the repo) stale, please update it to reflect your change.
 
-1. Fork → create a topic branch off `main` (e.g. `feature/my-loss`, `fix/gcg-retokenize`).
-2. Make focused commits — one logical change per commit. Use clear messages; reference the issue number if there is one.
-3. Run the [required checks](#required-checks) locally.
-4. Open a PR against `main`. The description should state *what* and *why*, link the issue, and call out any breaking changes or new dependencies.
-5. Keep the PR small. Split refactors from feature work when feasible.
-
-## Read the architecture first
-
-A contribution that touches a component must conform to its interface contract. Read in this order:
-
+For further readings, we provide additional material (for you, or your favorite coding agent), under:
 - [`DESIGN.md`](DESIGN.md) — full design philosophy (modularity, backend vs. frontend, why the contracts are the way they are).
-- [`docs/guides/`](docs/guides/) — step-by-step per-component walkthroughs (source of truth for each contribution type).
+- [`docs/guides/`](docs/guides/) — step-by-step per-component walkthroughs.
 - **Agent files.**
     - [`CLAUDE.md`](CLAUDE.md) — fast-path orientation: the four components, mixin contract, `ModelInput`/`ModelOutput`/`Targets`, setup-then-compute.
     - [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) — task-routed pointers and cross-cutting pitfalls (mixin mismatches, thinking-model alignment, multi-model OOM, etc.).
 
+### 3. PR workflow
+
+After implementing your addition to TROPT, and running the essential checks, open a PR as follows:
+1. Fork → create a topic branch off `main`, preferably with an informative name (e.g. `feature/my-loss`, `fix/gcg-retokenize`).
+2. Open a PR against `main`. The description should state *what* and *why*, link the issue, and call out any breaking changes (preferably none) or new dependencies.
+
+
+---
+
+The following details how to integrate your custom components (e.g., loss, optimizer, recipes) into the package.
 
 ## Adding a component
 
@@ -73,22 +80,27 @@ A contribution that touches a component must conform to its interface contract. 
 | a **model backend** | [`adding_a_model.md`](docs/guides/adding_a_model.md) | [`tropt/model/<backend>/`](tropt/model/) (one file per concrete class) | [`tropt/model/__init__.py`](tropt/model/__init__.py) |
 | a **recipe** | [`adding_a_recipe.md`](docs/guides/adding_a_recipe.md) | [`tropt/recipe_hub/`](tropt/recipe_hub/) (one paper / family per file) | [`tropt/recipe_hub/__init__.py`](tropt/recipe_hub/__init__.py) |
 
-For every contribution:
 
-1. **Add tests** following the conventions and per-component checklists in [`TESTING.md`](TESTING.md); match the layout of the existing tests under [`tests/`](tests/). Cover output shape, sign conventions, mixin requirements, and known input/output pairs. Note that the end-to-end suite runs tiny CPU models with few steps, so tests assert shapes and finiteness — not loss decrease or trigger content, which are flaky at that scale.
-2. **Regenerate the compatibility matrix** if you touched a model, optimizer, mixin, or loss `require_*` flag: `python docs/scripts/generate_compat_matrix.py`. Commit the regenerated [`docs/guides/compatibility_matrix.md`](docs/guides/compatibility_matrix.md).
-3. **Update the relevant README row** — recipes need an entry in [`tropt/recipe_hub/README.md`](tropt/recipe_hub/README.md) (key, description, target model, required access, paper, file).
-4. **Smoke-test end-to-end** on a small model (e.g. `google/gemma-3-270m-it`) before submitting.
-5. **Don't bypass mixin validation.** `BaseOptimizer.__init__` rejects models missing required mixins — this is the single guarantee that an optimizer only calls methods the model implements. Add the mixin to the model rather than weakening the check.
+Integrating a new component/recipe into TROPT should be fairly easy. While the implementation of the component/recipe as a standalone requires following a guide (under the _Read First_ column), to add this implementation to the package you need to add it as a module to the relevant location (_Module goes in_) and register it in the `__init__.py` file. 
 
-## Recipe naming convention
+Some additions (such as recipes) require reflecting them in the docs (i.e., updating `recipe_hub/README.md`). Some additions also have implicit / explicit repo conventions, for instance: in losses we aim for inheritance by category, and in the Recipe Hub we include a naming convention (read below).
 
-Recipe entry-point function names and the `RECIPES` dict keys use the same string:
+While this should cover the general flow of component additions, it is always a best practice to follow an existing component and how it is integrated in TROPT (e.g., if you add an optimizer, you can follow `GCGOptimizer` and its integration in the repo).
 
+## Adding a new recipe
+
+**Consider Recipe Importance.** To avoid cluttering TROPT's Recipe Hub with countless recipes (as the space of possible recipes is effectively endless), we currently set the bar for new recipes to be ones that either reproduce the methodology of a published paper, or propose a novel, well-motivated use case that currently does not exist in TROPT. 
+
+**Reproducibility.** If you are implementing a recipe that refers to existing research, it must be implemented as close to the original implementation as possible, including adhering to its parameters. It is preferable that such implementations will be backed with an empirical evaluation comparing your implementation with the original implementation (if such exists). This would allow researchers using the library to reliably use TROPT's implementation in research and future evaluations.
+
+**Recipe Naming Convention.** TROPT sets a naming convention for the Recipe Hub, to help organize the recipes and direct (some of them) to existing papers.
+The naming refers to the function that implements the recipe and its registration under `recipe_hub/__init__.py`. 
+
+The convention is structured as:
 ```
 {method}[_{variant}][_{task}][__{paperYYYY}]
 ```
-
+with each slot interpreted as:
 | Slot | Meaning | Example |
 | --- | --- | --- |
 | `method` | short canonical name | `gcg`, `arca`, `beast` |
@@ -96,72 +108,7 @@ Recipe entry-point function names and the `RECIPES` dict keys use the same strin
 | `_{task}` | distinct task application | `advdecoding_jailbreak`, `uat_prompt_injection` |
 | `__{paperYYYY}` | **reproduction tag** (double underscore; first author + year, lowercased, no separator) | `gcg__zou2023` |
 
-### Bar for inclusion
 
-A new recipe must clear one of these bars:
-
-- **Paper-backed reproduction.** Implements a published method faithfully (see reproduction tag rules below).
-- **Genuine novelty.** A non-paper composition that demonstrably extends the hub's coverage — e.g., composing an existing optimizer with a new loss to target a setting the hub doesn't yet support.
-
-We will close low-effort recipes that are neither (e.g. a hub entry that is essentially `gcg__zou2023` with a tweaked default and no paper or motivating result). If unsure, open a `[recipe]` issue first.
-
-### When to use the reproduction tag
-
-Use `__{paperYYYY}` *only* if all three hold:
-
-1. The recipe implements the paper's algorithm step-by-step (no different optimizer, no different per-step rule, no missing core ingredient like a buffer or a momentum term).
-2. The recipe's defaults match the hyperparameters the paper reports (or directly cites from the paper's reference implementation).
-3. If the recipe ports the method to a different setting than the paper's main experiment (e.g. CLIP → causal-LM), the algorithm transfers cleanly and the loss function is the canonical analogue. State the port in the docstring.
-
-If any of these fails, **omit the tag** — use the bare `{method}[_{variant}][_{task}]` form and document deviations in the docstring.
-
-Examples (live in the repo):
-
-| Recipe key | Why this form |
-| --- | --- |
-| `gcg__zou2023` | Algorithm 1 + paper hparams (B=512, k=256, T=500). |
-| `gcg_perplexity` | GCG composed with `TriggerPerplexityLoss`; not in any paper. |
-| `gcgp_whitebox__hayase2024` | GCG+ white-box variant from §4.1 of the QCG paper. |
-| `prs` | Recipe documents explicit deviations from the paper (schedule, restarts, no judge). |
-| `arca_toxic_reverse` | Reproduces the *task* of Jones et al. §4.2.1 but uses GCG instead of ARCA; algorithm differs. |
-
-**Multiple recipes from the same paper.** When a single paper introduces multiple variants and the hub exposes them as separate functions, each carries the same paper tag, with the variant slot disambiguating: `pal__sitawarin2024`, `ral__sitawarin2024`, `gcgp_pal__sitawarin2024`.
+For example `gcg__zou2023` reproduces the GCG LLM jailbreak (Zou et al. 2023) with its _exact_ parameters from the original paper. `gcg_perplexity`, on the other hand, implements a variant of GCG that does not appear in the original paper, and combines a perplexity term with the original recipe.
 
 
-
-
-
----
-[TODO is the following even relevant in lishgt of the above?]
-
-## Contributing a Loss
-
-After implementing your loss per [`docs/guides/adding_a_loss.md`](docs/guides/adding_a_loss.md):
-
-1. **File placement**: Add the loss to the appropriate file under [`tropt/loss/`](tropt/loss/) (or create a new module if it's a new category).
-2. **Register / export**: Export the loss class from [`tropt/loss/__init__.py`](tropt/loss/__init__.py).
-3. **Tests**: Add unit tests under `tests/loss/`. Cover output shape, sign convention, and at least one known input/output pair (numerical correctness matters).
-4. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
-
----
-
-## Contributing an Optimizer
-
-After implementing your optimizer per [`docs/guides/adding_an_optimizer.md`](docs/guides/adding_an_optimizer.md):
-
-1. **File placement**: Add the optimizer module under [`tropt/optimizer/`](tropt/optimizer/) (one optimizer per file is the convention).
-2. **Register / export**: Export the optimizer class from [`tropt/optimizer/__init__.py`](tropt/optimizer/__init__.py).
-3. **Tests**: Add tests under `tests/optimizer/`. Cover `model_requirements` validation, basic optimization, and any optimizer-specific features (schedulers, restarts, buffers, etc.). Use `tests/optimizer/` as a template.
-4. **Recipe Hub entry** *(optional but recommended for published methods)*: Add a recipe in `tropt/recipe_hub/` that exposes the optimizer with paper-faithful defaults (see "Contributing a Recipe" below).
-5. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.
-
----
-
-## Contributing a Model Backend
-
-After implementing your model per [`docs/guides/adding_a_model.md`](docs/guides/adding_a_model.md):
-
-1. **File placement**: Create a directory under [`tropt/model/`](tropt/model/) for your backend (e.g. `tropt/model/my_backend/`), with one file per concrete model class.
-2. **Register / export**: Export the model class from [`tropt/model/__init__.py`](tropt/model/__init__.py).
-3. **Tests**: Add tests under `tests/models/`. Cover initialization, the inference method, and each mixin method, in both single- and multi-template cases.
-4. **Compatibility matrix**: Re-run `python docs/scripts/generate_compat_matrix.py` and commit the regenerated `docs/guides/compatibility_matrix.md`.

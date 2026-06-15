@@ -29,11 +29,11 @@
 ***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text optimizers that elicit (un)desired behaviors for various types of NLP models (LLMs, embeddings, classifiers) and applications (red-teaming, interpretability, etc.).
 
 
-- ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with 30+ ready-to-run recipes (e.g., GCG, BEAST, MAC) — each invocable in a single call — to evaluate model and defense robustness.
-- 🔁 **Extend to any NLP model:** Swap the model or loss to port an LLM-jailbreak optimizer to retrievers, classifiers, multimodal systems, or interpretability research — no algorithm changes required.
-- 🧩 **Compose new recipes:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to build new, adaptive optimization schemes.
-- 🔬 **Build new optimizers and losses:** Add custom losses by defining only their core logic, or optimizers by defining only their search algorithm. New losses and optimizers instantly compose with every compatible model and recipe — TROPT absorbs the common boilerplate (batching, tokenization, gradients).
-- 🛡️ **Benchmark head-to-head:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure with standardized evaluation.
+- ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spanning white- and black-box methods (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call, to evaluate model and defense robustness.
+- 🔁 **Extend to any NLP model:** Seamlessly port existing optimization schemes (e.g., LLM jailreabks) to any model (e.g., retrievers, classifiers, multimodal systems), or to novel tasks (e.g., new attack vectors, interpretability research).
+- 🧩 **Compose new optimization recipes:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to create adaptive and novel optimization recipes in new domains.
+- 🔬 **Build new optimizers and losses:** Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its exetensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatcally integrate** new optimizers and losses to with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boierplate.
+- 🛡️ **Reliable Benchmarking:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure and a rich bank of optimziers, losses, etc.
 
 
 ## 🚀 Getting Started

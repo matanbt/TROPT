@@ -7227,7 +7227,7 @@ requires-dist = [
     { name = "tropt", extras = ["all"], marker = "extra == 'dev'" },
     { name = "tropt", extras = ["openai", "google", "voyage", "litellm", "vision", "tracking", "notebooks"], marker = "extra == 'all'" },
     { name = "voyageai", marker = "extra == 'voyage'", specifier = ">=0.3.0" },
-    { name = "wandb", marker = "extra == 'tracking'", specifier = ">=0.15.0" },
+    { name = "wandb", marker = "extra == 'tracking'", specifier = ">=0.25.1" },
 ]
 provides-extras = ["openai", "google", "voyage", "litellm", "vision", "tracking", "notebooks", "all", "dev", "evaluate"]
 
