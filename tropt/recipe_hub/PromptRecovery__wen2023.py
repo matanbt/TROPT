@@ -79,7 +79,7 @@ def get_image_embedding_for_clip_model(
     # Clean up: we only needed the vision encoder
     del clip_model, processor
 
-    return image_emb.pooler_output
+    return image_emb
 
 
 def prompt_recovery__wen2023(
