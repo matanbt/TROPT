@@ -401,7 +401,7 @@ def recover_prompt_end_to_end(
 ) -> PromptRecoveryQuadruple:
     """Generate an image from `prompt`, recover the prompt from the image, regenerate.
 
-    Defaults mirror the exp3-promrec reproduction of Williams et al. 2024:
+    Defaults mirror the exp3-promrec reproduction of Williams et al. 2025:
     SD-2.1 + OpenCLIP H/14 (laion2B), random 20-token init. The recipe owns
     optimizer hyperparameters; callers pick `optimizer_type` ∈ {"gcg", "mac", "pez", "adv_decoding"}.
     """

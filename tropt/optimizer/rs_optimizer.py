@@ -45,8 +45,8 @@ class RandomSearchOptimizer(BaseOptimizer):
     Implementation Notes:
     - Candidate evaluation is always text-based (``compute_loss_from_texts``); even for HF model,
     we decode to strings and re-encode for model input.
-    - A tokenizer is needed for the optimizer's token-level mutations; it should eitehr be provided, or we fall back to the model's tokenizer if it has one.
-    - The original implementation employs a "warm" intiial trigger (eg another GCG suffix), and uses it as the starting point for all restarts.  Here, we sample random triggers for all restarts for diversity.
+    - A tokenizer is needed for the optimizer's token-level mutations; it should either be provided, or we fall back to the model's tokenizer if it has one.
+    - The original implementation employs a "warm" initial trigger (eg another GCG suffix), and uses it as the starting point for all restarts.  Here, we sample random triggers for all restarts for diversity.
     - The original implementation employs an LLM judge for early stopping; here we use a simple patience counter for restarts.
     - The original implementation mostly use a loss-based scheduler. For generality (e.g., different potential loss values) we avoid using it.
 

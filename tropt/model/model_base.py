@@ -83,11 +83,11 @@ class BaseModel(ABC):
 
         Args:
             mode: The method to use for counting FLOPs. Options:
-                -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires the model to expose an inner HuggingFace ``PreTrainedModel`` (via ``_hf_model`` on HF backends). This option the default.
+                -> "manual": Uses a `ManualFlopCounter` that estimates FLOPs based on token counts and model architecture (follows Kaplan et al. 2020). Requires the model to expose an inner HuggingFace ``PreTrainedModel`` (via ``_hf_model`` on HF backends). This is the default.
                 -> "none": Disables FLOP counting.
 
         Note:
-        - FLOP counting will appear in :meth:`get_usage_stats` under ``"usage/total_flops"``.
+        - FLOP counting will appear in :meth:`get_usage_stats` under ``"total_flops"``.
         - Since the optimizer logs all entries under `model.get_usage_stats()`, this makes self.log() automatically include FLOP counts in all optimizer logs, without needing to explicitly log it in each optimizer method.
         - FLOPs are counted at the model `invoke_from_tokens` / `invoke_from_texts` level only -- the cost of optimizer-internal and loss-internal computation (e.g. candidate sampling, sorting, Gumbel draws) is knowingly excluded.
         """

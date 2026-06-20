@@ -31,7 +31,7 @@ def mac__wang2024(
     abliterated variant of the victim, so the target stays in-distribution),
     overriding `target_response` (which is the paper-faithful option).
     """
-    # Fetch the jailbroken target before loading the victim, so the teacher
+    # Fetch the jailbroken target before loading the victim, so the teacher model is unloaded before the victim is allocated (avoids co-residence/OOM).
     if jailbroken_model_name is not None:
         clean_instruction = instruction.replace(
             f" {OPTIMIZED_TRIGGER_PLACEHOLDER}", ""

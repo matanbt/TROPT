@@ -30,10 +30,10 @@
 
 
 - ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spanning white- and black-box methods (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call, to evaluate model and defense robustness.
-- 🔁 **Extend to any NLP model:** Seamlessly port existing optimization schemes (e.g., LLM jailreabks) to any model (e.g., retrievers, classifiers, multimodal systems), or to novel tasks (e.g., new attack vectors, interpretability research).
+- 🔁 **Extend to any NLP model:** Seamlessly port existing optimization schemes (e.g., LLM jailbreaks) to any model (e.g., retrievers, classifiers, multimodal systems), or to novel tasks (e.g., new attack vectors, interpretability research).
 - 🧩 **Compose new optimization recipes:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to create adaptive and novel optimization recipes in new domains.
-- 🔬 **Build new optimizers and losses:** Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its exetensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatcally integrate** new optimizers and losses to with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boierplate.
-- 🛡️ **Reliable Benchmarking:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure and a rich bank of optimziers, losses, etc.
+- 🔬 **Build new optimizers and losses:** Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its extensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatically integrates** new optimizers and losses with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boilerplate.
+- 🛡️ **Reliable Benchmarking:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure and a rich bank of optimizers, losses, etc.
 
 
 ## 🚀 Getting Started
@@ -48,10 +48,9 @@ pip install tropt[all]      # all optional extras (OpenAI, LiteLLM, tracking, ..
 For development, we use [uv](https://docs.astral.sh/uv/):
 
 ```bash
-git clone https://github.com/matanbt/tropt.git
+git clone https://github.com/matanbt/TROPT.git
 cd tropt
 uv sync --extra dev
-pre-commit install
 ```
 
 ### Quick Start: Run a Recipe 🥗
@@ -130,7 +129,7 @@ You can help improve TROPT in the following two ways:
 ## Intended Use
 
 TROPT is built for defensive research:
-auditing, interpretabiliy, robustness evaluation,
+auditing, interpretability, robustness evaluation,
 and authorized red-teaming of NLP models.
 **Do not use TROPT to attack systems you don't own or to elicit harmful behaviors from deployed models in the wild.**
 
@@ -143,6 +142,7 @@ If you find this package useful, please cite our paper as follows:
 ```bibtex
 @misc{tropt2026,
   title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
+  author       = {Ben-Tov, Matan and Sharif, Mahmood},
   year         = {2026},
   howpublished = {\url{https://github.com/matanbt/TROPT}},
 }

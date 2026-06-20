@@ -13,3 +13,4 @@ from .pez_optimizer import PEZOptimizer
 from .qcg_optimizer import QCGOptimizer
 from .rasliteplus_optimizer import RASLITEPlusOptimizer
 from .rs_optimizer import RandomSearchOptimizer
+from .soft_optimizer import SoftPromptOptimizer

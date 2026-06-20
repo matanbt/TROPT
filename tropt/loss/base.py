@@ -39,7 +39,7 @@ class BaseLoss(ABC):
     """Whether this loss requires autoregressive generation."""
 
     require_hidden_states: ClassVar[bool] = False
-    """Whether this loss requires the model to provid the forward pass's hidden states."""
+    """Whether this loss requires the model to provide the forward pass's hidden states."""
 
     require_attentions: ClassVar[bool] = False
     """Whether this loss requires the model to return attention weights."""
@@ -128,7 +128,7 @@ class CombinedLoss(BaseLoss):
 
         weights = self.weights.to(losses).unsqueeze(-1)  # shape: (n_losses, 1)
         loss = losses * weights
-        loss = loss.sum(dim=0)  # recude over n_losses
+        loss = loss.sum(dim=0)  # reduce over n_losses
 
         return loss  # shape: (bsz,)
 

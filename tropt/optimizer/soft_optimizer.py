@@ -72,7 +72,7 @@ class SoftPromptOptimizer(BaseOptimizer):
 
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
 
-        # Initialize Adam optimizer on the logits
+        # Initialize the optimizer on the trigger embeddings
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
 
         best = RunningBest()

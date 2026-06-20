@@ -92,12 +92,12 @@ def gaslite__bentov2024(
 
 GASLITE_PLUS_HPARAMS = dict(
     n_bulk_flips=20,
-    n_flip=0.3,
+    n_flip=20,
     n_grad=10,
     num_steps=150,
     buffer_size=10,
     n_candidates=256,
-    flip_pos_method=["ordered"],
+    flip_pos_method="ordered",
     decline_n_flip_from_step=0.5,
     early_stopping_patience=30,
     early_stopping_threshold=0.0001,
@@ -106,7 +106,7 @@ GASLITE_PLUS_HPARAMS = dict(
 QGASLITE_PLUS_HPARAMS = GASLITE_PLUS_HPARAMS.copy()
 QGASLITE_PLUS_HPARAMS.update(
     dict(
-        n_flip=0.3,
+        n_flip=20,
         n_bulk_flips=10,
         n_grad=5,
         num_steps=100,

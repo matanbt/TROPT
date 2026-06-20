@@ -115,11 +115,11 @@ class HotFlipOptimizer(BaseOptimizer):
         trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"],
         blacklist_ids: List[int],
     ) -> Int[Tensor, "trigger_seq_len"]:
-        """Select and apply token flip(s) using the first-order Taylor approximation.
+        """Select and apply the single best token flip via a first-order Taylor approximation.
 
-        The estimated loss change from flipping position i (token a_i -> b) is:
-
-
+        The estimated loss change from flipping position i (token a_i -> b) is
+        ``grad[i, b] - grad[i, a_i]``; we greedily pick the (position, token) pair
+        that minimizes it.
         """
         trigger_seq_len = trigger_ids.shape[0]
         device = trigger_ids.device

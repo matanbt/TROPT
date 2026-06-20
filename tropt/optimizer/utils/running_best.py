@@ -8,7 +8,7 @@ from torch import Tensor
 @dataclass
 class RunningBest:
     """
-    An auxilary object for optimizers:
+    An auxiliary object for optimizers:
     accumulates per-step losses and tracks the best trigger found so far.
 
     Stores:

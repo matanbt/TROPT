@@ -1,5 +1,5 @@
 """
-General loss functions.
+Text-based (black-box / non-differentiable) loss functions.
 
 Important note: The losses arguments must match the fields in ModelOutput and ModelInput
 for unified loss resolution to work properly.

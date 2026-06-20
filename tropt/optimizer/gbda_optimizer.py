@@ -50,7 +50,7 @@ class GBDAOptimizer(BaseOptimizer):
         n_grad_samples: int = 10,
         n_final_gumbel_samples: int = 100,
 
-        # Init paramaters:
+        # Init parameters:
         initial_coeff: float = 15.0,
         init_mode: Literal["from_trigger", "random"] = "from_trigger",
         init_noise_scale: float = 2.0,
@@ -87,6 +87,7 @@ class GBDAOptimizer(BaseOptimizer):
             temp_end: Ending Gumbel-softmax temperature (used only with "linear" schedule).
 
             # Optimization parameters:
+            learning_rate: Learning rate for the optimizer.
             gd_optimizer: The gradient descent optimizer Torch class to use.
             use_lr_schedule: If True, apply cosine annealing to the learning rate.
             grad_clip_norm: If set, clip gradient norms to this value before each optimizer step.
