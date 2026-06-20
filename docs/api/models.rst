@@ -5,7 +5,7 @@ Models
 
 
 Models Interface
------------
+----------------
 .. autoclass:: BaseModel
    :members:
    :undoc-members:
@@ -82,9 +82,9 @@ Text mixins define model interactions at the text level.
 
 Input Managers
 --------------
-Input Managers are responsible for streamlining the repeated combination of new triggers into text templates. They depend on the input type and are strongly linked to the model's key methods. For instance, `LMHFTokenInputsManager` specializes in combining trigger tokens within user text templates and providing them as model input for loss computation.
+Input Managers are responsible for streamlining the repeated combination of new triggers into text templates. They depend on the input type and are strongly linked to the model's key methods. For instance, `LMHFTokenInputManager` specializes in combining trigger tokens within user text templates and providing them as model input for loss computation.
 
-.. automodule:: tropt.model.inputs
+.. automodule:: tropt.model.inputs_manager
    :members:
    :undoc-members:
    :show-inheritance:
@@ -98,7 +98,7 @@ Model Implementations
 
 .. automodule:: tropt.model
    :members:
-   :exclude-members: BaseModel, LMBaseModel, EncoderBaseModel, BaseTokenizer, TokenAccessMixin, LossTokenAccessMixin, LogitsTokenAccessMixin, GradientTokenAccessMixin, TextAccessMixin, LossTextAccessMixin, BatchedTargetsDict, InputsManager, MessageBatchedTargetsDict, TargetsDict, TargetsDictPlus, TextInputsManager, TokenInputsManager, TokenTrigger, TokenTriggerCandidates
+   :exclude-members: BaseModel, LMBaseModel, EncoderBaseModel, BaseTokenizer, TokenAccessMixin, LossTokenAccessMixin, LogitsTokenAccessMixin, GradientTokenAccessMixin, TextAccessMixin, LossTextAccessMixin, InputsManager, TextInputManager, TokenInputManager, DefaultTokenInputManager
    :undoc-members:
    :show-inheritance:
    :imported-members:

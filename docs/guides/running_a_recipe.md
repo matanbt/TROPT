@@ -13,7 +13,7 @@ from tropt.recipe_hub import list_recipes
 print(list_recipes())   # all registered recipe keys
 ```
 
-Every recipe returns an {py:class}`~tropt.optimizer.OptimizerResult` with the optimized trigger, its loss trajectory:
+Every recipe returns an {py:class}`~tropt.optimizer.OptimizerResult` carrying the optimized trigger and its loss trajectory:
 
 ```python
 result.best_trigger_str   # the optimized trigger as a string
@@ -22,8 +22,7 @@ result.best_loss          # the best loss reached
 result.losses             # full per-step loss trajectory
 ```
 
-By convention, The recipes expects model from specific kind(s), eg OpenAI embedding model, Huggingface LM, etc. And input template that includes the input placeholder. 
-And the required objective information for the recipe (eg a target response we optimize towards). 
+By convention, each recipe expects a model of specific kind(s) (e.g. an OpenAI embedding model, a HuggingFace LM), an input template containing the trigger placeholder, and the objective information the recipe needs (e.g. a target response to optimize toward). 
 However, recipes may vary in their api by design; intended for flexibility across new applications.
 
 ----
@@ -102,14 +101,15 @@ print(result.best_trigger_str)
 
 ### Corpus Poisoning Under *Black-Box*
 
-We also supplement the Recipe Hub with methods that mix and match existing optimziers and problem domains. Such as adapting jailbreak methods to corpus poiosning.
-For black-box retrievers (e.g. OpenAI embeddings) there are no available gradients. We instead use the random-search recipe `rs_emb`, which mirrors the optimization of the originally LLM jailbreak optimizer by [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
+We also supplement the Recipe Hub with methods that mix and match existing optimizers and problem domains, such as adapting jailbreak methods to corpus poisoning.
+For black-box retrievers (e.g. OpenAI embeddings) there are no available gradients. We instead use the random-search recipe `rs_emb`, which mirrors the optimization of the original LLM-jailbreak optimizer by [Andriushchenko et al. (2024)](https://arxiv.org/abs/2404.02151) but operates on embedding similarity. The same target-vector pattern applies; just point the recipe at an OpenAI encoder:
 
 ```python
 from tropt.model.openai.encoder import EncoderOpenAIModel
 from tropt.recipe_hub import rs_emb
 
 oai_encoder = EncoderOpenAIModel(model_name="text-embedding-3-small")
+target_queries = ["Who is Harry Potter's best friend?", "What is the Hogwarts house system?"]  # the target query cluster
 target_vector = oai_encoder(target_queries).mean(dim=0, keepdim=True)  # (1, d_model)
 
 result = rs_emb(

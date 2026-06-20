@@ -1,11 +1,11 @@
+import glob
 import os
 import shutil
-import subprocess
-import sys
 import stat
+import subprocess
 import time
-import glob
 import webbrowser
+
 
 def make_writable(path):
     """Force a file/directory to be writable."""
@@ -25,7 +25,7 @@ def robust_cleanup(path):
         return True
 
     print(f"Cleaning up {path}...")
-    
+
     # 1. Force permissions first (Pre-emptive strike)
     for root, dirs, files in os.walk(path):
         for d in dirs:
@@ -41,17 +41,17 @@ def robust_cleanup(path):
             return True
         except OSError:
             time.sleep(0.5)  # Wait for Google Drive/Windows to release lock
-            
+
     print(f"  Warning: Could not fully delete {path}. Some files are locked.")
     return False
 
 def build_docs():
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    
+
     # Use a unique temp dir if the default one is locked
     # This guarantees we never crash on FileExistsError
     default_temp = os.path.join(project_root, "_temp_build_env")
-    
+
     if os.path.exists(default_temp) and not robust_cleanup(default_temp):
         print("  Default temp dir is locked. Using a new unique directory...")
         temp_root = os.path.join(project_root, f"_temp_build_env_{int(time.time())}")
@@ -60,23 +60,23 @@ def build_docs():
 
     src_original = os.path.join(project_root, "tropt")
     docs_original = os.path.join(project_root, "docs")
-    
+
     src_copy = os.path.join(temp_root, "tropt")
     docs_copy = os.path.join(temp_root, "docs")
-    
+
     final_build_dir = os.path.join(docs_original, "_build", "html")
 
     # ---------------------------------------------------------
     # 1. Copy Code & Docs
     # ---------------------------------------------------------
     print(f"Creating build environment in {temp_root}...")
-    
+
     # Exclude all version control and cache files
     ignore_patterns = shutil.ignore_patterns(
-        '.git', '.github', '.idea', '.vscode', 
+        '.git', '.github', '.idea', '.vscode',
         '__pycache__', '*.pyc', '_build', 'Thumbs.db'
     )
-    
+
     # dirs_exist_ok=True prevents crashing if the folder partially exists
     shutil.copytree(src_original, src_copy, ignore=ignore_patterns, dirs_exist_ok=True)
     shutil.copytree(docs_original, docs_copy, ignore=ignore_patterns, dirs_exist_ok=True)
@@ -145,12 +145,12 @@ def build_docs():
     # ---------------------------------------------------------
     print("Running Sphinx...")
     build_cmd = [
-        "sphinx-build", 
-        "-b", "html", 
-        docs_copy, 
+        "sphinx-build",
+        "-b", "html",
+        docs_copy,
         os.path.join(docs_copy, "_build", "html")
     ]
-    
+
     try:
         subprocess.run(build_cmd, check=True)
     except subprocess.CalledProcessError:
@@ -161,13 +161,13 @@ def build_docs():
     # 5. Copy Artifacts Back
     # ---------------------------------------------------------
     print(f"Copying build artifacts to {final_build_dir}...")
-    
+
     # Clean destination (ignore errors here to avoid crashing the whole script)
     robust_cleanup(final_build_dir)
-    
+
     try:
         shutil.copytree(
-            os.path.join(docs_copy, "_build", "html"), 
+            os.path.join(docs_copy, "_build", "html"),
             final_build_dir,
             dirs_exist_ok=True
         )
@@ -179,7 +179,7 @@ def build_docs():
     # 6. Cleanup Temp Dir
     # ---------------------------------------------------------
     robust_cleanup(temp_root)
-    
+
     # Clean up any other stale temp dirs from previous runs
     for path in glob.glob(os.path.join(project_root, "_temp_build_env_*")):
         robust_cleanup(path)
@@ -192,7 +192,7 @@ def build_docs():
         print(f"Opening docs in browser: {index_path}")
         # 'file://' prefix is required for some browsers
         webbrowser.open(f"file://{os.path.abspath(index_path)}")
-        
+
     print("Done! Docs updated successfully.")
 
 if __name__ == "__main__":

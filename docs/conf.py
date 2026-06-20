@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.abspath('..'))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'TROPT'
-copyright = '2026, Matan Ben-Tov'
+copyright = '2025-2026, Matan Ben-Tov'
 author = 'Matan Ben-Tov'
 
 from importlib.metadata import PackageNotFoundError, version as _pkg_version
@@ -87,10 +87,9 @@ html_baseurl = "https://tropt.dev/"
 html_title = "Textual Trigger Optimization Toolbox"
 
 # Pull robots.txt into the build output (extra_path copies files verbatim into
-# the html dir). The file lives at docs/_static/robots.txt; the build script
-# copies _static into the output anyway, but extra_path ensures it lands at
-# the SITE ROOT (tropt.dev/robots.txt) which is where crawlers
-# look for it — placement inside _static/ wouldn't be discoverable.
+# the html dir). The file lives at docs/robots.txt; extra_path copies it
+# verbatim so it lands at the SITE ROOT (tropt.dev/robots.txt) which is where
+# crawlers look for it — placement inside _static/ wouldn't be discoverable.
 html_extra_path = ['robots.txt']
 
 # sphinx-sitemap config — emits sitemap.xml at the docs root.

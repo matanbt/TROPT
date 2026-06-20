@@ -125,7 +125,7 @@ def my_recipe(
 
     return result.best_trigger_str
 ```
-(*Highlighted lines* below are new or changed compared to the minimal recipe.) 
+(*Highlighted lines* above are new or changed compared to the minimal recipe.) 
 
 
 Breaking down the additions:
@@ -233,7 +233,7 @@ def my_recipe(
 
     return result.best_trigger_str
 ```
-(*Highlighted lines* below are new or changed compared to the minimal recipe.) 
+(*Highlighted lines* above are new or changed compared to the minimal recipe.) 
 
 Breaking down the changes:
 
@@ -241,7 +241,7 @@ Breaking down the changes:
 Every optimizer's `optimize_trigger(templates=[...])` already accepts multiple templates, so this optimizes **one** trigger jointly against all of them -- at each step the optimizer aggregates the loss across every instruction. The result is a single *universal* suffix that is optimized across the whole instruction set (this is similar to the setup of GCG's universal triggers [Zou et al. 2023](https://arxiv.org/abs/2307.15043), packaged as {py:func}`~tropt.recipe_hub.gcg_mult__zou2023`). 
 Note `targets` must line up with `templates`: one `target_response_strs` entry per instruction.
 
-**Model loading.** First, prefer loading the target model in BF16/FP16 rather than FP32 — optimization is faster and it's rarely effect downstream perofrmance. Second, since we now use an attention-based loss ({py:class}`~tropt.loss.AttentionEnhLoss`), the model must *explicitly* compute attention matrices; we pass `use_eager_attention=True`, an argument that is forwarded to the wrapped HuggingFace model (much like other additional keyword arguments). `AttentionEnhLoss` is also incompatible with prefix caching, so we set `use_prefix_cache=False`.
+**Model loading.** First, prefer loading the target model in BF16/FP16 rather than FP32 — optimization is faster and it rarely affects downstream performance. Second, since we now use an attention-based loss ({py:class}`~tropt.loss.AttentionEnhLoss`), the model must *explicitly* compute attention matrices; we pass `use_eager_attention=True`, an argument that is forwarded to the wrapped HuggingFace model (much like other additional keyword arguments). `AttentionEnhLoss` is also incompatible with prefix caching, so we set `use_prefix_cache=False`.
 
 **Combining losses.** The new recipe *combines* the prefill CE loss with an attention-based penalty using {py:class}`~tropt.loss.CombinedLoss`, which produces a weighted sum. {py:class}`~tropt.loss.AttentionEnhLoss` averages the attention scores from the specified layers and token subsequences (see {py:class}`~tropt.common.SliceKey`).
 
@@ -249,9 +249,9 @@ Note `targets` must line up with `templates`: one `target_response_strs` entry p
 
 **Model-specific targets.** Some language models behave differently and need adjusted target strings. For example, Qwen3 (e.g. `Qwen/Qwen3-8B`) was trained to begin its response with the opening thinking token `<think>`. An appropriate target therefore must take this into account — for instance by immediately closing the thinking chain (`<think></think>Sure, here's [...]`). Not every "thinking" model emits this token by default, but it is good practice to inspect or read up on the model's behavior before defining the target.
 
-**FLOP tracking and capping.** It is also possible to track and cap the FLOPs used throughout the optimization. This recipe uses the `"manual"` FLOP counter (which estimates FLOPs from the parameter count, following [Boreiko et al. 2024](https://arxiv.org/html/2410.16222v1)); other counters can be added in the future.
+**FLOP tracking and capping.** It is also possible to track and cap the FLOPs used throughout the optimization. This recipe uses the `"manual"` FLOP counter (which estimates FLOPs from the parameter count, following [Kaplan et al. 2020](https://arxiv.org/abs/2001.08361)); other counters can be added in the future.
 
-{py:meth}`model.set_flop_counting("manual") <~tropt.model.BaseModel.set_flop_counting>` attaches FLOP accounting to the model's compute calls, with the per-step total streamed into the optimizer's tracker. `optimizer.set_budget(flop_budget, metric="total_flops")` then converts this into an early-stop budget — the optimizer halts as soon as the cumulative FLOPs (summed across the target model and any auxiliary/proxy models) reach `flop_budget`. To make sure the FLOP budget is exhausted (rather than the step count), set `num_steps` to a generous value. Other supported metrics include `"forward_calls"` and `"total_tokens"` — see {py:meth}`~tropt.optimizer.BaseOptimizer.set_budget` and {py:meth}`~tropt.model.BaseModel.get_usage_stats` for the full list.
+{py:meth}`model.set_flop_counting("manual") <~tropt.model.BaseModel.set_flop_counting>` attaches FLOP accounting to the model's compute calls, with the per-step total streamed into the optimizer's tracker. `optimizer.set_budget(flop_budget, metric="total_flops")` then converts this into an early-stop budget — the optimizer halts as soon as the cumulative FLOPs (summed across the target model and any auxiliary/proxy models) reach `flop_budget`. To make sure the FLOP budget is exhausted (rather than the step count), set `num_steps` to a generous value. The other supported metric is `"total_tokens"` — see {py:meth}`~tropt.optimizer.BaseOptimizer.set_budget` and {py:meth}`~tropt.model.BaseModel.get_usage_stats` for the full list.
 
 **Swapping the optimizer.** The optimizer can also be swapped freely. All optimizers share the same `model`, `loss`, `seed`, `tracker` arguments, while the rest are optimizer-specific. For example, {py:class}`~tropt.optimizer.PALOptimizer` accepts `proxy_model`, which can be any model that serves as a surrogate gradient-access model for the target — here for simplicity we pass the original model. Other optimizers rely on their own auxiliary models; e.g. {py:class}`~tropt.optimizer.BeamSearchOptimizer` samples the trigger from an auxiliary LM.
 

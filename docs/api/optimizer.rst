@@ -4,7 +4,7 @@ Optimizers
 .. module:: tropt.optimizer
 
 Optimizer Interface
---------------
+-------------------
 
 .. autoclass:: BaseOptimizer
    :members:
