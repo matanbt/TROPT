@@ -7,7 +7,7 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 
-# =========== Common constants and utilities for TTOP ==========
+# =========== Common constants and utilities for TROPT ==========
 # Defines a placeholder string for optimized triggers
 OPTIMIZED_TRIGGER_PLACEHOLDER: str = "{{OPTIMIZED_TRIGGER}}"
 
@@ -121,7 +121,7 @@ class Targets(pydantic.BaseModel):
     List is of length n_templates.
     - Used by: Language models for target matching. Will be tokenized
                internally to produce `target_response_toks` if not provided directly.
-    - If used with prefill-based losses, it will automatically run model computations with a the prefilled target response
+    - If used with prefill-based losses, it will automatically run model computations with the prefilled target response
     - Note: any special tokens that must precede the actual response for the
       target model are the caller's responsibility to include here. For example,
       thinking models (Qwen3, DeepSeek-R1, etc.) that were trained to begin every
@@ -313,9 +313,9 @@ class ModelInput(pydantic.BaseModel):
     input_slices: Optional[Dict[SliceKey, Optional[slice]]] = None
     """Position slices marking different regions in the input sequence.
 
-    List of length batch_size, where each element is a dictionary mapping SliceKey
-    to slice objects. Used to extract specific regions (trigger, input_before,
-    input_after, appended) from model outputs like logits or hidden states.
+    A dictionary mapping SliceKey to slice objects. Used to extract specific
+    regions (trigger, input_before, input_after, appended) from model outputs
+    like logits or hidden states.
 
     Example:
         >>> input_slices = {
@@ -428,7 +428,7 @@ class ModelOutput(pydantic.BaseModel):
 
     generated_response_logits: Optional[List[Float[Tensor, "response_len vocab_size"]] | Float[Tensor, "bsz response_len vocab_size"]] = None
     """Logits for generated tokens from language model generation.
-    Notably, this differs from `response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
+    Notably, this differs from `prefill_response_logits` which take the logits w.r.t. a prefilled (mostly target) response. In particular, this excludes any prefilled tokens.
     Response lengths may vary across samples.
     """
 

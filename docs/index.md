@@ -108,7 +108,7 @@ Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spa
 
 :::{grid-item-card} 🔁 &nbsp;Extend to any NLP model
 :class-card: tropt-feature-card
-Seamlessly port existing optimization schemes (e.g., LLM jailreabks) **to any model** (e.g., retrievers, classifiers, multimodal systems), **or to novel tasks** (e.g., new attack vectors, interpretability research).
+Seamlessly port existing optimization schemes (e.g., LLM jailbreaks) **to any model** (e.g., retrievers, classifiers, multimodal systems), **or to novel tasks** (e.g., new attack vectors, interpretability research).
 :::
 
 :::{grid-item-card} 🧩 &nbsp;Compose new recipes
@@ -118,12 +118,12 @@ Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) w
 
 :::{grid-item-card} 🔬 &nbsp;Build new optimizers & losses
 :class-card: tropt-feature-card
-Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its exetensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatcally integrate** new optimizers and losses to with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boierplate.
+Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its extensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatically integrates** new optimizers and losses with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boilerplate.
 :::
 
 :::{grid-item-card} 🛡️ &nbsp;Reliable Benchmarking
 :class-card: tropt-feature-card
-Run **head-to-head fair, reproducible comparisons** of optimizers and their enhancements on shared infrastructure and a rich bank of optimziers, losses, etc.
+Run **head-to-head fair, reproducible comparisons** of optimizers and their enhancements on shared infrastructure and a rich bank of optimizers, losses, etc.
 :::
 
 :::{grid-item-card} 🤖 &nbsp;Agent-ready
@@ -565,7 +565,7 @@ Craft a **universal** adversarial suffix that flips a **prompt-injection detecto
 </div>
 ```
 
-Repurposes **GCG** optimizer (originally for LLM jailbreak) to optimizes a single *universal* trigger, against several injection prompts at once, with the goal to fool a detector (i.e., a text classifier). Run it below — each tab strips away the abstraction the one before it kept: call a ready-made **recipe**, **compose** it from existing components, or write it **from scratch**.
+Repurposes **GCG** optimizer (originally for LLM jailbreak) to optimize a single *universal* trigger, against several injection prompts at once, with the goal to fool a detector (i.e., a text classifier). Run it below — each tab strips away the abstraction the one before it kept: call a ready-made **recipe**, **compose** it from existing components, or write it **from scratch**.
 
 ::::{tab-set}
 :class: tropt-level-tabs
@@ -904,7 +904,7 @@ TROPT is built on **four ~orthogonal components** glued together by an executabl
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg> &nbsp;Model
 :class-card: tropt-arch-card
-The target text model against which the input trigger is optimized; takes acre of the trigger combination, loss & gradient computation, and other model-specific logic.
+The target text model against which the input trigger is optimized; takes care of the trigger combination, loss & gradient computation, and other model-specific logic.
 
 :::
 
@@ -983,7 +983,7 @@ If you find TROPT useful in your research, please cite:
 @misc{tropt2026,
   title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
   year         = {2026},
-  howpublished = {\url{https://github.com/matanbt/tropt}},
+  howpublished = {\url{https://github.com/matanbt/TROPT}},
 }
 ```
 

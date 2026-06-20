@@ -2,7 +2,7 @@
 
 TROPT enables a wide range of contributions: from adding new recipes of published work (to the Recipe Hub), to adding a useful, new loss or optimizer, or additional model integrations, to resolving bugs or adding new features to the package.
 
-While the [guides](https://www.tropt.dev/guides/index.html) in our docs should be helpful in *implementing* new TROPT components (e.g., new recipe, loss, optimizer, etc.), they do not refer to the *integration* of new components within the package's code, which we also touch upon below.
+While the [guides](https://tropt.dev/guides/index.html) in our docs should be helpful in *implementing* new TROPT components (e.g., new recipe, loss, optimizer, etc.), they do not refer to the *integration* of new components within the package's code, which we also touch upon below.
 
 TROPT aims to be a growing library and a research hub. You are encouraged to contribute your own research, or implementations of existing works, under the TROPT framework. 
 
@@ -24,8 +24,8 @@ Make sure that you are developing in TROPT's common dev env and run the required
 
 **Setup.**
 ```bash
-git clone https://github.com/matanbt/tropt.git
-cd tropt
+git clone https://github.com/matanbt/TROPT.git
+cd TROPT
 uv sync --all-extras    # dev install with all optional extras
 ```
 
@@ -83,7 +83,7 @@ The following details how to integrate your custom components (e.g., loss, optim
 
 Integrating a new component/recipe into TROPT should be fairly easy. While the implementation of the component/recipe as a standalone requires following a guide (under the _Read First_ column), to add this implementation to the package you need to add it as a module to the relevant location (_Module goes in_) and register it in the `__init__.py` file. 
 
-Some additions (such as recipes) require reflecting them in the docs (i.e., updating `recipe_hub/README.md`). Some additions also have implicit / explicit repo conventions, for instance: in losses we aim for inheritance by category, and in the Recipe Hub we include a naming convention (read below).
+Some additions (such as recipes) require reflecting them in the docs (i.e., updating `tropt/recipe_hub/README.md`). Some additions also have implicit / explicit repo conventions, for instance: in losses we aim for inheritance by category, and in the Recipe Hub we include a naming convention (read below).
 
 While this should cover the general flow of component additions, it is always a best practice to follow an existing component and how it is integrated in TROPT (e.g., if you add an optimizer, you can follow `GCGOptimizer` and its integration in the repo).
 
