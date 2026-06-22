@@ -72,7 +72,7 @@ print("Lowest loss:", result.best_loss)
 ```
 
 
-### Compose Your Own Recipe 🫴
+### Compose Your Own Recipe 🪄
 
 Pick any model, loss, and optimizer and assemble them directly — this is how the _recipes_ are built underneath:
 
@@ -108,7 +108,7 @@ Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickst
 
 ## 🤖 Use TROPT with Your Coding Agent
 
-TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT. Simply point your coding agent at it.
+TROPT includes a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT.
 
 
 ## Contributing
