@@ -66,6 +66,10 @@ After implementing your addition to TROPT, and running the essential checks, ope
 1. Fork → create a topic branch off `main`, preferably with an informative name (e.g. `feature/my-loss`, `fix/gcg-retokenize`).
 2. Open a PR against `main`. The description should state *what* and *why*, link the issue, and call out any breaking changes (preferably none) or new dependencies.
 
+### Releasing (maintainers)
+
+To cut a new release to PyPI: (1) bump `version` in `pyproject.toml` (the published version is read from there), then (2) publish a new GitHub Release, entering a matching `v<version>` tag in "Choose a tag" ("Create new tag on publish"), which triggers the publish workflow.
+
 
 ---
 

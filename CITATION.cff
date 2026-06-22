@@ -16,8 +16,6 @@ authors:
 repository-code: "https://github.com/matanbt/TROPT"
 url: "https://tropt.dev"
 license: MIT
-version: 0.1.0
-# TODO: date-released (YYYY-MM-DD) once a tagged release is cut.
 keywords:
   - discrete-optimization
   - adversarial-attacks

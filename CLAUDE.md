@@ -33,6 +33,11 @@ When iterating on docs (`docs/`), use `uv run sphinx-autobuild docs docs/_build/
 
 The project uses Weights & Biases for experiment tracking. Ensure `wandb` is configured if running experiments.
 
+### Releasing (to PyPI)
+
+1. Bump `version` in `pyproject.toml` (the published version is read from there).
+2. GitHub → Releases → new release; in "Choose a tag" enter `v<version>` and pick "Create new tag on publish", then publish. This triggers `.github/workflows/publish.yml` → PyPI.
+
 ## Architecture (orientation)
 
 TROPT is built on **four orthogonal components** glued together by an executable **recipe**:
