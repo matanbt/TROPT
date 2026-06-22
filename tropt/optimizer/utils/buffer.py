@@ -34,6 +34,9 @@ class TriggerBuffer:
         Adds the trigger to the buffer if its loss is better than the worst in the buffer.
         Retains the buffer size.
         """
+        if not self.losses:
+            self.add(trigger_ids, loss)
+            return
         max_loss = self.get_highest_loss()
         if loss < max_loss:
             max_loss_idx = self.losses.index(max_loss)

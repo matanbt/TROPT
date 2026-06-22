@@ -29,9 +29,39 @@ jobs:
           pip install .[dev]
       - name: Inject future annotations for Sphinx build
         run: |
-          # Find all python files in the 'tropt' directory and prepend the future import
-          # [See issue: https://github.com/sphinx-doc/sphinx/issues/11211#issuecomment-3447848093]
-          find tropt -name "*.py" ! -name "common.py" -exec sed -i '1s/^/from __future__ import annotations\n/' {} +
+          # Insert `from __future__ import annotations` into tropt/*.py so Sphinx
+          # autodoc resolves jaxtyping/pydantic forward refs
+          # (https://github.com/sphinx-doc/sphinx/issues/11211). common.py is
+          # excluded (its pydantic models use runtime jaxtyping field types that
+          # break when stringified). Inserted AFTER any module docstring so the
+          # docstring still renders on the autodoc module pages.
+          python - <<'EOF'
+          import ast, pathlib
+          for p in pathlib.Path("tropt").rglob("*.py"):
+              if p.name == "common.py":
+                  continue
+              src = p.read_text(encoding="utf-8")
+              if "from __future__ import annotations" in src:
+                  continue
+              insert_at = 0
+              try:
+                  mod = ast.parse(src)
+                  first = mod.body[0] if mod.body else None
+                  if (isinstance(first, ast.Expr)
+                          and isinstance(getattr(first, "value", None), ast.Constant)
+                          and isinstance(first.value.value, str)):
+                      insert_at = first.end_lineno
+              except SyntaxError:
+                  insert_at = 0
+              lines = src.splitlines(keepends=True)
+              lines.insert(insert_at, "from __future__ import annotations\n")
+              p.write_text("".join(lines), encoding="utf-8")
+          EOF
+      - name: Generate compatibility matrix
+        run: |
+          # The guides toctree references guides/compatibility_matrix.md, which is
+          # gitignored (generated). Generate it into the source tree before building.
+          python -c "from docs.scripts.generate_compat_matrix import generate_markdown; from pathlib import Path; Path('docs/guides/compatibility_matrix.md').write_text(generate_markdown(), encoding='utf-8')"
       - name: Build Sphinx Docs
         run: |
           sphinx-build -b html docs docs/_build/html

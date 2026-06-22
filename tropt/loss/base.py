@@ -39,7 +39,7 @@ class BaseLoss(ABC):
     """Whether this loss requires autoregressive generation."""
 
     require_hidden_states: ClassVar[bool] = False
-    """Whether this loss requires the model to provid the forward pass's hidden states."""
+    """Whether this loss requires the model to provide the forward pass's hidden states."""
 
     require_attentions: ClassVar[bool] = False
     """Whether this loss requires the model to return attention weights."""
@@ -128,7 +128,7 @@ class CombinedLoss(BaseLoss):
 
         weights = self.weights.to(losses).unsqueeze(-1)  # shape: (n_losses, 1)
         loss = losses * weights
-        loss = loss.sum(dim=0)  # recude over n_losses
+        loss = loss.sum(dim=0)  # reduce over n_losses
 
         return loss  # shape: (bsz,)
 
@@ -148,31 +148,31 @@ class CombinedLoss(BaseLoss):
         }
 
     @property
-    def is_differentiable(self) -> bool:
+    def is_differentiable(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return all(lf.is_differentiable for lf in self.loss_funcs)
 
     @property
-    def require_gradients(self) -> bool:
+    def require_gradients(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_gradients for lf in self.loss_funcs)
 
     @property
-    def require_target_prefill(self) -> bool:
+    def require_target_prefill(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_target_prefill for lf in self.loss_funcs)
 
     @property
-    def require_generation(self) -> bool:
+    def require_generation(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_generation for lf in self.loss_funcs)
 
     @property
-    def require_hidden_states(self) -> bool:
+    def require_hidden_states(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_hidden_states for lf in self.loss_funcs)
 
     @property
-    def require_attentions(self) -> bool:
+    def require_attentions(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_attentions for lf in self.loss_funcs)
 
     @property
-    def require_first_token_logprobs(self) -> bool:
+    def require_first_token_logprobs(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_first_token_logprobs for lf in self.loss_funcs)
 
     def contains_loss_type(self, loss_type: type) -> bool:

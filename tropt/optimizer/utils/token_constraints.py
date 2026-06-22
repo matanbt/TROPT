@@ -75,7 +75,7 @@ class TokenConstraints:
                 try:
                     token_str = tokenizer.decode([i])
                 except Exception as e:
-                    logger.debug(f"While perfoming listing token-blacklist: failed to decode token {i}: {e}")
+                    logger.debug(f"While performing listing token-blacklist: failed to decode token {i}: {e}")
                     # If we can't decode the token, we can't use it, so we blacklist it
                     blacklist_ids.add(i)
                     continue
@@ -93,7 +93,7 @@ class TokenConstraints:
         blacklist_ids = [tid for tid in blacklist_ids if 0 <= tid < vocab_size]
         self._cache[cache_key] = blacklist_ids
         logger.info(
-            "Black-lising {}% of the vocabulary ({} tokens / {} vocab)".format(
+            "Black-listing {}% of the vocabulary ({} tokens / {} vocab)".format(
                 round(100 * len(blacklist_ids) / vocab_size, 2),
                 len(blacklist_ids),
                 vocab_size,

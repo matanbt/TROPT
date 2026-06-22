@@ -353,8 +353,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
     Enable to instantiate the (different) losses from:
     https://arxiv.org/abs/2506.12880, https://arxiv.org/abs/2410.09040
 
-    Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also it
-    is some slices are not supported when LM prefix caching is enabled, so it should be set to `use_prefix_cache=False` when loading the model.
+    Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also, some slices are not supported when LM prefix caching is enabled, so set `use_prefix_cache=False` when loading the model.
     """
 
     targeted_layers: slice = slice(None)
@@ -367,7 +366,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
         input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         if SliceKey.INPUT_AFTER in (self.src_slc_name, self.dst_slc_name):
-            logger.debug("Note: `INPUT_AFTER` slice is currently only correct for LMs and on suffix attacks. If the usage is different, somethings may break, or worse -- be wrong.")
+            logger.debug("Note: `INPUT_AFTER` slice is currently only correct for LMs and on suffix attacks. If the usage is different, something may break, or worse -- be wrong.")
         slc_src = input_slices.get(self.src_slc_name, slice(None))
         slc_dst = input_slices.get(self.dst_slc_name, slice(None))
 
@@ -461,9 +460,10 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
     Args:
         targeted_layers: Which layers to apply steering on (default: all layers)
         steer_away: Whether to minimize alignment instead of maximizing (default: False = steer towards)
-        slc_name: Which token positions to apply steering on (default: "last_input_token")
+        slc_name: Which token positions to apply steering on (default: "input_last_token")
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
         apply_square: Whether to square the similarity scores (default: False)
+        apply_abs: Whether to take the absolute value of the similarity scores (default: False).
     """
 
     targeted_layers: slice = slice(None)
@@ -483,7 +483,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         Compute steering loss by measuring cosine similarity between hidden states and target directions.
 
         Args:
-            output_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
+            full_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
             target_directions: Direction vectors to align with (, d_model)
             input_slices: Position slices reflecting the input tokens (dict mapping slice names to slices)
 

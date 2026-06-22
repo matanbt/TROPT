@@ -24,7 +24,7 @@ def retokenize_filtering(
         tokenizer: transformers.PreTrainedTokenizer
     ) -> Float[Tensor, "new_search_width n_optim_ids"]:
     """
-    Filters out sequeneces of token ids that change after retokenization.
+    Filters out sequences of token ids that change after retokenization.
     It is a common practice for discrete token optimizations to ensure alignment between the optimized
     token sequences and the ones that will be eventually provided to the model. It was shown
     to improve performance.
@@ -107,7 +107,7 @@ def full_messages_retokenize_filtering(
         will be an artifact of retokenization). Crucially, this restriction is much more strict
         than the one in `retokenize_filtering` (i.e. the following function also enforces the
         former condition), which only requires successful retokenization of the trigger.
-        Subsequenctly, for some tokenizers, this function may leave very few to no valid
+        Subsequently, for some tokenizers, this function may leave very few to no valid
         candidates, in which case the user should consider disabling. Notably, empirically,
         optimizations were shown to perform well with the `retokenize_filtering` alone.
 
@@ -146,7 +146,7 @@ def full_messages_retokenize_filtering(
         is_curr_trigger_valid = True
 
         for template, curr_before_ids, curr_after_ids in zip(templates, before_ids, after_ids):
-            # 1. Build the triggeted template text:
+            # 1. Build the triggered template text:
             triggered_template: str = template.replace(trigger_placeholder, cand_trigger_text)
 
             # 2.a. Build the concat of the original ids:

@@ -108,10 +108,10 @@ class PALOptimizer(BaseOptimizer):
                 )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
-        # (otherwise, if tokenizer are not shared, or we don't have access to the target model's tokenzier, we simply use text-level loss compuation)
+        # (otherwise, if tokenizers are not shared, or we don't have access to the target model's tokenizer, we simply use text-level loss computation)
         use_token_input_for_loss = (model.tokenizer == self.proxy_model.tokenizer) and isinstance(model, LossTokenAccessMixin)
 
-        if model == proxy_model:
+        if model == self.proxy_model:
             n_candidates_after_proxy_filter = None  # disable proxy filtering if proxy and target are the same
 
         # Save params

@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 class PEZOptimizer(BaseOptimizer):
     """
-    Optimizer of PEZ: optimizes contiuous trigger (AKA soft trigger),
+    Optimizer of PEZ: optimizes continuous trigger (AKA soft trigger),
     but projects it to discrete tokens every optimization step.
 
     Paper: https://arxiv.org/abs/2302.03668
@@ -99,8 +99,8 @@ class PEZOptimizer(BaseOptimizer):
             )
 
             # Compute gradient w.r.t. the projected embeddings.
-            # (this means grad are only calculates wrt actual vocab tokens, but then the grad is
-            # appplied to the continuous embeddings `trigger_embeds`)
+            # (this means grad is only computed w.r.t. actual vocab tokens, but then the grad is
+            # applied to the continuous embeddings `trigger_embeds`)
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
                 loss_func=self.loss_func,
                 candidate_trigger_embeds=projected_embeds.unsqueeze(0),  # (1, trigger_seq_len, embed_dim)

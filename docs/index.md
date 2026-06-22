@@ -103,26 +103,27 @@ and applications (red-teaming, interpretability, etc.).
 :::{grid-item-card} ⚔️ &nbsp;Red-team out of the box
 :class-card: tropt-feature-card
 Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spanning white- and black-box methods (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call, to evaluate model and defense robustness.
+
 :::
 
 :::{grid-item-card} 🔁 &nbsp;Extend to any NLP model
 :class-card: tropt-feature-card
-Swap the model or loss to port an LLM-jailbreak optimizer to **retrievers, classifiers, multimodal systems, or interpretability research** — no algorithm changes required.
+Seamlessly port existing optimization schemes (e.g., LLM jailbreaks) **to any model** (e.g., retrievers, classifiers, multimodal systems), **or to novel tasks** (e.g., new attack vectors, interpretability research).
 :::
 
 :::{grid-item-card} 🧩 &nbsp;Compose new recipes
 :class-card: tropt-feature-card
-Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to build **new, adaptive optimization schemes**.
+Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to create **adaptive and novel optimization recipes in new domains**.
 :::
 
 :::{grid-item-card} 🔬 &nbsp;Build new optimizers & losses
 :class-card: tropt-feature-card
-Add a custom loss by defining only its core logic, or an optimizer by defining only its search algorithm. **New components instantly compose** with every compatible model and recipe.
+Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its extensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatically integrates** new optimizers and losses with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boilerplate.
 :::
 
 :::{grid-item-card} 🛡️ &nbsp;Reliable Benchmarking
 :class-card: tropt-feature-card
-Run **head-to-head, fair, reproducible comparisons** of optimizers and their enhancements on shared infrastructure with standardized evaluation.
+Run **head-to-head fair, reproducible comparisons** of optimizers and their enhancements on shared infrastructure and a rich bank of optimizers, losses, etc.
 :::
 
 :::{grid-item-card} 🤖 &nbsp;Agent-ready
@@ -564,7 +565,7 @@ Craft a **universal** adversarial suffix that flips a **prompt-injection detecto
 </div>
 ```
 
-Repurposes **GCG** optimizer (originally for LLM jailbreak) to optimizes a single *universal* trigger, against several injection prompts at once, with the goal to fool a detector (i.e., a text classifier). Run it below — each tab strips away the abstraction the one before it kept: call a ready-made **recipe**, **compose** it from existing components, or write it **from scratch**.
+Repurposes **GCG** optimizer (originally for LLM jailbreak) to optimize a single *universal* trigger, against several injection prompts at once, with the goal to fool a detector (i.e., a text classifier). Run it below — each tab strips away the abstraction the one before it kept: call a ready-made **recipe**, **compose** it from existing components, or write it **from scratch**.
 
 ::::{tab-set}
 :class: tropt-level-tabs
@@ -895,7 +896,7 @@ result = optimizer.optimize_trigger(
 
 ## <svg class="tropt-h2-icon" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg> Modular by design
 
-TROPT is built on **four ~orthogonal components** glued together by an executable *recipe*. Any component is swappable with any other implementation conforming to its interface.
+TROPT is built on **four ~orthogonal components** glued together by an executable, end-to-end optimization ***recipe***. Any component is swappable with any other implementation conforming to its interface.
 
 ::::{grid} 1 2 2 4
 :gutter: 3
@@ -903,18 +904,18 @@ TROPT is built on **four ~orthogonal components** glued together by an executabl
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg> &nbsp;Model
 :class-card: tropt-arch-card
-The target text model against which the input trigger is optimized; implements the loss & gradient computation, and other model-specific logic.
+The target text model against which the input trigger is optimized; takes care of the trigger combination, loss & gradient computation, and other model-specific logic.
 
 :::
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="22 17 13.5 8.5 8.5 13.5 2 7"/><polyline points="16 17 22 17 22 11"/></svg> &nbsp;Loss
 :class-card: tropt-arch-card
-A stateless, model-agnostic objective function, for evaluating triggered inputs and their effect.
+A stateless, model-agnostic objective function, for evaluating triggered inputs and their effect on the model.
 :::
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg> &nbsp;Optimizer
 :class-card: tropt-arch-card
-A self-contained, general search algorithm for triggers.
+A self-contained, general search algorithm for triggers. Can integrate with any model and loss.
 :::
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg> &nbsp;Inputs & Targets
@@ -947,14 +948,14 @@ Input templates with trigger placeholder, and their corresponding target objecti
 :link-type: doc
 :class-card: tropt-explore-card
 
-Step-by-step walkthroughs: run a recipe, compose your own, add a loss / optimizer / model backend.
+Step-by-step walkthroughs: run an optimization recipe, compose your own, add a loss / optimizer / model backend.
 :::
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 8 6 4-6 4Z"/></svg> &nbsp;Example Notebook
 :link: https://github.com/matanbt/TROPT/blob/main/quickstart.ipynb
 :class-card: tropt-explore-card
 
-Hands-on tour from a one-call recipe to a custom loss + optimizer — across LLMs, encoders, and OpenAI black-box APIs.
+Hands-on examples from running one-call recipe to a custom loss & optimizer, demonstrated across LLMs, encoders, and black-box APIs.
 :::
 
 :::{grid-item-card} <svg class="tropt-card-icon" viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg> &nbsp;API Reference
@@ -962,7 +963,7 @@ Hands-on tour from a one-call recipe to a custom loss + optimizer — across LLM
 :link-type: doc
 :class-card: tropt-explore-card
 
-Auto-generated reference for every public module — models, losses, optimizers, trackers, recipes.
+Package reference for every public module — models, losses, optimizers, trackers, recipes.
 :::
 
 ::::
@@ -982,7 +983,7 @@ If you find TROPT useful in your research, please cite:
 @misc{tropt2026,
   title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
   year         = {2026},
-  howpublished = {\url{https://github.com/matanbt/tropt}},
+  howpublished = {\url{https://github.com/matanbt/TROPT}},
 }
 ```
 

@@ -1,8 +1,10 @@
 # Adding a New Model
 
+> This article is a Work In Progress draft.
+
 This guide walks you through wrapping a new model backend. Pick the section that matches your situation:
 
-- **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case we expect for model backend addition, and it is also the most straightfotward easiest. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
+- **[Text-access (black-box) model](#adding-a-text-access-black-box-model)** — API-only models where you can query with text and get text/embeddings back. No internal access. This is the most common case we expect for model backend addition, and it is also the most straightforward. Examples: `EncoderGeminiModel`, `LiteLLMModel`.
 - **[Token-access (grey/white-box) model](#adding-a-token-access-greywhite-box-model)** — Backends that expose embedding-level input (you can feed raw embeddings and get logits/gradients). You implement the full compute loop.
 - **[HuggingFace model](#adding-a-huggingface-model)** — Any HF-backed model. `HuggingFaceBackendModel` provides the compute loop; you fill in model-specific parts. Examples: `LMHFModel`, `EncoderHFModel`.
 
@@ -90,7 +92,7 @@ class ModelOutput:
     full_ids: ...
 ```
 
-The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `ResponseLMScoreLoss`). The {py:func}`loss resolution system <tropt.loss.resolve_and_compute_loss>` validates this at runtime and raises clear errors if a required field is missing.
+The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `GeneratedResponseBasedLoss`). The {py:func}`loss resolution system <tropt.loss.resolve_and_compute_loss>` validates this at runtime and raises clear errors if a required field is missing.
 
 ### Model compatibility
 
@@ -209,7 +211,7 @@ If your backend doesn't use a HuggingFace tokenizer, implement the `BaseTokenize
 def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) -> None:
     tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
     self._token_input_manager = DefaultTokenInputManager(
-        tok_ids=tok_ids,
+        templates_ids=tok_ids,
         tokenizer=self.tokenizer,
         targets=targets,
         optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
@@ -254,7 +256,7 @@ def compute_loss_from_tokens(
 
 The key line is `resolve_and_compute_loss(model_output, model_input, loss_func)` — this is the {py:func}`unified loss resolution <tropt.loss.resolve_and_compute_loss>` function that dispatches to the correct loss computation based on loss type. You don't implement loss logic yourself; you just provide the data via `ModelOutput` and `ModelInput`.
 
-Note that it is `compute_loss_*` duty to wrap/not wrap computations with `no_grad()`, for efficeincy. We assume that all calls to `compute_loss_*` requires not grad, as there is a dedicated method fo grad computation.
+Note that it is `compute_loss_*`'s duty to wrap (or not wrap) computations in `no_grad()`, for efficiency. We assume all calls to `compute_loss_*` require no grad, as there is a dedicated method for gradient computation.
 
 `compute_grad_from_tokens` (required by `GradientTokenAccessMixin`) has the same per-template loop structure, but returns the **gradient of the loss w.r.t. the token input** instead of the loss itself. The returned tensor has shape `(n_candidates, trigger_seq_len, vocab_size)` — one gradient value per token position per vocabulary entry, telling the optimizer which substitutions would most reduce the loss. How you compute this gradient is up to your backend.
 
@@ -267,7 +269,7 @@ FLOP counting is handled entirely inside `invoke_from_tokens` / `invoke_from_tex
 1. **Call `_update_invoke_stats`** after each raw model call inside your invoke methods, passing `n_tokens`, `n_samples`, and optionally `count_backward`.
 2. For **gradient methods**: pass `count_backward=True` to `invoke_from_tokens` so it records the backward FLOPs correctly.
 
-`set_flop_counting("manual")` will raise a `TypeError` if `_model` is not a HuggingFace `PreTrainedModel`.
+`set_flop_counting("manual")` will raise an error (AssertionError, or AttributeError if no inner HF model is exposed) if `_model` is not a HuggingFace `PreTrainedModel`.
 
 ---
 
@@ -284,8 +286,7 @@ These methods are fully implemented and call `invoke_from_tokens` internally:
 - **`compute_loss_from_tokens`** — batched forward pass over all candidate triggers with automatic OOM-safe batch size reduction.
 - **`compute_grad_from_tokens`** — gradient w.r.t. one-hot token representations. Handles both hard (discrete) and soft (probabilistic) triggers.
 - **`compute_grad_from_embeds`** — gradient w.r.t. continuous trigger embeddings (for soft optimization).
-- **`effective_embedding_matrix`** — computes the actual embedding matrix used by the model. This matters because some models (e.g., Gemma) apply scaling inside the embedding layer, so a plain `embedding_layer.weight` lookup gives incorrect embeddings.
-- **`cast_to_model_tokenizer`** — cross-tokenizer casting (used by hybrid optimizers like RASLITE+).
+- **`embedding_matrix`** — computes the actual embedding matrix used by the model. This matters because some models (e.g., Gemma) apply scaling inside the embedding layer, so a plain `embedding_layer.weight` lookup gives incorrect embeddings.
 
 All of these call **`invoke_from_tokens`** internally — the one method you must implement.
 
@@ -352,16 +353,16 @@ The `count_backward` flag is set to `True` by gradient methods (`compute_grad_fr
 def set_inputs_from_tokens(self, templates: List[str], targets: Targets = None) -> None:
     tok_ids = self.tokenizer(templates, add_special_tokens=True)["input_ids"]
     self._token_input_manager = HuggingFaceTokenInputManager(
-        tok_ids=tok_ids,
+        templates_ids=tok_ids,
+        device=self._model.device,
         model=self._model,
         tokenizer=self.tokenizer,
         embed_func=self._embedding_layer,
-        optimized_trigger_placeholder=OPTIMIZED_TRIGGER_PLACEHOLDER,
         targets=targets,
     )
 ```
 
-LM models typically apply the chat template and tokenize target responses before building the manager — see {py:meth}`~tropt.model.LMHFModel.set_inputs_from_tokens` for the full pattern. You may also subclass `HuggingFaceTokenInputManager` if your model has special target handling — see {py:class}`~tropt.model.LMHFTokenInputManager` (which auto-appends target response embeddings for prefill-based losses) and `EncoderHFTokenInputManager` (in `tropt.model.huggingface.encoder`).
+LM models typically apply the chat template and tokenize target responses before building the manager — see {py:meth}`~tropt.model.LMHFModel.set_inputs_from_tokens` for the full pattern. You may also subclass `HuggingFaceTokenInputManager` if your model has special target handling — see {py:class}`~tropt.model.LMHFTokenInputManager` (which auto-appends target response embeddings for prefill-based losses); encoder models reuse `HuggingFaceTokenInputManager` directly (see `EncoderHFModel.set_inputs_from_tokens`).
 
 **4. Inference method** — The public method called by `__call__`. This is a **separate code path** from `invoke_from_tokens` — it handles plain-text evaluation, not optimization. See {py:meth}`~tropt.model.LMHFModel.invoke_from_texts` or {py:meth}`~tropt.model.EncoderHFModel.invoke_from_texts` for full examples.
 
@@ -372,18 +373,19 @@ from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, ModelInput, ModelOutput,
 from tropt.loss.base import BaseLoss
 from tropt.model import (
     LMBaseModel,
+    GradientEmbedAccessMixin,
     GradientTokenAccessMixin,
     LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
 )
 from tropt.model.huggingface.base import HuggingFaceTokenInputManager, HuggingFaceBackendModel
-from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 
 class MyHFLMModel(
-    LMBaseModel,
+    # HF backend first so its `device`/`dtype` win MRO over `BaseModel`'s defaults:
     HuggingFaceBackendModel,
+    LMBaseModel,
     # token-level access:
     LossTokenAccessMixin,
     GradientTokenAccessMixin,
@@ -419,4 +421,5 @@ class MyHFLMModel(
 ```
 
 You do **not** need to implement `compute_loss_from_tokens`, `compute_grad_from_tokens`, or `compute_grad_from_embeds` — those come from `HuggingFaceBackendModel`.
+
 

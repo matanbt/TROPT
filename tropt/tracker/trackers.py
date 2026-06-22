@@ -35,7 +35,9 @@ class JSONTracker(BaseTracker):
     ):
         super().__init__(experiment_name, experiment_config)
         self.log_file_path = log_file_path.format(experiment_name=experiment_name)
-        os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
+        log_dir = os.path.dirname(self.log_file_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         self._log_data: dict = {}
 
     def _init(self, config: Optional[dict] = None):
@@ -259,7 +261,7 @@ class LiveLossPlotTracker(BaseTracker):
     ):
         super().__init__(experiment_name)
         self.focus_on_metrics = focus_on_metrics
-        self._plotlosses: Optional["livelossplot.PlotLosses"] = None
+        self._plotlosses = None  # of type `livelossplot.PlotLosses`
 
     def _init(self, config: Optional[dict] = None):
         import livelossplot

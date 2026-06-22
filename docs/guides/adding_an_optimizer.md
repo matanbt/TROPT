@@ -4,8 +4,7 @@ Going one level of abstraction down from picking an existing optimizer off the s
 
 A TROPT optimizer is the search algorithm at the heart of the recipe: given a model, a loss, text templates (with a `{{OPTIMIZED_TRIGGER}}` placeholder), and an initial trigger, it repeatedly evaluates and updates the trigger to minimize the loss, returning an {py:class}`~tropt.optimizer.OptimizerResult`.
 
-**Design in a nutshell.** Optimizers are deliberately **self-contained**: each one lives in a single file, owns its full search algorithm, and shares no logic with its siblings — a *Repeat Yourself* philosophy (inspired by [HuggingFace's `transformers` single-file modeling philosophy](https://huggingface.co/blog/transformers-design-philosophy)) that trades a few duplicated lines for readability, hackability, and easy head-to-head comparison. To keep them focused on the algorithm, TROPT pushes everything model-specific and infrastructural — input/template management, batching, tokenization, loss computation, gradient computation — into the model component, exposed via a small set of `compute_*_from_*` methods. Your optimizer just calls them.
-
+**Design in a nutshell.** Optimizers in TROPT are treated as the mere, full search algorithm. They are deliberately **self-contained**: each one lives in a single file, owns its full search algorithm, and shares no logic with its siblings — a *Repeat Yourself* philosophy (inspired by [HuggingFace's `transformers` single-file modeling philosophy](https://huggingface.co/blog/transformers-design-philosophy)) that trades a few duplicated lines for readability, hackability, and easy head-to-head comparison. They are also deliberately **general-purpose**: agnostic to both the model backend (which deals with input/template management, batching, tokenization, loss computation, gradient computation) and the task domain (jailbreaking, retrieval poisoning, prompt recovery, …). 
 
 This guide effectively explains how every optimizer in {py:mod}`tropt.optimizer` is implemented; browsing the existing optimizers there can provide helpful concrete examples.
 
@@ -153,7 +152,7 @@ class MyOptimizer(BaseOptimizer):
         self.model.set_inputs_from_tokens(templates, targets)
 
         # cache the set of allowed token IDs (special/non-ASCII blocked by default)
-        allowed_ids = self.token_constraints.allowed_token_ids(self.model.tokenizer)
+        allowed_ids = self.token_constraints.get_whitelist_ids(self.model.tokenizer, self.model.vocab_size, self.model.device, return_tensor=True)
 
         trigger_ids = torch.tensor(
             self.model.tokenizer.encode(initial_trigger, add_special_tokens=False),
@@ -241,7 +240,7 @@ class MyOptimizer(BaseOptimizer):
         for _ in self.track_steps(range(self.num_steps)):
             # 1. Gradient w.r.t. every (position, token) substitution.
             grad = self.model.compute_grad_from_tokens(
-                trigger_ids=trigger_ids.unsqueeze(0),
+                candidate_trigger_ids=trigger_ids.unsqueeze(0),
                 loss_func=self.loss_func,
             )  # (1, trigger_seq_len, vocab_size)
 
@@ -288,7 +287,7 @@ class MyOptimizer(BaseOptimizer):
 
             # text-level evaluation
             losses = self.model.compute_loss_from_texts(
-                trigger_strs=candidate_strs, loss_func=self.loss_func,
+                candidate_trigger_strs=candidate_strs, loss_func=self.loss_func,
             )  # (n_candidates,)
 
             # ... pick best, update, log
@@ -309,6 +308,8 @@ Same overall flow, swapped at the access boundary:
 
 **Splitting a long `optimize_trigger`.** If the method grows past a screenful, delegate logical chunks to private methods (`self._propose_candidates(...)`, `self._update_best(...)`). Don't over-do it though — the top-level `optimize_trigger` should still read as the *algorithm*, not as glue.
 
+**Keep optimizers domain-general.** An optimizer is a *search algorithm over triggers* — it should assume nothing about the task it serves (jailbreaking, retrieval poisoning, classifier evasion, prompt recovery, …), just as it assumes nothing about the model backend. Don't fold domain- or recipe-specific behavior into it. The canonical example: a jailbreak optimizer that *also* penalizes refusal keywords in the model's output is smuggling the **objective** into the **search** — that penalty is part of what you optimize *toward*, so it belongs in the **loss** (its own loss, or a `CombinedLoss` term — see [Adding a Loss](adding_a_loss.md)), while the wiring that selects it belongs in the **recipe** (see [Composing a Recipe](adding_a_recipe.md)). Kept this way, the same optimizer drops unchanged into a jailbreak recipe, a corpus-poisoning recipe, or an interpretability probe. Litmus test: if a knob only makes sense for one task, it belongs a level up.
+
 **Keep optimizers self-contained.** Resist the urge to share helpers across optimizers. The repo deliberately factored everything that's *not* optimizer-specific into the model and utility layers; what remains *is* the algorithm, and three similar lines in two files beats a fragile shared abstraction. See `DESIGN.md` at the repo root (Component 3: Optimizers) for the full rationale.
 
 
@@ -319,10 +320,10 @@ An optimizer's `model_requirements` is a tuple of these mixins; the model must i
 | Mixin | What it provides on the model | Typical use |
 |---|---|---|
 | {py:class}`~tropt.model.LossTokenAccessMixin` | `compute_loss_from_tokens(candidate_trigger_ids, loss_func)` | Zeroth-order: evaluate batches of candidate triggers |
-| {py:class}`~tropt.model.GradientTokenAccessMixin` | `compute_grad_from_tokens(trigger_ids, loss_func)` | First-order: gradient w.r.t. trigger tokens (HotFlip / GCG family) |
-| {py:class}`~tropt.model.LogitsTokenAccessMixin` | `compute_logits_from_tokens(trigger_ids)` | Direct access to raw logits |
-| {py:class}`~tropt.model.GradientEmbedAccessMixin` | `compute_grad_from_embeds(embeds, loss_func)` | Continuous relaxation methods (GBDA, PEZ) |
-| {py:class}`~tropt.model.LossTextAccessMixin` | `compute_loss_from_texts(trigger_strs, loss_func)` | Black-box: API-only models (LiteLLM, OpenAI, …) |
+| {py:class}`~tropt.model.GradientTokenAccessMixin` | `compute_grad_from_tokens(loss_func, candidate_trigger_ids)` | First-order: gradient w.r.t. trigger tokens (HotFlip / GCG family) |
+| {py:class}`~tropt.model.LogitsTokenAccessMixin` | `compute_logits_from_tokens(candidate_trigger_ids)` | Direct access to raw logits |
+| {py:class}`~tropt.model.GradientEmbedAccessMixin` | `compute_grad_from_embeds(loss_func, candidate_trigger_embeds)` | Continuous relaxation methods (GBDA, PEZ) |
+| {py:class}`~tropt.model.LossTextAccessMixin` | `compute_loss_from_texts(candidate_trigger_strs, loss_func)` | Black-box: API-only models (LiteLLM, OpenAI, …) |
 
 `BaseOptimizer.__init__` validates `model_requirements` against the passed model and raises immediately if any mixin is missing. **Do not bypass this check** — it's what guarantees the optimizer only calls methods the model actually supports.
 

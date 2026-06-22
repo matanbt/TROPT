@@ -29,7 +29,7 @@ def gcg_mult__zou2023(
     Args:
         model_name (str): The name of the HuggingFace model to attack.
         instructions (List[str]): The instruction prompts with a placeholder for the trigger.
-        target_output (List[str]): The target outputs that the adversarial trigger aims to induce.
+        target_outputs (List[str]): The target outputs that the adversarial trigger aims to induce.
         model_obj: Pre-loaded LMHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
     """

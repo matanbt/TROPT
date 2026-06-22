@@ -35,7 +35,9 @@ logger = logging.getLogger(__name__)
 
 class GASLITEPlusOptimizer(BaseOptimizer):
     """
-    Implements the GASLITE optimization algorithm (Algorithm 1) from the paper:
+    Extends the GASLITE optimization algorithm with a trigger buffer, bulk flips, n_flip scheduling, and early stopping.
+
+    Paper:
     "GASLITEing the Retrieval: Exploring Vulnerabilities in Dense Embedding-based Search"
     (https://arxiv.org/abs/2412.20953)
 
@@ -70,7 +72,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         **kwargs
     ):
         """
-        Initializes the GASLITE Optimizer.
+        Initializes the GASLITE+ Optimizer.
 
         Args:
             model (HuggingFaceModel): The model to be attacked.
@@ -108,10 +110,9 @@ class GASLITEPlusOptimizer(BaseOptimizer):
             It is based on the GASLITE algorithm proposed in the paper, and extends it with
             multiple enhancements.
         - ACG: https://www.haizelabs.com/blog/making-a-sota-adversarial-attack-on-llms-38x-faster
-            GASLITEPlus implements (i) multiple trigger random intiizliation, (ii) trigger buffer,
+            GASLITEPlus implements (i) multiple trigger random initialization, (ii) trigger buffer,
             and (iii) flipping bulk of positions at once, (iv) early stopping. Thus, it effectively
-            includes most of the enhancements described Haize's ACG.
-        - QCG? PAL? RAL?
+            includes most of the enhancements described in Haize's ACG.
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
@@ -219,7 +220,7 @@ class GASLITEPlusOptimizer(BaseOptimizer):
         trigger_str = tokenizer.decode_trigger(buffer.get_best_trigger())
         self.log(loss=buffer.get_lowest_loss(), trigger_str=trigger_str)
 
-        for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE..."):
+        for step in self.track_steps(range(self.num_steps), desc="Optimizing with GASLITE+..."):
             n_flip = self.n_flip_scheduler.get_n_flip(step)
 
 

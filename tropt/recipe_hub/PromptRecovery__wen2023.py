@@ -79,7 +79,7 @@ def get_image_embedding_for_clip_model(
     # Clean up: we only needed the vision encoder
     del clip_model, processor
 
-    return image_emb.pooler_output
+    return image_emb
 
 
 def prompt_recovery__wen2023(
@@ -401,7 +401,7 @@ def recover_prompt_end_to_end(
 ) -> PromptRecoveryQuadruple:
     """Generate an image from `prompt`, recover the prompt from the image, regenerate.
 
-    Defaults mirror the exp3-promrec reproduction of Williams et al. 2024:
+    Defaults mirror the exp3-promrec reproduction of Williams et al. 2025:
     SD-2.1 + OpenCLIP H/14 (laion2B), random 20-token init. The recipe owns
     optimizer hyperparameters; callers pick `optimizer_type` ∈ {"gcg", "mac", "pez", "adv_decoding"}.
     """

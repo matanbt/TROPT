@@ -73,7 +73,7 @@ def resolve_and_compute_loss(
 
     Examples:
         >>> from tropt.common import MessageTargets
-        >>> # Encoder model with SimilarityLoss(output_embeddings, target_embeddings)
+        >>> # Encoder model with SimilarityLoss(output_embeddings, target_vectors)
         >>> output = ModelOutput(output_embeddings=torch.randn(4, 768))
         >>> input_data = ModelInput(message_targets=MessageTargets(target_vectors=target_vecs))
         >>> loss = resolve_and_compute_loss(output, input_data, SimilarityLoss())
@@ -81,7 +81,6 @@ def resolve_and_compute_loss(
         >>> # Language model with PrefillCELoss(prefill_response_logits, message_targets)
         >>> output = ModelOutput(prefill_response_logits=torch.randn(2, 50, 32000))
         >>> input_data = ModelInput(
-        ...     input_slices=[{SliceKey.APPENDED: slice(40, 50)}] * 2,
         ...     message_targets=MessageTargets(target_response_toks=target_ids)
         ... )
         >>> loss = resolve_and_compute_loss(output, input_data, PrefillCELoss())

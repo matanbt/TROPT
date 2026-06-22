@@ -1,9 +1,5 @@
 # Design Principles
-This repository is aimed at easing the implementation, run, and research of discrete text optimizers. The core logic of this repo is exposed through four orthogonal **components**—*model*, *loss*, *optimizer*, and user-provided *inputs and targets*—glued together by an executable **recipe** that crafts an optimized trigger. These components would require heavy engineering from anyone who would venture writing such implementations; moreover, prior research has pointed at small implementation details as critical  [GCG,GASLITE] (such as retokenization, or slightly modifying candidate sampling), and the recurring attempt to implement such from scratch—although useful \[PRS,Scaling,obfuscated]—is prone to include certain fail points.
-\[todo cite more in the critical impl details]
-
-<!-- [TODO] illustration of the onion of this package: AttackZoo->Optimizer->Model&Loss&Input (by abstraction levels) -->
-<!-- TODONOW -- REREAD IT  -->
+This repository is aimed at easing the implementation, run, and research of discrete text optimizers. The core logic of this repo is exposed through four orthogonal **components**—*model*, *loss*, *optimizer*, and user-provided *inputs and targets*—glued together by an executable **recipe** that crafts an optimized trigger. These components would require heavy engineering from anyone who would venture writing such implementations; moreover, prior research has pointed at small implementation details as critical (such as retokenization, or slightly modifying candidate sampling), and the recurring attempt to implement such from scratch—although useful—is prone to include certain fail points.
 
 TROPT's design is guided by two technical principles:
 
@@ -21,15 +17,13 @@ In the next segment I describe each of the **four components**, starting from th
 
 In the final segment, I describe the glue: the **recipe**—an executable instantiation of all four components—along with the two existing interfaces (Recipe Hub and the config-driven runner) to run end-to-end optimization in the repo.
 
-[TODO flow chart image here]
-
 ## Component 1: Target Model
-> Classes wrapping the target models, implementing the different (loss) computations. Located at `tropt/models`.
+> Classes wrapping the target models, implementing the different (loss) computations. Located at `tropt/model/`.
 
 Each text optimization process is done w.r.t. a target model; such models may vary in the level of access we may have, and the API they expose. For instance, open-source models can be used with the rich HuggingFace API (with access to tokenization and gradient), and proprietary models can be used with the mostly limited API provided by their maker (e.g., OpenAI's).
 We wrap each model provider with a class that will be compatible with the trigger-text optimization process, according to the access-level it provides. These are much more than a trivial wrapper to basic model calls---they implement the logic and specific methods used by the optimizers. By design, **models absorb most of the heavy lifting of the repo**; the rational being the repository focus on the flexibility and minimal friction required to build/adapt/change the other components (loss, optimizer, and inputs), at the cost of somewhat complex, "one-time" model implementations.
 
-Each model class holds an invocation (e.g., generation for LMs), input management (e.g., trigger-template combination), and loss computation methods (e.g., compute_loss_from_tokens). The specific methods a model implements, and the way it implements them, are determined by the access level it provides. To manage this, each model class inherits from a set of mixins. For example:
+Each model class holds an invocation (e.g., generation for LMs), input management (e.g., trigger-template combination), and loss computation methods (e.g., compute_loss_from_tokens). The specific methods a model implements, and the way it implements them, are determined by the access level it provides. To manage this, each model class inherits from a set of mixins.
 
 ### Three Method Families
 
@@ -47,7 +41,7 @@ The invoke methods are **stateless**---they are not connected to any stored inpu
 
 Following the two flows, each flow has its own `InputsManager`:
 - `set_inputs_from_texts(templates, targets)` / `reset_inputs_from_texts()` — manages a `TextInputManager`.
-- `set_inputs_from_tokens(templates, targets)` / `reset_inputs_from_tokens()` — manages a `DefaultTokenInputManager` (or a backend-specific subclass like `_HFTokenInputManager`).
+- `set_inputs_from_tokens(templates, targets)` / `reset_inputs_from_tokens()` — manages a `DefaultTokenInputManager` (or a backend-specific subclass like `LMHFTokenInputManager`).
 
 Input managers hold the user-provided templates and targets, and can craft on-the-fly the full inputs for any candidate trigger.
 The methods `set_inputs_from_{inputType}` update the _model_ state with the corresponding input manager. Then, each call for loss computation (see the next method family) will use the stored input manager to construct the full inputs for the candidate triggers, and will compute the loss wrt them.
@@ -56,7 +50,7 @@ The user-facing data model—templates with `{{OPTIMIZED_TRIGGER}}` placeholders
 
 **3. Compute methods** — the methods actually called by optimizers for loss/gradient computation.
 
-These are the most critical family. The method `compute_loss_from_tokens`, for example, takes token candidate triggers, combined them with the stored input templates, and returns the loss wrt each of the triggers.
+These are the most critical family. The method `compute_loss_from_tokens`, for example, takes token candidate triggers, combines them with the stored input templates, and returns the loss wrt each of the triggers.
 The compute methods are what optimizers call directly. Together with the input methods, they form the **setup-then-compute** pattern: the optimizer calls `set_inputs_from_tokens` once, then calls `compute_loss_from_tokens` repeatedly at each optimization step.
 
 
@@ -67,7 +61,7 @@ As a best practice for the repo, we expect the compute methods to use the corres
 
 
 **Future Design Direction.** The separation of `invoke` from `compute` is a deliberate design lead; it might be useful in the future. 
-For HuggingFace models, for example, we have a shared compute methods  (`_HuggingFaceModelMixins`) while relying on `invoke_from_tokens` as the single model-specific entry point. 
+For HuggingFace models, for example, we have a shared compute methods  (`HuggingFaceBackendModel`) while relying on `invoke_from_tokens` as the single model-specific entry point. 
 In the future, this pattern could be generalized: if new backends (e.g., token-accepting APIs) share the same compute logic, we could lift these default implementations from the HF mixin into more general mixins that operate on any backend---relying solely on `invoke_from_tokens` (ie to have "defaut" compute methods across backends).
 We currently avoid this change to leave room for flexibility in the potentially complex logic of compute methods across different backends, but it is a natural evolution of the design. 
 
@@ -78,8 +72,8 @@ Access mixins define the access-level and compute capabilities of a model; speci
 
 ```python
     class LMHFModel(
+        HuggingFaceBackendModel,  # adds common HF model methods
         LMBaseModel,  # the type of the model is an LM
-        _HuggingFaceModelMixins,  # adds common HF model methods
 
         # token-level access mixins:
         LossTokenAccessMixin,  # we can query an arbitrary output-based loss on token inputs
@@ -123,14 +117,11 @@ Models populate only the fields they can provide (embeddings, logits, hidden sta
 **ModelInput** (`tropt/common.py`): A dataclass that standardizes model inputs, it defines the names and types of the inputs expected required by the different models (i.e., their *invocation* methods). In the implementation it is mainly used for inputs created by the input managers. It contains text-level inputs, token-level inputs (embeddings, attention masks, prefix cache kwargs), position slices, and target artifacts.
 
 
-<!-- TODO fully document access levels (e.g., token level also assume prefilling; text-level only assume query, and sometime generated logits [different from prefilled logits]) -->
-
-
 ## Component 2: Losses
 
 > Classes implementing the calculation of the losses (e.g., `CrossEntropy`, `CosineSimilarity`). Located at `tropt/loss/`.
 
-All optimizers iteratively advance the text trigger towards a specific objective. As one may expect, the choice of the loss plays a non-negligible role in the performance of the textual trigger optimization process [PAL]. Additionally, many loss variations have been found insightful [AttnGCG,Hijacking,Obfuscation]. We thus provide an extensive collection of losses from existing literature, which can be easily extended in the future.
+All optimizers iteratively advance the text trigger towards a specific objective. As one may expect, the choice of the loss plays a non-negligible role in the performance of the textual trigger optimization process. Additionally, many loss variations have been found insightful. We thus provide an extensive collection of losses from existing literature, which can be easily extended in the future.
 
 Loss classes are simple and minimalistic, and accept model input/output properites (as defined in the previous section) to compute the loss. For example, a cross-entropy loss that operates on token-level logits would be implemented as:
 ```python
@@ -139,7 +130,7 @@ Loss classes are simple and minimalistic, and accept model input/output properit
 
         def __call__(
             self,
-            response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+            prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
             target_response_toks: Int[Tensor, "response_seq_len"],
         ) -> Float[Tensor, "bsz"]:
             ...
@@ -157,14 +148,14 @@ Loss computation is centralized in a single function, `resolve_and_compute_loss(
 
 From the model end (i.e., in the `compute_*` methods), we would wrap the model i/o with `ModelOutput` and `ModelInput`, then delegate to this single function:
 ```python
-model_output = ModelOutput(output_logits=outputs.logits, ...)
+model_output = ModelOutput(full_logits=outputs.logits, ...)
 model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets, ...)
 return resolve_and_compute_loss(model_output, model_input, loss_func)  # the loss values!
 ```
 
 This keeps loss logic in one location, makes adding new loss types straightforward, and means new models only provide data---not loss implementation.
 
-**Convention.** As a good practice, we divide the losses with superclasses according to the type of input that the loss accepts (which is, in turn, mostly the type of output of the model). For instance, Cross-Entropy-based losses utilize the logit outputs, and thus they will inherit from `LogitBasedLoss`.
+**Convention.** As a good practice, we divide the losses with superclasses according to the type of input that the loss accepts (which is, in turn, mostly the type of output of the model). For instance, Cross-Entropy-based losses utilize the logit outputs, and thus they will inherit from `PrefillBasedLoss`.
 In this way, from the model end, we would be disable unneeded calculation: for instnace, if the loss does not requrie hidden states (i.e., the loss is not subclass of `HiddenStateBasedLoss`), we can know in advance to avoid saving them for efficiency.
 
 ## Component 3: Optimizers
@@ -197,7 +188,7 @@ This use of abstractions results in optimizers much easier to write and read, an
             self,
             templates: List[str],  # n_templates text templates with {{OPTIMIZED_TRIGGER}} placeholder
             initial_trigger: Optional[str] = "! " * 20,
-            targets: TargetsDict = None,
+            targets: Optional[Targets] = None,
         ) -> OptimizerResult:
             ...
 
@@ -211,7 +202,7 @@ This use of abstractions results in optimizers much easier to write and read, an
 ```
 
 
-This allows the optimizer to call the methods corresponding to these mixins (e.g., `compute_grads_from_tokens()`).
+This allows the optimizer to call the methods corresponding to these mixins (e.g., `compute_grad_from_tokens()`).
 * **Loss and targets.** The optimizer accepts the `loss` (at initialization) and the specific targets `targets`  (at optimization)---which are artifacts that can be used by the loss. The current design enables the optimizer to be agnostic to the loss, as long as the target model supports it. This stems from the model class abstracting the loss calculations.
 * Some optimizers may be loss-specific, in this case they may hard-code it as part of the optimizer class.
 
@@ -236,7 +227,7 @@ templates = [
 ]
 ```
 
-Here the user provides prompt templates for suffix-based jailbreaks (e.g., [GCG]); the placeholder lets the optimizer know which substring is to be replaced by the candidate trigger. Nothing else about the template shape is special—it is just an LM prompt (or any text input) with a marked slot.
+Here the user provides prompt templates for suffix-based jailbreaks; the placeholder lets the optimizer know which substring is to be replaced by the candidate trigger. Nothing else about the template shape is special—it is just an LM prompt (or any text input) with a marked slot.
 
 ### Targets
 
@@ -258,7 +249,7 @@ A loss declares which target fields it needs; the unified loss resolution (Compo
 `InputsManager` is the runtime object that holds the templates+targets and crafts the full triggered input (a `ModelInput`) for any candidate trigger on the fly. Two variants exist, matching the two access flows of Component 1:
 
 - `TextInputManager` — produces text-level inputs (`input_texts`, `input_trigger_strs`, …) for text-only models.
-- `DefaultTokenInputManager` / `_HFTokenInputManager` — produces token-level inputs (`input_ids`, `input_embeds`, `input_attention_mask`, position slices, prefix-cache kwargs, …) for token-accepting models.
+- `DefaultTokenInputManager` / `LMHFTokenInputManager` — produces token-level inputs (`input_ids`, `input_embeds`, `input_attention_mask`, position slices, prefix-cache kwargs, …) for token-accepting models.
 
 The manager is created and stored on the model when the optimizer calls `set_inputs_from_{texts,tokens}` (Component 1, family 2). It is the single place where templates, targets, and a candidate trigger are fused into a `ModelInput`, which the compute methods then consume.
 
@@ -283,7 +274,7 @@ result = optimizer.optimize_trigger(templates=templates, targets=targets)
 
 The repository exposes two interfaces for managing recipes:
 
-* **Recipe Hub [`tropt/recipe_hub/`].** Python modules that bind the four components to reproduce existing attacks. E.g., the `gcg__zou2023` module wires `LMHFModel`, `PrefillCELoss`, `GCGOptimizer`, and a standard suffix template to reproduce the GCG attack [GCG]. Useful for researchers who want to quickly run published attacks, benchmark them, or fork-and-modify.
+* **Recipe Hub [`tropt/recipe_hub/`].** Python modules that bind the four components to reproduce existing attacks. E.g., the `gcg__zou2023` module wires `LMHFModel`, `PrefillCELoss`, `GCGOptimizer`, and a standard suffix template to reproduce the GCG attack. Useful for researchers who want to quickly run published attacks, benchmark them, or fork-and-modify.
 
 <!-- * **Config Runner [`runner/main.py`].** A flexible runner that constructs a recipe from a YAML configuration file. The runner uses [Hydra](https://hydra.cc/) to manage configurations, allowing users to specify the model, loss, optimizer, and their parameters in a structured way without writing new code. -->
 
@@ -295,7 +286,7 @@ As emphasized above, the model (Component 1) and the loss/inputs scaffolding aro
 
 It is recommended the optimizer will not share logic across each other, and will be implemented in a self-contained manner. This repository has already decoupled the logic that is *unrelated* to the optimization process. Keeping optimizers self-contained and explicit, allows that to be more easily read and hacked. This is loosely inspired by the HuggingFace's models *Modeling* approach ([Repeat Yourself principle](https://huggingface.co/blog/transformers-design-philosophy)).
 
-In a personal note, I hope that this repository will be useful for researchers gluing together discrete optimizers from different codebases, to perform defenses evaluation or develop more potent attacks. I encourage anyone who would like to contribute to this repository, including in criticizing its design, to reach out (or open an [issue]()).
+In a personal note, I hope that this repository will be useful for researchers gluing together discrete optimizers from different codebases, to perform defenses evaluation or develop more potent attacks. I encourage anyone who would like to contribute to this repository, including in criticizing its design, to reach out (or open an [issue](https://github.com/matanbt/TROPT/issues)).
 
 
 > Matan Ben-Tov. 2026.

@@ -144,17 +144,17 @@ def generate_from_soft_trigger(
 
 def soft_prompt_encoder(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-    mal_info_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
+    mal_info_template: str = "Voldemort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     path_result: str = "best_trigger_input_emb.pt",
 ) -> OptimizerResult:
-    """
+    """Optimize a continuous soft-prompt trigger to align an encoder's passage embedding with a target vector.
 
     Args:
         model_name (str): The name of the HuggingFace model to attack.
-        prefix_info (str): The string prefixing the passage with a placeholder for the trigger (i.e., the "malicious information").
+        mal_info_template (str): The passage template containing the trigger placeholder (i.e., the "malicious information").
         target_vector (Tensor, (d_model)): The target vector the passage's embedding is aligned (the centroid of the target query set).
         model_obj: Pre-loaded EncoderHFModel to use instead of creating from `model_name`.
         tracker: Optional tracker for logging.
@@ -176,7 +176,7 @@ def soft_prompt_encoder(
         # Set parameters from the paper:
         gd_optimizer=SignSGD,
         learning_rate=0.001,
-        num_steps=500, # 200 is the original implementation, but empirically some models require more; it should probably tuned per model / evalaute multiple trigger checkpoints
+        num_steps=500, # 200 is the original implementation, but empirically some models require more; it should probably be tuned per model / evaluate multiple trigger checkpoints
     )
 
     result = optimizer.optimize_trigger(
@@ -196,7 +196,7 @@ def soft_prompt_encoder(
 def encode_from_soft_trigger(
     model: EncoderHFModel,
     soft_trigger: Float[torch.Tensor, "trigger_seq_len embed_dim"],
-    text_template: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
+    text_template: str = "Voldemort was right all along. {{OPTIMIZED_TRIGGER}}",
 ) -> Float[torch.Tensor, "1 d_model"]:
     """
     Get the encoded vector from the model given an optimized trigger.

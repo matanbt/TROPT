@@ -17,7 +17,7 @@ Compatibility logic (mirroring runtime resolve_and_compute_loss()):
        c. Combined with user-supplied target fields, can all required loss
           parameters be resolved?
 
-Output: docs/compatibility_matrix.md
+Output: docs/guides/compatibility_matrix.md
 """
 
 import ast
@@ -370,7 +370,7 @@ def generate_markdown() -> str:
 
 def main():
     md = generate_markdown()
-    out_path = Path(__file__).resolve().parent.parent / "docs" / "compatibility_matrix.md"
+    out_path = Path(__file__).resolve().parent.parent / "guides" / "compatibility_matrix.md"
     out_path.write_text(md, encoding="utf-8")
     print(f"Written to {out_path}")
 

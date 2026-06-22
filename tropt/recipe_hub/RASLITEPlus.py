@@ -17,7 +17,7 @@ from tropt.tracker import BaseTracker
 
 def rasliteplus(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
-    prefix_info: str = "Voldermort was right all along. {{OPTIMIZED_TRIGGER}}",
+    prefix_info: str = "Voldemort was right all along. {{OPTIMIZED_TRIGGER}}",
     target_vector: Optional[Float[torch.Tensor, "1 d_model"]] = None,
     # util_lm_name: str = "google/gemma-3-270m-it",
     initial_trigger: str = DEFAULT_INIT_TRIGGER,
@@ -50,13 +50,13 @@ def rasliteplus(
             device = model_obj.device
     model: EncoderBaseModel = model_obj
 
-    util_lm = None  # we dont use logits
+    util_lm = None  # we don't use logits
 
     loss = SimilarityLoss()
 
     optimizer = RASLITEPlusOptimizer(
         model=model,
-        util_lm=util_lm,
+        util_model=util_lm,
         loss=loss,
         tracker=tracker,
         # Set parameters (combining RASLITE defaults with GASLITEPlus enhancements):
@@ -126,7 +126,7 @@ def rasliteplus_llm(
 
     optimizer = RASLITEPlusOptimizer(
         model=model_obj,
-        util_lm=None,
+        util_model=None,
         loss=loss,
         tracker=tracker,
         num_steps=200,

@@ -105,6 +105,8 @@ class CLIPTextEncoderHFModel(
     ) -> None:
         """Prepare and store the given templates in the inputs manager."""
         assert isinstance(templates, list)
+        if targets is None:
+            targets = Targets()
 
         tok_ids = self._tokenizer(templates, add_special_tokens=True)["input_ids"]
         self._token_input_manager = HuggingFaceTokenInputManager(

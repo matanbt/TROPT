@@ -29,8 +29,6 @@ from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
 
-# TODO add outer-beam search (like BEAST)
-
 
 class RASLITEPlusOptimizer(BaseOptimizer):
     """
@@ -69,7 +67,6 @@ class RASLITEPlusOptimizer(BaseOptimizer):
 
         n_bulk_flips: int = 5,
         flip_pos_method: str = "random",  # "random" or "ordered"
-        **kwargs
     ):
         """
         Initializes the RASLITEPlus Optimizer.

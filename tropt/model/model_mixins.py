@@ -34,7 +34,7 @@ class TokenAccessMixin(ABC):
     """Mixin for models that have a tokenizer and can prepare token-level inputs.
 
     This is the base mixin for any model with token-level access (tokenizer,
-    set/reset inputs). Note that such models may note have access to _compute_ the loss from tokens (see LossTokenAccessMixin), but they must be able to at least prepare the token inputs (e.g., OpenAI models).
+    set/reset inputs). Note that such models may not have access to _compute_ the loss from tokens (see LossTokenAccessMixin), but they must be able to at least prepare the token inputs (e.g., OpenAI models).
     """
 
     _token_input_manager: Optional[TokenInputManager] = None

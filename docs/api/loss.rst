@@ -20,14 +20,14 @@ The unified entry point for computing any loss — models call this instead of i
    <hr class="hr-major">
 
 Loss Classes Interfaces
------------------
+-----------------------
 
 .. autoclass:: BaseLoss
    :members:
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: LogitBasedLoss
+.. autoclass:: TriggerLogitBasedLoss
    :members:
    :undoc-members:
    :show-inheritance:
@@ -47,7 +47,7 @@ Loss Classes Interfaces
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: SteeringEnhLoss
+.. autoclass:: SteeringActivationLoss
    :members:
    :undoc-members:
    :show-inheritance:
@@ -66,7 +66,7 @@ Loss Implementations
 
 .. automodule:: tropt.loss
    :members:
-   :exclude-members: BaseLoss, LogitBasedLoss, AttentionBasedLoss, EmbeddingBasedLoss, TextBasedLoss, SteeringEnhLoss, CombinedLoss
+   :exclude-members: BaseLoss, TriggerLogitBasedLoss, AttentionBasedLoss, EmbeddingBasedLoss, TextBasedLoss, SteeringActivationLoss, CombinedLoss
    :undoc-members:
    :show-inheritance:
    :imported-members:

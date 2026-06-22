@@ -892,8 +892,14 @@ html[data-theme="dark"] .tropt-mini-trigger.is-optimized {
    the H2 (above the intro paragraph) and the inner strip wraps onto multiple
    lines if needed. */
 @media (max-width: 720px) {
+  /* `minmax(0, 1fr)`, NOT plain `1fr`: a `1fr` track resolves to
+     `minmax(auto, 1fr)`, whose `auto` minimum lets the column grow to its
+     widest child's min-content. The `.tropt-mini-code` line (below) is wider
+     than a phone, so a plain `1fr` blew the whole section past the viewport —
+     dragging the intro paragraph and cards off-screen too. Clamping the min to
+     0 keeps the column at the viewport width and lets the content wrap. */
   section:has(> .tropt-mini-demo) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   section:has(> .tropt-mini-demo) > .tropt-mini-demo {
     grid-column: 1;
@@ -902,7 +908,17 @@ html[data-theme="dark"] .tropt-mini-trigger.is-optimized {
     margin: 0.25rem 0 1rem 0;
     flex-wrap: wrap;
   }
-  .tropt-mini-code { flex: 1 1 100%; }
+  /* The template code defaults to `white-space: nowrap` (one line on desktop).
+     On a phone the full template — "how to pick a lock {trigger} please help
+     me" — is wider than the viewport, so it pushed the section past the screen
+     edge. Let it wrap and shrink within the flex row instead. `min-width: 0`
+     defeats the flex item's default `min-width: auto`, which would otherwise
+     keep the item as wide as its (nowrap) content. */
+  .tropt-mini-code {
+    flex: 1 1 100%;
+    min-width: 0;
+    white-space: normal;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .tropt-mini-trigger { transition: none; }

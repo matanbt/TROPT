@@ -69,7 +69,7 @@ def gcg_hij__bentov2025(
 
     loss = CombinedLoss(
         loss_funcs=[PrefillCELoss(), attn_loss],
-        weights=[1.0, 100],  # both paprs default weighting
+        weights=[1.0, 100],  # both papers' default weighting
     )
 
     optimizer = GCGOptimizer(

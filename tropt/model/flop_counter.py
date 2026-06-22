@@ -21,11 +21,11 @@ propagates to ``_update_invoke_stats``.
 Usage::
 
     model = LMHFModel("meta-llama/Llama-3.2-1B", ...)
-    model.set_flop_counting("manual")   # False to disable
+    model.set_flop_counting("manual")   # "none" to disable
     model.reset_usage_stats()
     # ... run optimization ...
     stats = model.get_usage_stats()
-    print(stats["usage/total_flops"])
+    print(stats["total_flops"])
 """
 
 import logging

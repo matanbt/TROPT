@@ -148,7 +148,7 @@ def gcgp_pal__sitawarin2024(
 ) -> OptimizerResult:
     """GCG++ attack — white-box GCG with CW loss, and oversample.
 
-    In practice, this is almost identical to GCG otpimization (up to the oversample), but with CW loss.
+    In practice, this is almost identical to GCG optimization (up to the oversample), but with CW loss.
 
     When use_random_candidates=True, runs the GCG++ (RANDOM) variant which
     samples candidates uniformly instead of using gradients.

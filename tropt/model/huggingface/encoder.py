@@ -52,7 +52,6 @@ class EncoderHFModel(
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
         set_model_to_train: bool = False,
-        run_additional_checks: bool = True,
         **kwargs,
     ):
         """
@@ -66,7 +65,6 @@ class EncoderHFModel(
             backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
             set_model_to_train (bool): Keep the model trainable (train mode + unfrozen weights). Default False (eval + frozen).
-            run_additional_checks (bool): Whether to run additional checks on the model to ensure compliance with this module computations. Can be disabed for faster initialization, but is good for identfying incompatability issues (mostly with models overriding HF default code).
             **kwargs: Additional arguments for SentenceTransformer.
         """
         if loaded_model is not None:
@@ -148,6 +146,8 @@ class EncoderHFModel(
     ) -> None:
         """Prepare and store the given templates in the inputs manager."""
         assert isinstance(templates, list), "templates must be a string or a list of strings."
+        if targets is None:
+            targets = Targets()
 
         # Build the input manager, that will allow combining with different triggers
         tok_ids = self._tokenizer(templates, add_special_tokens=True)["input_ids"]

@@ -141,13 +141,13 @@ class GCGOptimizer(BaseOptimizer):
         Samples `n_candidates` combinations of token ids based on the token gradient.
 
         Args:
-            trigger_ids (Tensor): shape = (n_type, trigger_seq_len)
+            trigger_ids (Tensor): shape = (trigger_seq_len,)
             The sequence of token ids being optimized.
-            trigger_grad (Tensor): shape = (n_type, trigger_seq_len, vocab_size)
+            trigger_grad (Tensor): shape = (trigger_seq_len, vocab_size)
             The gradient of the loss with respect to the one-hot token embeddings.
 
         Returns:
-            Tensor: shape = (n_type, n_candidates, trigger_seq_len)
+            Tensor: shape = (n_candidates, trigger_seq_len)
             Sampled token ids for each candidate.
         """
         trigger_seq_len, vocab_size = trigger_grad.shape

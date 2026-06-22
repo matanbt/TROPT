@@ -1,11 +1,13 @@
 name: Publish to PyPI
 
-# Triggers on version tags (e.g. v0.1.0, v1.2.3) or manual dispatch.
+# Publishes when a GitHub Release is published:
+#   Releases → Draft a new release → tag e.g. v0.1.0 → write notes → Publish.
+# Tag the release to match pyproject.toml's version (that's the version that
+# actually gets published). workflow_dispatch is a manual fallback.
 # Requires PyPI Trusted Publishing configured at pypi.org (no API key needed).
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  release:
+    types: [published]
   workflow_dispatch:
 
 jobs:

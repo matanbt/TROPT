@@ -74,7 +74,7 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
 
         Args:
             model_name: The name of the Gemini embedding model to use.
-            d_model: The dimensionality of the embeddings (e.g., 768, 3072).
+            d_model: The dimensionality of the embeddings (e.g., 768, 1536, 3072).
             use_vertex: Embed via the Vertex AI backend (ADC) instead of AI Studio.
                 Needed for Vertex-only models such as ``text-embedding-005``.
             project: Vertex project (only used when ``use_vertex``; falls back to the
