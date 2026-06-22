@@ -157,10 +157,10 @@ packages = ["tropt"]
 # Explicit allowlist so the sdist ships only the package + metadata.
 [tool.hatch.build.targets.sdist]
 include = [
-  "tropt/",
-  "README.md",
-  "LICENSE",
-  "pyproject.toml",
+  "/tropt",
+  "/README.md",
+  "/LICENSE",
+  "/pyproject.toml",
 ]
 
 [tool.ruff]
