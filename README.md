@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/_static/logo.svg" alt="TROPT — Textual Trigger Optimization Toolbox" width="500">
+  <img src="https://www.tropt.dev/_static/logo.svg" alt="TROPT — Textual Trigger Optimization Toolbox" width="500">
 </p>
 
 <p align="center">
@@ -11,9 +11,7 @@
 <p align="center">
   <a href="https://tropt.dev"><strong>Website</strong></a> &ensp;|&ensp;
   <strong>Quick Start (<a href="https://tropt.dev#get-started">Examples</a>, <a href="quickstart.ipynb">Notebook</a>)</strong> &ensp;|&ensp;
-  <a href="https://tropt.dev/guides/index.html"><strong>Guides</strong></a> &ensp;|&ensp;
-  <a href="https://tropt.dev/api/index.html"><strong>API Ref.</strong></a> &ensp;|&ensp;
-  <a href="[TODO]"><strong>Paper</strong></a>
+  <a href="https://arxiv.org/abs/2606.23496"><strong>Paper</strong></a>
 </p>
 
 <p align="center">
@@ -21,6 +19,8 @@
   <a href="https://github.com/matanbt/TROPT"><img src="https://img.shields.io/github/stars/matanbt/TROPT?style=flat&logo=github&color=181717" alt="GitHub stars"></a>
   <a href="https://github.com/matanbt/TROPT/actions/workflows/test.yml"><img src="https://img.shields.io/github/actions/workflow/status/matanbt/TROPT/test.yml?branch=main&label=tests" alt="Tests"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-green?style=flat" alt="License"></a>
+  <a href="https://tropt.dev/guides/index.html"><img src="https://img.shields.io/badge/Guides-7c3aed?style=flat&logo=readthedocs&logoColor=white" alt="Guides"></a>
+  <a href="https://tropt.dev/api/index.html"><img src="https://img.shields.io/badge/API_Reference-7c3aed?style=flat&logo=readthedocs&logoColor=white" alt="API Reference"></a>
 </p>
 
 
@@ -72,7 +72,7 @@ print("Lowest loss:", result.best_loss)
 ```
 
 
-### Compose Your Own Recipe 🫴
+### Compose Your Own Recipe 🪄
 
 Pick any model, loss, and optimizer and assemble them directly — this is how the _recipes_ are built underneath:
 
@@ -108,7 +108,7 @@ Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickst
 
 ## 🤖 Use TROPT with Your Coding Agent
 
-TROPT ships with a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT. Simply point your coding agent at it.
+TROPT includes a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT.
 
 
 ## Contributing
@@ -136,14 +136,13 @@ and authorized red-teaming of NLP models.
 
 ## Citation
 
-[TODO paper cite!]
 If you find this package useful, please cite our paper as follows:
 
 ```bibtex
-@misc{tropt2026,
-  title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
-  author       = {Ben-Tov, Matan and Sharif, Mahmood},
-  year         = {2026},
-  howpublished = {\url{https://github.com/matanbt/TROPT}},
+@article{tropt2026,
+  title   = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
+  author  = {Ben-Tov, Matan and Sharif, Mahmood},
+  journal = {arXiv},
+  year    = {2026},
 }
 ```
