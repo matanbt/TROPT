@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://tropt.dev"><strong>Website</strong></a> &ensp;|&ensp;
   <strong>Quick Start (<a href="https://tropt.dev#get-started">Examples</a>, <a href="quickstart.ipynb">Notebook</a>)</strong> &ensp;|&ensp;
-  <a href="[TODO]"><strong>Paper</strong></a>
+  <a href="https://arxiv.org/abs/2606.23496"><strong>Paper</strong></a>
 </p>
 
 <p align="center">
@@ -139,10 +139,10 @@ and authorized red-teaming of NLP models.
 If you find this package useful, please cite our paper as follows:
 
 ```bibtex
-@misc{tropt2026,
-  title        = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
-  author       = {Ben-Tov, Matan and Sharif, Mahmood},
-  year         = {2026},
-  howpublished = {\url{https://github.com/matanbt/TROPT}},
+@article{tropt2026,
+  title   = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
+  author  = {Ben-Tov, Matan and Sharif, Mahmood},
+  journal = {arXiv},
+  year    = {2026},
 }
 ```
