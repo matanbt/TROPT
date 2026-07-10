@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Annotated, Any, List, Optional
 
-import torch
 from jaxtyping import Int
 from torch import Tensor
 
@@ -66,8 +65,6 @@ class TextInputManager(InputsManager):
         assert isinstance(templates, list), "templates must be a list of strings."
         if targets is None:
             targets = Targets()
-
-        targets = targets.to_device("cuda" if torch.cuda.is_available() else "cpu")
 
         before_texts, after_texts = [], []
         for template in templates:

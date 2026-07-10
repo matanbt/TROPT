@@ -81,6 +81,10 @@ class MessageTargets(pydantic.BaseModel):
     Used by steering losses (e.g., representation engineering).
     """
 
+    target_hidden_states: Optional[Float[Tensor, "seq_len d_model"]] = None
+    """Observed hidden states to invert, one row per token position.
+    Used by sequential hidden-state inversion losses (e.g. SIPIT)."""
+
     # ── Weight-gradient targets ────────────────────────────────────────────
     # Consumed by gradient-matching losses.
 
@@ -163,6 +167,14 @@ class Targets(pydantic.BaseModel):
     Used by: Steering losses (e.g., refusal suppression).
     Note: if you need per-layer directions, store as (n_templates, n_layers, d_model)
     and update this annotation accordingly.
+    """
+
+    target_hidden_states: Optional[Float[Tensor, "n_templates seq_len d_model"]] = None
+    """Observed hidden states to invert, one (seq_len, d_model) matrix per template.
+
+    Shape: (n_templates, seq_len, d_model).
+    Used by: sequential hidden-state inversion losses (e.g. SIPIT). ``select_message``
+    slices this to a per-message (seq_len, d_model) matrix automatically.
     """
 
     # ── Weight-gradient targets ────────────────────────────────────────────
