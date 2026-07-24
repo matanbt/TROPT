@@ -67,7 +67,13 @@ class TextInputManager(InputsManager):
             targets = Targets()
 
         before_texts, after_texts = [], []
-        for template in templates:
+        for i, template in enumerate(templates):
+            n_found = template.count(OPTIMIZED_TRIGGER_PLACEHOLDER)
+            assert n_found == 1, (
+                f"`templates[{i}]` must contain exactly one `{OPTIMIZED_TRIGGER_PLACEHOLDER}` "
+                f"placeholder, found {n_found}. Note the placeholder is case-sensitive and takes "
+                f"no inner spaces. Got: {template!r}"
+            )
             bef, aft = template.split(OPTIMIZED_TRIGGER_PLACEHOLDER, 1)
             before_texts.append(bef)
             after_texts.append(aft)
