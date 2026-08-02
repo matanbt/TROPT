@@ -72,6 +72,17 @@ class SoftPromptOptimizer(BaseOptimizer):
 
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
 
+        # Optimize a float32 master copy of the soft prompt, casting to the
+        # model's dtype only for the forward/backward.
+        #
+        # Adam's update underflows in half precision: with fp16 parameters both
+        # `grad ** 2` and the default `eps=1e-8` flush to 0, so the very first
+        # step computes `m_hat / (0 + 0)` and the prompt becomes +-inf -- every
+        # subsequent loss is NaN. This bites any model loaded in fp16/bf16
+        # (fp32 models were unaffected, which is why it went unnoticed).
+        model_dtype = trigger_embeds.dtype
+        trigger_embeds = trigger_embeds.float()
+
         # Initialize the optimizer on the trigger embeddings
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
 
@@ -83,19 +94,22 @@ class SoftPromptOptimizer(BaseOptimizer):
             # Compute gradients w.r.t. trigger embeddings
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
                 loss_func=self.loss_func,
-                candidate_trigger_embeds=trigger_embeds,
+                candidate_trigger_embeds=trigger_embeds.to(model_dtype),
                 normalize_grads=False,
                 return_loss=True,
             )  # grad: (1, trigger_seq_len, embed_dim); loss: (1,)
             curr_loss = curr_loss.item()
 
             # Set gradient on trigger embeddings
-            trigger_embeds.grad = trigger_grad
+            trigger_embeds.grad = trigger_grad.float()
 
             # Adam step
             optimizer.step()
 
-            best.update(loss=curr_loss, trigger_emb=trigger_embeds.detach().squeeze(0))
+            best.update(
+                loss=curr_loss,
+                trigger_emb=trigger_embeds.detach().squeeze(0).to(model_dtype),
+            )
             self.log(loss=curr_loss, lr=optimizer.param_groups[0]["lr"], grad_norm=trigger_grad.norm().item())
 
         result = best.to_result()
