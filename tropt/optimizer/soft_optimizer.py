@@ -71,17 +71,8 @@ class SoftPromptOptimizer(BaseOptimizer):
         trigger_ids = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
 
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
-
-        # Optimize a float32 master copy of the soft prompt, casting to the
-        # model's dtype only for the forward/backward.
-        #
-        # Adam's update underflows in half precision: with fp16 parameters both
-        # `grad ** 2` and the default `eps=1e-8` flush to 0, so the very first
-        # step computes `m_hat / (0 + 0)` and the prompt becomes +-inf -- every
-        # subsequent loss is NaN. This bites any model loaded in fp16/bf16
-        # (fp32 models were unaffected, which is why it went unnoticed).
         model_dtype = trigger_embeds.dtype
-        trigger_embeds = trigger_embeds.float()
+        trigger_embeds = trigger_embeds.float()  # stored in high precision for the optimizer
 
         # Initialize the optimizer on the trigger embeddings
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
