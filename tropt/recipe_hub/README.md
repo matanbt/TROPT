@@ -52,6 +52,7 @@ All recipes in this section use HuggingFace models.
 | `arca_toxic_reverse` | Reverse an LLM on a fixed toxic output (Jones et al. §4.2.1, ported to GCG). | LM | Gradient + Loss (Token) | [Jones et al., 2023](https://arxiv.org/abs/2303.04381) | [`ARCAToxicReverse.py`](ARCAToxicReverse.py) |
 | `hotflip__ebrahimi2018` | Greedy single (position, token) flip via first-order Taylor approximation. | LM | Gradient + Loss (Token) | [Ebrahimi et al., 2018](https://arxiv.org/abs/1712.06751) | [`HotFlip__ebrahimi2018.py`](HotFlip__ebrahimi2018.py) |
 | `mac__zhang2024` | Momentum-accelerated GCG (momentum over the coordinate-gradient signal). | LM | Gradient + Loss (Token) | [Zhang & Wei, 2024](https://arxiv.org/abs/2405.01229) | [`MAC__zhang2024.py`](MAC__zhang2024.py) |
+| `mcpal` | PAL's search configuration with MAC's gradient momentum. | LM | Gradient + Loss (Token) | — (crosses [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) and [Zhang & Wei, 2024](https://arxiv.org/abs/2405.01229)) | [`McPAL.py`](McPAL.py) |
 
 #### Continuous Relaxation Jailbreaks (White-Box)
 
