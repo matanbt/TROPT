@@ -71,20 +71,20 @@ Access mixins define the access-level and compute capabilities of a model; speci
 
 
 ```python
-    class LMHFModel(
-        HuggingFaceBackendModel,  # adds common HF model methods
-        LMBaseModel,  # the type of the model is an LM
+class LMHFModel(
+    HuggingFaceBackendModel,  # adds common HF model methods
+    LMBaseModel,  # the type of the model is an LM
 
-        # token-level access mixins:
-        LossTokenAccessMixin,  # we can query an arbitrary output-based loss on token inputs
-        GradientTokenAccessMixin,  # we can access the gradient wrt a loss (a.k.a. white-box)
-        LogitsTokenAccessMixin,  # we can access the logits
-        GradientEmbedAccessMixin,  # we can access gradients wrt embeddings
+    # token-level access mixins:
+    LossTokenAccessMixin,  # we can query an arbitrary output-based loss on token inputs
+    GradientTokenAccessMixin,  # we can access the gradient wrt a loss (a.k.a. white-box)
+    LogitsTokenAccessMixin,  # we can access the logits
+    GradientEmbedAccessMixin,  # we can access gradients wrt embeddings
 
-        # text-level access mixins:
-        LossTextAccessMixin,  # we can (also) access loss on text inputs (a.k.a. black-box)
-    ):
-        ...
+    # text-level access mixins:
+    LossTextAccessMixin,  # we can (also) access loss on text inputs (a.k.a. black-box)
+):
+    ...
 ```
 
 Where `LMBaseModel` defines the type of the model (language model), each **access mixin** declares a capability and requires the implementation of corresponding methods. The naming convention is: (a) mixins start with the *value* we can access (e.g., `Loss`, `Gradient`, `Logits`); (b) they end with the *input type* (e.g., `TokenAccess`, `TextAccess`). For instance, `LossTokenAccessMixin` enables loss computation from token inputs.
@@ -92,11 +92,11 @@ Where `LMBaseModel` defines the type of the model (language model), each **acces
 Subsequently, classes for proprietary models are much simpler, due to the limited access to their internals. For instance, the Gemini embedding model has a single access mixin:
 
 ```python
-    class EncoderGeminiModel(
-        EncoderBaseModel,
-        LossTextAccessMixin
-    ):
-        ...
+class EncoderGeminiModel(
+    EncoderBaseModel,
+    LossTextAccessMixin
+):
+    ...
 ```
 
 
@@ -125,15 +125,15 @@ All optimizers iteratively advance the text trigger towards a specific objective
 
 Loss classes are simple and minimalistic, and accept model input/output properites (as defined in the previous section) to compute the loss. For example, a cross-entropy loss that operates on token-level logits would be implemented as:
 ```python
-    class PrefillCELoss(BaseLoss):
-        ...
+class PrefillCELoss(BaseLoss):
+    ...
 
-        def __call__(
-            self,
-            prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
-            target_response_toks: Int[Tensor, "response_seq_len"],
-        ) -> Float[Tensor, "bsz"]:
-            ...
+    def __call__(
+        self,
+        prefill_response_logits: Float[Tensor, "bsz response_seq_len vocab_size"],
+        target_response_toks: Int[Tensor, "response_seq_len"],
+    ) -> Float[Tensor, "bsz"]:
+        ...
 ```
 
 The loss functions are naturally called from the `compute_*` methods in the model, to compute the loss itself, or gradients w.r.t. it. This integration is loss agnostic, as we use a unified loss resolution---which we describe next---that allows the model to call a generic loss on the model outputs, without hard-coding specific loss types. 
@@ -148,8 +148,8 @@ Loss computation is centralized in a single function, `resolve_and_compute_loss(
 
 From the model end (i.e., in the `compute_*` methods), we would wrap the model i/o with `ModelOutput` and `ModelInput`, then delegate to this single function:
 ```python
-model_output = ModelOutput(full_logits=outputs.logits, ...)
-model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets, ...)
+model_output = ModelOutput(full_logits=outputs.logits)  # ...and any other available field
+model_input = ModelInput(input_trigger_ids=trigger_ids, targets=targets)  # ...likewise
 return resolve_and_compute_loss(model_output, model_input, loss_func)  # the loss values!
 ```
 
@@ -169,36 +169,35 @@ This use of abstractions results in optimizers much easier to write and read, an
 **Additional implementation details.** The initialization of the optimizer is commonly defined as:
 
 ```python
-    # from: tropt/optimizer/gcg_optimizer.py
-    class GCGOptimizer(BaseOptimizer):
-        model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
+# from: tropt/optimizer/gcg_optimizer.py
+class GCGOptimizer(BaseOptimizer):
+    model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
 
-        def __init__(
-            self,
-            model: BaseModel,
-            loss: BaseLoss,
-            tracker: Optional[BaseTracker] = None,
-            seed: Optional[int] = None,
-            ...
-        ):
-            super().__init__(model, loss=loss, tracker=tracker, seed=seed)
-            ...
-        
-        def optimize_trigger(
-            self,
-            templates: List[str],  # n_templates text templates with {{OPTIMIZED_TRIGGER}} placeholder
-            initial_trigger: Optional[str] = "! " * 20,
-            targets: Optional[Targets] = None,
-        ) -> OptimizerResult:
-            ...
+    def __init__(
+        self,
+        model: BaseModel,
+        loss: BaseLoss,
+        tracker: Optional[BaseTracker] = None,
+        seed: Optional[int] = None,
+        # ...plus the optimizer's own hyperparameters
+    ):
+        super().__init__(model, loss=loss, tracker=tracker, seed=seed)
+        ...
+
+    def optimize_trigger(
+        self,
+        templates: List[str],  # n_templates text templates with {{OPTIMIZED_TRIGGER}} placeholder
+        initial_trigger: Optional[str] = "! " * 20,
+        targets: Optional[Targets] = None,
+    ) -> OptimizerResult:
+        ...
 
 ```
 
 * **Model requirements.** First, the optimizer **defines the used input level** and the **access level** it works on, thus deriving requirements on the model. To accommodate and validate these requirements from the model, each optimizer must explicitly include the `model_requirements`. For example, the GCG optimizer requires a gradient access:
 ```python
-    class GCGOptimizer(BaseOptimizer):
-        model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
-
+class GCGOptimizer(BaseOptimizer):
+    model_requirements = (LossTokenAccessMixin, GradientTokenAccessMixin)
 ```
 
 

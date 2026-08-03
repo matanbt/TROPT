@@ -61,6 +61,9 @@ class PEZOptimizer(BaseOptimizer):
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
+        # PEZ back-propagates through the loss
+        assert self.loss_func.is_differentiable, "PEZOptimizer requires a differentiable loss function."
+
         self.num_steps = num_steps
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay

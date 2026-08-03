@@ -51,7 +51,7 @@ All recipes in this section use HuggingFace models.
 | `arca__jones2023` | Cyclic coordinate descent with gradient averaging. | LM | Gradient + Loss (Token) | [Jones et al., 2023](https://arxiv.org/abs/2303.04381) | [`ARCA__jones2023.py`](ARCA__jones2023.py) |
 | `arca_toxic_reverse` | Reverse an LLM on a fixed toxic output (Jones et al. §4.2.1, ported to GCG). | LM | Gradient + Loss (Token) | [Jones et al., 2023](https://arxiv.org/abs/2303.04381) | [`ARCAToxicReverse.py`](ARCAToxicReverse.py) |
 | `hotflip__ebrahimi2018` | Greedy single (position, token) flip via first-order Taylor approximation. | LM | Gradient + Loss (Token) | [Ebrahimi et al., 2018](https://arxiv.org/abs/1712.06751) | [`HotFlip__ebrahimi2018.py`](HotFlip__ebrahimi2018.py) |
-| `mac__wang2024` | Momentum-accelerated GCG (momentum over the coordinate-gradient signal). | LM | Gradient + Loss (Token) | [Wang et al., 2024](https://arxiv.org/abs/2405.01229) | [`MAC__wang2024.py`](MAC__wang2024.py) |
+| `mac__zhang2024` | Momentum-accelerated GCG (momentum over the coordinate-gradient signal). | LM | Gradient + Loss (Token) | [Zhang & Wei, 2024](https://arxiv.org/abs/2405.01229) | [`MAC__zhang2024.py`](MAC__zhang2024.py) |
 
 #### Continuous Relaxation Jailbreaks (White-Box)
 

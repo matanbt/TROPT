@@ -106,7 +106,7 @@ def prompt_recovery__wen2023(
             vocab-embedded trigger of length `trigger_len` is sampled.
         optimizer_type: which discrete optimizer to drive the inversion:
             - `"pez"` (default): PEZ (Wen et al., 2023).
-            - `"mac"`: MAC = momentum-accelerated GCG+ (Wang 2024).
+            - `"mac"`: MAC = momentum-accelerated GCG+ (Zhang & Wei 2024).
             - `"gcg"`: vanilla GCG.
             - `"adv_decoding"`: beam-search decoding with a utility LM.
         trigger_len: Number of trigger tokens.
@@ -152,7 +152,7 @@ def prompt_recovery__wen2023(
         initial_trigger = random_trigger
 
     if optimizer_type == "mac":
-        # MAC (momentum-accelerated GCG+, Wang 2024) with paper params.
+        # MAC (momentum-accelerated GCG+, Zhang & Wei 2024) with paper params.
         optimizer = GCGPlusOptimizer(
             model=model_obj,
             loss=SimilarityLoss(),

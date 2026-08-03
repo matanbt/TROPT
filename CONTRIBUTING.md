@@ -2,7 +2,7 @@
 
 TROPT enables a wide range of contributions: from adding new recipes of published work (to the Recipe Hub), to adding a useful, new loss or optimizer, or additional model integrations, to resolving bugs or adding new features to the package.
 
-While the [guides](https://tropt.dev/guides/index.html) in our docs should be helpful in *implementing* new TROPT components (e.g., new recipe, loss, optimizer, etc.), they do not refer to the *integration* of new components within the package's code, which we also touch upon below.
+TROPT has a distinct [design](DESIGN.md) aimed at enabling modularity extensibility; make sure you adhere to convention in existing implmentation while following the [guides](https://tropt.dev/guides/index.html) in our docs that describe how to *implement* TROPT components (e.g., new recipe, loss, optimizer, etc.). Note that these guides they do not refer to the *integration* of new components within the package's code, which we also touch upon below.
 
 TROPT aims to be a growing library and a research hub. You are encouraged to contribute your own research, or implementations of existing works, under the TROPT framework. 
 

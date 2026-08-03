@@ -35,7 +35,7 @@ from .GCGHij import attn_gcg__wang2024, gcg_hij__bentov2025
 from .GCGMult__zou2023 import gcg_mult__zou2023
 from .HotFlip__ebrahimi2018 import hotflip__ebrahimi2018
 from .IRIS__huang2025 import iris__huang2025, iris2
-from .MAC__wang2024 import mac__wang2024
+from .MAC__zhang2024 import mac__zhang2024
 from .PAL__sitawarin2024 import (
     gcgp_pal__sitawarin2024,
     pal__sitawarin2024,
@@ -113,8 +113,8 @@ RECIPES = {
     "prs__andriushchenko2024": prs__andriushchenko2024,
     "rs_emb": rs_emb,
 
-    # MAC (Wang 2024)
-    "mac__wang2024": mac__wang2024,
+    # MAC (Zhang & Wei 2024)
+    "mac__zhang2024": mac__zhang2024,
 
     # FLRT (Thompson & Sklar 2024)
     "flrt_distill": flrt_distill,
