@@ -71,6 +71,8 @@ class SoftPromptOptimizer(BaseOptimizer):
         trigger_ids = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
 
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
+        model_dtype = trigger_embeds.dtype
+        trigger_embeds = trigger_embeds.float()  # stored in high precision for the optimizer
 
         # Initialize the optimizer on the trigger embeddings
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
@@ -83,19 +85,22 @@ class SoftPromptOptimizer(BaseOptimizer):
             # Compute gradients w.r.t. trigger embeddings
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
                 loss_func=self.loss_func,
-                candidate_trigger_embeds=trigger_embeds,
+                candidate_trigger_embeds=trigger_embeds.to(model_dtype),
                 normalize_grads=False,
                 return_loss=True,
             )  # grad: (1, trigger_seq_len, embed_dim); loss: (1,)
             curr_loss = curr_loss.item()
 
             # Set gradient on trigger embeddings
-            trigger_embeds.grad = trigger_grad
+            trigger_embeds.grad = trigger_grad.float()
 
             # Adam step
             optimizer.step()
 
-            best.update(loss=curr_loss, trigger_emb=trigger_embeds.detach().squeeze(0))
+            best.update(
+                loss=curr_loss,
+                trigger_emb=trigger_embeds.detach().squeeze(0).to(model_dtype),
+            )
             self.log(loss=curr_loss, lr=optimizer.param_groups[0]["lr"], grad_norm=trigger_grad.norm().item())
 
         result = best.to_result()

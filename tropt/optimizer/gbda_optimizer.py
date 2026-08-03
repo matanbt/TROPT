@@ -146,17 +146,19 @@ class GBDAOptimizer(BaseOptimizer):
         trigger_ids: Int[Tensor, "trigger_seq_len"] = tokenizer.encode_trigger(initial_trigger).to(self.model.device)
         vocab_size = self.model.vocab_size
         device = self.model.device
+        model_dtype = self.model.dtype
         trigger_seq_len = trigger_ids.shape[0]
 
-        # Initialize logit matrix theta (here called `trigger_probs`)
+        # Initialize logit matrix theta (here called `trigger_probs`).
+        # stored in high precision for the optimizer
         if self.init_mode == "random":
             trigger_probs: Float[Tensor, "seq_len vocab_size"] = (
-                torch.randn(trigger_seq_len, vocab_size, device=device, dtype=self.model.dtype)
+                torch.randn(trigger_seq_len, vocab_size, device=device, dtype=torch.float32)
                 * self.init_noise_scale
             )
         else:  # "from_trigger"
             trigger_probs: Float[Tensor, "seq_len vocab_size"] = torch.zeros(
-                trigger_seq_len, vocab_size, device=device, dtype=self.model.dtype,
+                trigger_seq_len, vocab_size, device=device, dtype=torch.float32,
             )
             for i in range(trigger_seq_len):
                 trigger_probs[i, trigger_ids[i]] = self.initial_coeff
@@ -181,7 +183,7 @@ class GBDAOptimizer(BaseOptimizer):
             # (we repeat `trigger_probs_samples` so the gradient computation will draw multiple samples (w/ gumbel-softmax) from the same (optimized) distribution.)
             trigger_probs_samples = trigger_probs.unsqueeze(0).repeat(self.n_grad_samples, 1, 1)
             trigger_grad = self.model.compute_grad_from_tokens(
-                candidate_trigger_probs=trigger_probs_samples,  # (n_grad_samples, trigger_seq_len, vocab_size)
+                candidate_trigger_probs=trigger_probs_samples.to(model_dtype),  # (n_grad_samples, trigger_seq_len, vocab_size)
                 loss_func=self.loss_func,
                 do_gumbel_softmax=True,
                 gumbel_softmax_temp=temperature,
@@ -191,7 +193,7 @@ class GBDAOptimizer(BaseOptimizer):
             avg_grad = trigger_grad.mean(dim=0)  # -> (trigger_seq_len, vocab_size)
 
             # take grad step:
-            trigger_probs.grad = avg_grad
+            trigger_probs.grad = avg_grad.float()
             if self.grad_clip_norm is not None:
                 torch.nn.utils.clip_grad_norm_([trigger_probs], self.grad_clip_norm)
             optimizer.step()
@@ -239,7 +241,7 @@ class GBDAOptimizer(BaseOptimizer):
             best_trigger_ids=final_best_ids,
             losses=best.losses,
             trigger_strs=best.trigger_strs,
-            best_trigger_probs=trigger_probs.detach(),
+            best_trigger_probs=trigger_probs.detach().to(model_dtype),
         )
 
         return result

@@ -85,6 +85,8 @@ class PEZOptimizer(BaseOptimizer):
 
         # Initialize continuous embeddings from the initial trigger tokens
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embed_dim)
+        model_dtype = trigger_embeds.dtype
+        trigger_embeds = trigger_embeds.float()  # stored in high precision for the optimizer
 
         # Initialize optimizer on continuous embeddings
         optimizer = self.GDOptimizer(
@@ -98,7 +100,7 @@ class PEZOptimizer(BaseOptimizer):
 
             # Forward projection: project continuous embeddings to nearest vocab tokens
             projected_ids, projected_embeds = self._project_to_vocab(
-                trigger_embeds.squeeze(0), embedding_matrix
+                trigger_embeds.squeeze(0).to(model_dtype), embedding_matrix
             )
 
             # Compute gradient w.r.t. the projected embeddings.
@@ -113,7 +115,7 @@ class PEZOptimizer(BaseOptimizer):
             curr_loss = curr_loss.item()
 
             # Set gradient on the continuous embeddings and step
-            trigger_embeds.grad = trigger_grad
+            trigger_embeds.grad = trigger_grad.float()
             optimizer.step()
 
             # Decode current discrete trigger for tracking
@@ -125,7 +127,7 @@ class PEZOptimizer(BaseOptimizer):
 
         # Final projection and evaluation on discrete tokens
         final_ids, _ = self._project_to_vocab(
-            trigger_embeds.squeeze(0), embedding_matrix
+            trigger_embeds.squeeze(0).to(model_dtype), embedding_matrix
         )
         final_trigger_str = tokenizer.decode_trigger(final_ids)
         final_loss = self.model.compute_loss_from_tokens(
