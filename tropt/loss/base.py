@@ -87,13 +87,6 @@ class BaseLoss(ABC):
             return {}
         return {f"{type(self).__name__}": self._last_loss_vals.min().item()}
 
-    def contains_loss_type(self, loss_type: type) -> bool:
-        """
-        Returns True if this loss is of the given type.
-        Complicated losses (e.g., CombinedLoss) may override this method with different logic.
-        """
-        return isinstance(self, loss_type)
-
 
 ############################
 
@@ -147,6 +140,8 @@ class CombinedLoss(BaseLoss):
             },
         }
 
+    # A combined loss needs whatever *any* component needs, and is differentiable
+    # only if *all* components are.
     @property
     def is_differentiable(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return all(lf.is_differentiable for lf in self.loss_funcs)
@@ -174,10 +169,6 @@ class CombinedLoss(BaseLoss):
     @property
     def require_first_token_logprobs(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_first_token_logprobs for lf in self.loss_funcs)
-
-    def contains_loss_type(self, loss_type: type) -> bool:
-        """Check if the CombinedLoss contains a loss of the specified type."""
-        return any(isinstance(loss, loss_type) for loss in self.loss_funcs)
 
     def __iter__(self):
         """Allows iterating over the nested loss functions."""

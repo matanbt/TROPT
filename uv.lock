@@ -6768,14 +6768,8 @@ dependencies = [
     { name = "jaxtyping", version = "0.3.9", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pandas", version = "2.3.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "pandas", version = "3.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "pydantic" },
-    { name = "requests" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "sentence-transformers" },
-    { name = "tenacity" },
     { name = "torch" },
     { name = "tqdm" },
     { name = "transformers" },
@@ -6792,6 +6786,7 @@ all = [
     { name = "litellm" },
     { name = "livelossplot" },
     { name = "openai" },
+    { name = "tenacity" },
     { name = "tiktoken" },
     { name = "trackio" },
     { name = "voyageai" },
@@ -6831,6 +6826,7 @@ dev = [
     { name = "sphinx-rtd-theme" },
     { name = "sphinx-sitemap" },
     { name = "sphinxext-opengraph" },
+    { name = "tenacity" },
     { name = "tiktoken" },
     { name = "trackio" },
     { name = "ty" },
@@ -6839,6 +6835,7 @@ dev = [
 ]
 google = [
     { name = "google-genai" },
+    { name = "tenacity" },
 ]
 litellm = [
     { name = "litellm" },
@@ -6851,6 +6848,7 @@ notebooks = [
 ]
 openai = [
     { name = "openai" },
+    { name = "tenacity" },
     { name = "tiktoken" },
 ]
 tracking = [
@@ -6862,6 +6860,7 @@ vision = [
     { name = "diffusers" },
 ]
 voyage = [
+    { name = "tenacity" },
     { name = "voyageai" },
 ]
 
@@ -6881,15 +6880,12 @@ requires-dist = [
     { name = "myst-parser", marker = "extra == 'dev'", specifier = ">=0.18.0" },
     { name = "numpy", specifier = ">=2.0.0" },
     { name = "openai", marker = "extra == 'openai'", specifier = ">=1.0.0" },
-    { name = "pandas", specifier = ">=2.3.3" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "pydantic", specifier = ">=2.0.0" },
     { name = "pydata-sphinx-theme", marker = "extra == 'dev'", specifier = ">=0.13.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "requests" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "scikit-learn" },
     { name = "seaborn", marker = "extra == 'dev'", specifier = ">=0.13.0" },
     { name = "sentence-transformers", specifier = ">=5.5.0" },
     { name = "sphinx", marker = "extra == 'dev'", specifier = ">=5.0.0" },
@@ -6901,7 +6897,9 @@ requires-dist = [
     { name = "sphinx-rtd-theme", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "sphinx-sitemap", marker = "extra == 'dev'", specifier = ">=2.5.0" },
     { name = "sphinxext-opengraph", marker = "extra == 'dev'", specifier = ">=0.9.0" },
-    { name = "tenacity" },
+    { name = "tenacity", marker = "extra == 'google'" },
+    { name = "tenacity", marker = "extra == 'openai'" },
+    { name = "tenacity", marker = "extra == 'voyage'" },
     { name = "tiktoken", marker = "extra == 'openai'", specifier = ">=0.5.0" },
     { name = "torch", specifier = ">=2.4.0", index = "https://download.pytorch.org/whl/cu126" },
     { name = "tqdm" },

@@ -24,7 +24,10 @@ from tropt.optimizer.utils.buffer import TriggerBuffer
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
-from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
+from tropt.optimizer.utils.token_initializers import (
+    get_printable_random_trigger,
+    random_single_flips,
+)
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -213,7 +216,9 @@ class RASLITEPlusOptimizer(BaseOptimizer):
             else:
                 if self.n_logit_samples is not None and self.n_logit_samples > 1:
                     # Average logits over variations
-                    trigger_vars = self._get_trigger_variations(util_trigger_ids, util_vocab_size, device=self.util_model.device)
+                    trigger_vars = random_single_flips(
+                        util_trigger_ids, self.n_logit_samples, vocab_size=util_vocab_size
+                    )
                     logits = self.util_model.compute_logits_from_tokens(
                         trigger_vars,
                         return_trigger_logits_only=True,
@@ -363,28 +368,4 @@ class RASLITEPlusOptimizer(BaseOptimizer):
         logger.info(f"Best loss: {result.best_loss} | Best trigger: {result.best_trigger_str}")
         return result
 
-
-    def _get_trigger_variations(
-        self,
-        trigger_ids: Float[Tensor, "trigger_seq_len"],
-        vocab_size: int,
-        device: torch.device,
-    ) -> Float[Tensor, "n_logit_samples trigger_seq_len"]:
-        """
-        Creates a list of `n_logit_samples` trigger variations. The first is the
-        original trigger, and the rest are random single-token flips.
-        """
-        trigger_seq_len = len(trigger_ids)
-        trigger_vars_ids = trigger_ids.repeat(
-            self.n_logit_samples, 1
-        )  # shape: (n_logit_samples, trigger_seq_len)
-
-        for idx in range(1, self.n_logit_samples):  # (keep the first intact)
-            # select a random position and a random token
-            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
-            tok_to_flip_to = int(torch.randint(0, vocab_size, (1,), device=device).item())
-            # apply the flip
-            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
-
-        return trigger_vars_ids
 

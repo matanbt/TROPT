@@ -2,7 +2,6 @@ from typing import Annotated, List, Literal, Optional
 
 import numpy as np
 import torch
-from tenacity import retry, stop_after_attempt, wait_exponential
 from transformers import BatchEncoding
 
 from tropt.common import (
@@ -17,6 +16,7 @@ from tropt.model import (
     LossTextAccessMixin,
     TokenAccessMixin,
 )
+from tropt.model.api_retry import retry_transient
 
 
 # --------------------------------------------------------------------------
@@ -87,9 +87,6 @@ class OpenAITokenizer(BaseTokenizer):
     def encode(self, text: str, **kwargs) -> List[int]:
         _ = kwargs  # unused
         return self._encoding.encode(text, disallowed_special=())
-
-    def _parse_ids(self, ids):
-        return ids
 
     def decode(self, ids, **kwargs) -> str:
         _ = kwargs  # unused
@@ -195,10 +192,6 @@ class EncoderOpenAIModel(
     def vocab_size(self) -> int:
         return self._tokenizer.vocab_size
 
-    @retry(
-        wait=wait_exponential(multiplier=1, min=4, max=60),
-        stop=stop_after_attempt(5)
-    )
     def invoke_from_texts(
         self,
         input_texts: Annotated[List[str], "n_texts"],
@@ -214,10 +207,9 @@ class EncoderOpenAIModel(
             ModelOutput with output_embeddings populated.
         """
         # Note: OpenAI's API handles batches of texts
-        response = self._client.embeddings.create(
-            input=input_texts,
-            model=self.model_name,
-        )
+        response = retry_transient(
+            self._client.embeddings.create, label="openai"
+        )(input=input_texts, model=self.model_name)
 
         embeddings = [data.embedding for data in response.data]
         result = torch.tensor(embeddings, dtype=torch.float32)

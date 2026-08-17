@@ -98,7 +98,7 @@ Model Implementations
 
 .. automodule:: tropt.model
    :members:
-   :exclude-members: BaseModel, LMBaseModel, EncoderBaseModel, BaseTokenizer, TokenAccessMixin, LossTokenAccessMixin, LogitsTokenAccessMixin, GradientTokenAccessMixin, TextAccessMixin, LossTextAccessMixin, InputsManager, TextInputManager, TokenInputManager, DefaultTokenInputManager
+   :exclude-members: BaseModel, LMBaseModel, EncoderBaseModel, BaseTokenizer, TokenAccessMixin, LossTokenAccessMixin, LogitsTokenAccessMixin, GradientTokenAccessMixin, TextAccessMixin, LossTextAccessMixin, TextInputManager, TokenInputManager, DefaultTokenInputManager
    :undoc-members:
    :show-inheritance:
    :imported-members:

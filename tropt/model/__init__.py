@@ -13,7 +13,6 @@ from .flop_counter import ManualFlopCounter
 
 # Input classes:
 from .inputs_manager import (
-    InputsManager,
     TextInputManager,
     TokenInputManager,
     DefaultTokenInputManager,

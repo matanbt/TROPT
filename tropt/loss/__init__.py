@@ -7,11 +7,7 @@ from .resolution import (
     resolve_and_compute_loss,
 )
 from .losses import (
-    AttentionBasedLoss,
     AttentionEnhLoss,
-    ClassificationBasedLoss,
-    EmbeddingBasedLoss,
-    HiddenStateBasedLoss,
     # Concrete losses:
     MisclassCELoss,
     PrefillBasedLoss,
@@ -21,7 +17,6 @@ from .losses import (
     PrefillMellowMaxLoss,
     SimilarityLoss,
     SteeringActivationLoss,
-    TriggerLogitBasedLoss,
     TriggerPerplexityLoss,
 )
 from .text_losses import (
@@ -29,7 +24,6 @@ from .text_losses import (
     # Concrete text losses
     ExternalTriggerPerplexityLoss,
     FirstTokenNLLLoss,
-    GeneratedResponseBasedLoss,
     InputFluencyLoss,
     ResponseHarmfulnessLoss,
     TextBasedLoss,

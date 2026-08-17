@@ -1,54 +1,14 @@
 from typing import List, Optional
 
 import torch
-from tenacity import (
-    retry,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 from tropt.common import ModelOutput
 from tropt.model import EncoderBaseModel, LossTextAccessMixin
+from tropt.model.api_retry import retry_transient
 
 # Per-request HTTP timeout (ms). Without this, a half-open connection or
 # hung server can deadlock the run indefinitely.
 _REQUEST_TIMEOUT_MS = 120_000
-
-
-def _is_transient_gemini_error(e: BaseException) -> bool:
-    # Transient: any httpx network error, plus google.genai errors with
-    # 429/5xx status. Non-transient: 4xx (bad request, auth, etc.).
-    name = type(e).__name__
-    if name in {
-        "ReadError",
-        "WriteError",
-        "ConnectError",
-        "ConnectTimeout",
-        "ReadTimeout",
-        "WriteTimeout",
-        "PoolTimeout",
-        "RemoteProtocolError",
-        "TimeoutException",
-        "NetworkError",
-        "ProtocolError",
-    }:
-        return True
-    code = getattr(e, "code", None) or getattr(e, "status_code", None)
-    if isinstance(code, int) and (code == 429 or 500 <= code < 600):
-        return True
-    if name == "ServerError":
-        return True
-    return False
-
-
-def _log_gemini_retry(rs):
-    e = rs.outcome.exception()
-    print(
-        f"[gemini retry] {type(e).__name__}: {str(e)[:80]} "
-        f"-> sleeping {rs.next_action.sleep:.1f}s (attempt {rs.attempt_number})",
-        flush=True,
-    )
 
 
 class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
@@ -146,17 +106,11 @@ class EncoderGeminiModel(EncoderBaseModel, LossTextAccessMixin):
             output_dimensionality=self._d_model,
         )
 
-        @retry(
-            retry=retry_if_exception(_is_transient_gemini_error),
-            wait=wait_random_exponential(multiplier=1.5, max=60),
-            stop=stop_after_attempt(6),
-            before_sleep=_log_gemini_retry,
-            reraise=True,
-        )
         def _embed_chunk(chunk):
             return self._client.models.embed_content(
                 contents=chunk, model=self.model_name, config=cfg,
             )
+        _embed_chunk = retry_transient(_embed_chunk, label="gemini")
 
         for start in range(0, len(input_texts), self._max_batch):
             chunk = input_texts[start : start + self._max_batch]
