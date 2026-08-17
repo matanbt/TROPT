@@ -130,12 +130,12 @@ Breaking down the additions:
 **Convention: Hyperparameters as Fields.** Anything you want callers to tweak at construction time — temperatures, margins, layer ranges, mode flags — goes here. Crucially, *per-template* data (target tokens, target vectors, target classes) does **not** belong here; it belongs on {py:class}`~tropt.common.Targets`, and the loss pulls it in by parameter name (`target_response_toks` above). This keeps the loss instance stateless w.r.t. the attack — the optimizer can resample or subsample templates without telling the loss.
 
 
-**Convention: Inheriting from a category base class.** {py:mod}`tropt.loss` defines abstract bases like {py:class}`~tropt.loss.PrefillBasedLoss`, {py:class}`~tropt.loss.EmbeddingBasedLoss`, {py:class}`~tropt.loss.HiddenStateBasedLoss`, {py:class}`~tropt.loss.AttentionBasedLoss`, {py:class}`~tropt.loss.ClassificationBasedLoss`, and {py:class}`~tropt.loss.TextBasedLoss`. Each sets the right `require_*` flag and pins a typed `__call__` signature for its category — inheriting from the right base saves boilerplate and signals intent. The categorization is a **convention for readability**, not a hard requirement: the resolver dispatches by parameter names, not by base class. If your loss doesn't fit any existing category, inheriting from `BaseLoss` directly and setting the flags yourself is equally valid.
+**Convention: inherit from `BaseLoss`, declare your own flags.** The resolver dispatches on **parameter names**, never on base class — so subclassing `BaseLoss` directly and setting the `require_*` flags you need is the normal case. Two shared bases exist only where they carry something real: {py:class}`~tropt.loss.PrefillBasedLoss` (sets `require_target_prefill=True` and pins the prefill `__call__` signature shared by four losses) and {py:class}`~tropt.loss.TextBasedLoss` (sets `is_differentiable=False` for text-scoring losses). Don't add a new base class for a single loss.
 
 
 ## Practical Example: Activation Steering
 
-Up to here we asked the model for logits over a target response. The same pattern works just as well for *any* model artifact — swap the base class, swap the `require_*` flag, and swap the `__call__` parameter names, and you have a loss over a completely different signal.
+Up to here we asked the model for logits over a target response. The same pattern works just as well for *any* model artifact — swap the `require_*` flag and swap the `__call__` parameter names, and you have a loss over a completely different signal.
 
 To demonstrate, we rewrite the loss as **activation steering** ([Arditi et al., 2024](https://arxiv.org/abs/2406.11717)): encouraging the model's hidden activations at chosen layers/positions to align with (or away from) a target direction in activation space. This has been used both to suppress refusal in jailbreaks and to probe internal representations. It's what {py:class}`~tropt.loss.SteeringActivationLoss` does in TROPT.
 
@@ -148,11 +148,11 @@ import torch.nn.functional as F
 from jaxtyping import Float
 from torch import Tensor
 
-from tropt.loss import HiddenStateBasedLoss
+from tropt.loss import BaseLoss
 
 
 @dataclass
-class MyLoss(HiddenStateBasedLoss):
+class MyLoss(BaseLoss):
     """Steers hidden activations along (or away from) a target direction."""
 
     # Hyperparameters
@@ -160,7 +160,6 @@ class MyLoss(HiddenStateBasedLoss):
     steer_away: bool = False  # if True, push activations *away* from the direction
 
     # Ask the model to return all hidden states.
-    # (HiddenStateBasedLoss already declares this; shown here for emphasis.)
     require_hidden_states: ClassVar[bool] = True
 
     def __call__(
@@ -177,11 +176,11 @@ class MyLoss(HiddenStateBasedLoss):
 
 Structurally nothing is new — same `BaseLoss` lineage, same dataclass-fields-as-hyperparameters, same `require_*` declaration, same per-sample return shape. The differences are entirely in *which* names appear:
 
-- **Base class & flag:** {py:class}`~tropt.loss.HiddenStateBasedLoss` (sets `require_hidden_states=True`), replacing `PrefillBasedLoss` / `require_target_prefill`.
+- **Flag:** `require_hidden_states=True` replaces `require_target_prefill`.
 - **Model output:** `full_hidden_states` replaces `prefill_response_logits`.
 - **Per-template target:** `target_directions` (provided via `Targets(target_directions=...)`) replaces `target_response_toks`.
 
-The same one-knob swap also produces attention-based losses (inherit from `AttentionBasedLoss`, name `full_attentions`) and classifier losses (inherit from `ClassificationBasedLoss`, name `output_class_logits`) — see the existing implementations of {py:class}`~tropt.loss.AttentionEnhLoss` and {py:class}`~tropt.loss.MisclassCELoss` for those variants.
+The same one-knob swap also produces attention-based losses (`require_attentions=True`, name `full_attentions`) and classifier losses (no flag, name `output_class_logits`) — see the existing implementations of {py:class}`~tropt.loss.AttentionEnhLoss` and {py:class}`~tropt.loss.MisclassCELoss` for those variants.
 
 
 ## Going Non-Differentiable: Scoring Triggered Text

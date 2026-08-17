@@ -3,10 +3,46 @@ import string
 from typing import List, Optional
 
 import torch
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.model.model_base import BaseTokenizer
+
+
+def random_single_flips(
+    trigger_ids: Int[Tensor, "trigger_seq_len"],
+    n_variations: int,
+    valid_token_ids: Optional[Int[Tensor, "n_valid"]] = None,
+    vocab_size: Optional[int] = None,
+) -> Int[Tensor, "n_variations trigger_seq_len"]:
+    """`n_variations` copies of `trigger_ids`, the first left intact and each of the
+    rest given one random single-token flip.
+
+    Used by gradient-averaging optimizers (GASLITE, GASLITE+) and by logit-sampling
+    ones (RASLITE+). Sampling is restricted to `valid_token_ids` when given,
+    otherwise uniform over `vocab_size`.
+    """
+    assert (valid_token_ids is None) ^ (vocab_size is None), (
+        "Pass exactly one of `valid_token_ids` or `vocab_size`."
+    )
+    device = trigger_ids.device
+    variations = trigger_ids.repeat(n_variations, 1)
+
+    n_flips = n_variations - 1
+    if n_flips <= 0:
+        return variations
+
+    pos = torch.randint(0, variations.shape[1], (n_flips, 1), device=device)
+    if valid_token_ids is not None:
+        tok = valid_token_ids[
+            torch.randint(0, len(valid_token_ids), (n_flips, 1), device=device)
+        ]
+    else:
+        assert vocab_size is not None  # guaranteed by the XOR assert above
+        tok = torch.randint(0, vocab_size, (n_flips, 1), device=device)
+    # `variations[1:]` is a view, so this writes through to `variations`.
+    variations[1:].scatter_(1, pos, tok.to(variations.dtype))
+    return variations
 
 
 def get_printable_random_trigger(

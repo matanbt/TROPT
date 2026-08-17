@@ -56,7 +56,7 @@ codeautolink_concat_default = True
 myst_enable_extensions = ["colon_fence", "deflist", "attrs_inline"]
 myst_heading_anchors = 3
 
-autodoc_mock_imports = ['runner', 'sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'tqdm', 'transformers', 'accelerate', 'hydra', 'omegaconf', 'huggingface_hub', 'datasets', 'PIL', 'diffusers', 'trackio']
+autodoc_mock_imports = ['sentence_transformers', 'wandb', 'livelossplot', 'openai', 'litellm', 'IPython', 'tqdm', 'transformers', 'accelerate', 'huggingface_hub', 'datasets', 'PIL', 'diffusers', 'trackio']
 autodoc_typehints = "description"
 
 

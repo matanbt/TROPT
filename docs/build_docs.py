@@ -3,41 +3,36 @@ import os
 import shutil
 import stat
 import subprocess
+import sys
 import time
 import webbrowser
 
 
-def make_writable(path):
-    """Force a file/directory to be writable."""
-    try:
-        os.chmod(path, stat.S_IWRITE)
-    except Exception:
-        pass
+def _force_writable(func, path, _exc):
+    """rmtree error hook: clear the read-only bit (git/GitHub files) and retry."""
+    os.chmod(path, stat.S_IWRITE)
+    func(path)
+
+
+# `onexc` replaced `onerror` in Python 3.12; the project supports 3.10+.
+_RMTREE_HOOK = (
+    {"onexc": _force_writable} if sys.version_info >= (3, 12)
+    else {"onerror": _force_writable}
+)
+
 
 def robust_cleanup(path):
-    """
-    Aggressively cleans up a directory.
-    1. Walks tree to fix permissions (handling read-only Git/GitHub files).
-    2. Tries to delete.
-    3. Returns True if successful, False if locked.
+    """Delete `path`, retrying while Google Drive / Windows holds a lock.
+
+    Returns True if the tree is gone, False if it stayed locked.
     """
     if not os.path.exists(path):
         return True
 
     print(f"Cleaning up {path}...")
-
-    # 1. Force permissions first (Pre-emptive strike)
-    for root, dirs, files in os.walk(path):
-        for d in dirs:
-            make_writable(os.path.join(root, d))
-        for f in files:
-            make_writable(os.path.join(root, f))
-    make_writable(path)
-
-    # 2. Try deletion with retries
-    for i in range(5):
+    for _ in range(5):
         try:
-            shutil.rmtree(path)
+            shutil.rmtree(path, **_RMTREE_HOOK)
             return True
         except OSError:
             time.sleep(0.5)  # Wait for Google Drive/Windows to release lock
@@ -84,41 +79,10 @@ def build_docs():
     # ---------------------------------------------------------
     # 2. Inject 'from __future__ import annotations'
     # ---------------------------------------------------------
+    # Same script CI runs (deploy_docs.yml), pointed at the throwaway copy.
     print("Injecting future annotations...")
-    import ast
-    for root, _, files in os.walk(src_copy):
-        for file in files:
-            # common.py is excluded to match CI (deploy_docs.yml): future
-            # annotations stringify its pydantic/jaxtyping runtime field types
-            # and break Sphinx autodoc (sphinx-doc/sphinx#11211).
-            if file.endswith(".py") and file != "common.py":
-                path = os.path.join(root, file)
-                try:
-                    with open(path, "r", encoding="utf-8") as f:
-                        content = f.read()
-
-                    if "from __future__ import annotations" not in content:
-                        # Insert AFTER a leading module docstring so the docstring
-                        # isn't demoted to a bare string expression (which would
-                        # strip it from the autodoc-rendered module page).
-                        insert_at = 0
-                        try:
-                            mod = ast.parse(content)
-                            first = mod.body[0] if mod.body else None
-                            if (
-                                isinstance(first, ast.Expr)
-                                and isinstance(getattr(first, "value", None), ast.Constant)
-                                and isinstance(first.value.value, str)
-                            ):
-                                insert_at = first.end_lineno
-                        except SyntaxError:
-                            insert_at = 0
-                        lines = content.splitlines(keepends=True)
-                        lines.insert(insert_at, "from __future__ import annotations\n")
-                        with open(path, "w", encoding="utf-8") as f:
-                            f.write("".join(lines))
-                except Exception as e:
-                    print(f"  Skipping {file}: {e}")
+    from docs.scripts.inject_annotations import inject
+    print(f"  Injected into {inject(src_copy)} module(s).")
 
     # NOTE: inlining + sanitizing tropt/recipe_hub/README.md now happens in
     # conf.py (the `include-read` event), so it runs for every build path.

@@ -7,7 +7,7 @@ methods (tensor stacking, loss aggregation, etc.) is negligible compared to
 the model forward/backward passes.
 
 Uses the Kaplan et al. (2020) approximation (https://arxiv.org/abs/2001.08361):
-``FLOPs_fwd ≈ 2·N·T``, ``FLOPs_bwd ≈ 4·N·T``.
+``FLOPs_fwd ≈ 2·N·T``, ``FLOPs_fwd+bwd ≈ 6·N·T``.
 Cheap and deterministic. Requires ``_model`` to be a HuggingFace
 ``PreTrainedModel``.
 Adapted from https://github.com/romovpa/claudini.
@@ -34,27 +34,11 @@ from transformers import PreTrainedModel
 
 logger = logging.getLogger(__name__)
 
-class FlopCounterBase:
-    """Base class for FLOP counting. Subclasses implement specific counting methods."""
-
-    def count_forward(self, n_tokens: int) -> int:
-        """Count forward-pass FLOPs for a given number of tokens."""
-        raise NotImplementedError
-
-    def count_backward(self, n_tokens: int) -> int:
-        """Count backward-pass FLOPs for a given number of tokens."""
-        raise NotImplementedError
-
-    def count_forward_backward(self, n_tokens: int) -> int:
-        """Count combined forward+backward FLOPs for a given number of tokens."""
-        raise NotImplementedError
-
-
-class ManualFlopCounter(FlopCounterBase):
+class ManualFlopCounter:
     """Track FLOPs using Kaplan et al. (2020) approximation.
 
-    FLOPs_fwd  ≈ 2 · N_params · n_tokens
-    FLOPs_bwd  ≈ 4 · N_params · n_tokens
+    FLOPs_fwd      ≈ 2 · N_params · n_tokens
+    FLOPs_fwd+bwd  ≈ 6 · N_params · n_tokens
 
     For MoE models, N_params is the *active* parameter count (shared params +
     expert params scaled by top-k / num_experts).
@@ -230,75 +214,5 @@ class ManualFlopCounter(FlopCounterBase):
     def count_forward(self, n_tokens: int) -> int:
         return 2 * self.n_params * n_tokens
 
-    def count_backward(self, n_tokens: int) -> int:
-        return 4 * self.n_params * n_tokens
-
     def count_forward_backward(self, n_tokens: int) -> int:
         return 6 * self.n_params * n_tokens
-
-
-# ---------------------------------------------------------------------------
-# [DISABLED] Torch automatic FLOP-counting. Disabled due to potential instability and limitations.
-# ---------------------------------------------------------------------------
-
-
-# def track_flops(includes_backward: bool = False):
-#     """Decorator for ``compute_*`` methods — dispatches FLOP counting by mode.
-
-#     ``"torch"`` — wraps the method with ``FlopCounterMode``.
-
-#     ``"manual"`` — measures the delta of ``_token_used`` before/after the
-#     method, then applies the Kaplan approximation. Requires a
-#     ``_kaplan_flop_counter`` (:class:`KaplanFlopCounter`) on the model —
-#     provided automatically by :class:`HuggingFaceBackendModel`.
-
-#     Args:
-#         includes_backward: The wrapped method includes a backward pass
-#             (``"manual"`` uses ``6·N·T`` instead of ``2·N·T``).
-#     """
-
-#     def decorator(method):
-#         @wraps(method)
-#         def wrapper(self, *args, **kwargs):
-#             mode = getattr(self, "count_flops", False)
-#             if not mode:
-#                 return method(self, *args, **kwargs)
-
-#             # --- torch mode ---
-#             if mode == "torch":
-#                 from torch.utils.flop_counter import FlopCounterMode as _FlopCounterMode
-
-#                 with _FlopCounterMode(display=False) as flop_counter:
-#                     result = method(self, *args, **kwargs)
-#                 self._update_usage_stats(flops=flop_counter.get_total_flops())
-#                 return result
-
-#             # --- manual mode ---
-#             if mode == "manual":
-#                 counter = getattr(self, "_kaplan_flop_counter", None)
-#                 if counter is None:
-#                     logger.warning(
-#                         "count_flops='manual' but no KaplanFlopCounter on model; "
-#                         "skipping FLOP counting."
-#                     )
-#                     return method(self, *args, **kwargs)
-
-#                 tokens_before = getattr(self, "_token_used", 0)
-#                 result = method(self, *args, **kwargs)
-#                 tokens_after = getattr(self, "_token_used", 0)
-#                 delta_tokens = tokens_after - tokens_before
-
-#                 if includes_backward:
-#                     flops = counter.count_forward_backward(delta_tokens)
-#                 else:
-#                     flops = counter.count_forward(delta_tokens)
-#                 self._update_usage_stats(flops=flops)
-#                 return result
-
-#             raise ValueError(
-#                 f"Unknown count_flops mode: {mode!r}. Use False, 'torch', or 'manual'."
-#             )
-
-#         return wrapper
-
-#     return decorator

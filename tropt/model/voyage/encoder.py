@@ -1,54 +1,10 @@
 from typing import List, Optional
 
 import torch
-from tenacity import (
-    retry,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_random_exponential,
-)
 
 from tropt.common import ModelOutput
 from tropt.model import EncoderBaseModel, LossTextAccessMixin
-
-
-def _is_transient_voyage_error(e: BaseException) -> bool:
-    # Transient: voyageai connection / timeout / 5xx / 429, plus the underlying
-    # requests/urllib3/socket errors that surface through them.
-    # Non-transient: 4xx (auth, bad request, etc.).
-    name = type(e).__name__
-    if name in {
-        "APIConnectionError",
-        "Timeout",
-        "ServiceUnavailableError",
-        "RateLimitError",
-        "ConnectionError",
-        "ConnectionResetError",
-        "ConnectionAbortedError",
-        "ProtocolError",
-        "ReadTimeout",
-        "WriteTimeout",
-        "ConnectTimeout",
-        "ChunkedEncodingError",
-    }:
-        return True
-    code = (
-        getattr(e, "http_status", None)
-        or getattr(e, "status_code", None)
-        or getattr(e, "code", None)
-    )
-    if isinstance(code, int) and (code == 429 or 500 <= code < 600):
-        return True
-    return False
-
-
-def _log_voyage_retry(rs):
-    e = rs.outcome.exception()
-    print(
-        f"[voyage retry] {type(e).__name__}: {str(e)[:80]} "
-        f"-> sleeping {rs.next_action.sleep:.1f}s (attempt {rs.attempt_number})",
-        flush=True,
-    )
+from tropt.model.api_retry import retry_transient
 
 
 class EncoderVoyageModel(EncoderBaseModel, LossTextAccessMixin):
@@ -80,10 +36,6 @@ class EncoderVoyageModel(EncoderBaseModel, LossTextAccessMixin):
         self._client = voyageai.Client()
         self.model_name = model_name
         self._d_model = d_model
-        self._text_to_input_type = {
-            "document": "document",
-            "query": "query",
-        }
 
     @property
     def d_model(self) -> int:
@@ -111,27 +63,20 @@ class EncoderVoyageModel(EncoderBaseModel, LossTextAccessMixin):
             "document",
             "query",
         ), f"Unsupported text_type {text_type}"
-        input_type = self._text_to_input_type.get(text_type) if text_type else None
 
         # Voyage's /embeddings caps at 128 texts per call on the newer models; chunk.
         MAX_BATCH = 128
         all_embeddings: list = []
         total_tokens = 0
 
-        @retry(
-            retry=retry_if_exception(_is_transient_voyage_error),
-            wait=wait_random_exponential(multiplier=1.5, max=60),
-            stop=stop_after_attempt(6),
-            before_sleep=_log_voyage_retry,
-            reraise=True,
-        )
         def _embed_chunk(chunk):
             return self._client.embed(
                 texts=chunk,
                 model=self.model_name,
-                input_type=input_type,
+                input_type=text_type,  # voyage's input_type values match ours ("document"/"query")
                 output_dimension=self._d_model,
             )
+        _embed_chunk = retry_transient(_embed_chunk, label="voyage")
 
         for start in range(0, len(input_texts), MAX_BATCH):
             chunk = input_texts[start : start + MAX_BATCH]

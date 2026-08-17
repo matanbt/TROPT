@@ -37,20 +37,6 @@ class TextBasedLoss(BaseLoss):
 ############################
 
 @dataclass
-class GeneratedResponseBasedLoss(TextBasedLoss):
-    """Marker base for losses that operate on `generated_response_strs`."""
-
-    require_generation: ClassVar[bool] = True
-
-    @abstractmethod
-    def __call__(
-        self,
-        generated_response_strs: Annotated[List[str], "bsz"],
-    ) -> Float[torch.Tensor, "bsz"]:
-        pass
-
-
-@dataclass
 class BinaryLMJudgeLoss(TextBasedLoss):
     """Abstract base for Yes/No LLM judge losses.
 
@@ -210,10 +196,12 @@ class InputFluencyLoss(BinaryLMJudgeLoss):
 
 
 @dataclass
-class ResponseHarmfulnessLoss(BinaryLMJudgeLoss, GeneratedResponseBasedLoss):
+class ResponseHarmfulnessLoss(BinaryLMJudgeLoss):
     """
     Loss that encourages harmful model responses (operates on generated response string).
     """
+
+    require_generation: ClassVar[bool] = True
 
     def _create_prompt(self, response_text: str) -> str:
         return (

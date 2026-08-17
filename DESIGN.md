@@ -156,7 +156,7 @@ return resolve_and_compute_loss(model_output, model_input, loss_func)  # the los
 This keeps loss logic in one location, makes adding new loss types straightforward, and means new models only provide data---not loss implementation.
 
 **Convention.** As a good practice, we divide the losses with superclasses according to the type of input that the loss accepts (which is, in turn, mostly the type of output of the model). For instance, Cross-Entropy-based losses utilize the logit outputs, and thus they will inherit from `PrefillBasedLoss`.
-In this way, from the model end, we would be disable unneeded calculation: for instnace, if the loss does not requrie hidden states (i.e., the loss is not subclass of `HiddenStateBasedLoss`), we can know in advance to avoid saving them for efficiency.
+In this way, from the model end, we would be disable unneeded calculation: for instnace, if the loss does not requrie hidden states (i.e., the loss does not set `require_hidden_states`), we can know in advance to avoid saving them for efficiency.
 
 ## Component 3: Optimizers
 
@@ -275,7 +275,6 @@ The repository exposes two interfaces for managing recipes:
 
 * **Recipe Hub [`tropt/recipe_hub/`].** Python modules that bind the four components to reproduce existing attacks. E.g., the `gcg__zou2023` module wires `LMHFModel`, `PrefillCELoss`, `GCGOptimizer`, and a standard suffix template to reproduce the GCG attack. Useful for researchers who want to quickly run published attacks, benchmark them, or fork-and-modify.
 
-<!-- * **Config Runner [`runner/main.py`].** A flexible runner that constructs a recipe from a YAML configuration file. The runner uses [Hydra](https://hydra.cc/) to manage configurations, allowing users to specify the model, loss, optimizer, and their parameters in a structured way without writing new code. -->
 
 ## Summary
 

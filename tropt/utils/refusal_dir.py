@@ -8,29 +8,26 @@ Implements the difference-in-means method from:
 Useful for attacks the suppress model refusals via activation steering (e.g., IRIS attack).
 """
 
-import io
 import logging
+import random
 from typing import List, Optional, Tuple
 
-import pandas as pd
-import requests
 import torch
-from datasets import load_dataset
 from jaxtyping import Float
-from sklearn.model_selection import train_test_split
 
 from tropt.model.huggingface.lm import LMHFModel
 
 logger = logging.getLogger(__name__)
 
-def get_hf_model(
-    model: LMHFModel,
-):
-    """
-    Extract the underlying HuggingFace model from the LMHFModel wrapper.
-    This is off-pattern, but needed for the hooks in this module.
-    """
-    return model._model
+ADVBENCH_CSV_URL = "https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv"
+
+
+def _shuffled_split(instructions: List[str], test_split: float) -> Tuple[List[str], List[str]]:
+    """Deterministic train/test split (fixed seed, so runs are reproducible)."""
+    instructions = list(instructions)
+    random.Random(42).shuffle(instructions)
+    n_test = int(len(instructions) * test_split)
+    return instructions[n_test:], instructions[:n_test]
 
 
 def get_harmful_instructions(n_samples: Optional[int] = None, test_split: float = 0.2) -> Tuple[List[str], List[str]]:
@@ -44,16 +41,15 @@ def get_harmful_instructions(n_samples: Optional[int] = None, test_split: float 
     Returns:
         (train_instructions, test_instructions)
     """
-    url = 'https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv'
-    response = requests.get(url)
-    dataset = pd.read_csv(io.StringIO(response.content.decode('utf-8')))
-    instructions = dataset['goal'].tolist()
+    from datasets import load_dataset
+
+    dataset = load_dataset("csv", data_files=ADVBENCH_CSV_URL, split="train")
+    instructions = dataset["goal"]
 
     if n_samples:
         instructions = instructions[:n_samples]
 
-    train, test = train_test_split(instructions, test_size=test_split, random_state=42)
-    return train, test
+    return _shuffled_split(instructions, test_split)
 
 
 def get_harmless_instructions(n_samples: Optional[int] = None, test_split: float = 0.2) -> Tuple[List[str], List[str]]:
@@ -67,6 +63,8 @@ def get_harmless_instructions(n_samples: Optional[int] = None, test_split: float
     Returns:
         (train_instructions, test_instructions)
     """
+    from datasets import load_dataset
+
     dataset = load_dataset('tatsu-lab/alpaca')
 
     # Filter for instructions without inputs
@@ -77,8 +75,7 @@ def get_harmless_instructions(n_samples: Optional[int] = None, test_split: float
             if n_samples and len(instructions) >= n_samples:
                 break
 
-    train, test = train_test_split(instructions, test_size=test_split, random_state=42)
-    return train, test
+    return _shuffled_split(instructions, test_split)
 
 
 def extract_activations(
@@ -109,11 +106,9 @@ def extract_activations(
             return_dict=True,
         )["input_ids"].to(model.device)
 
-        hf_model = get_hf_model(model)
-
-        # Forward pass with hidden states
+        # Forward pass with hidden states (off-pattern raw-model access, needed here)
         with torch.no_grad():
-            outputs = hf_model(
+            outputs = model._model(
                 inputs,
                 output_hidden_states=True,
                 return_dict=True,
