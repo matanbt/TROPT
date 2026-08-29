@@ -25,11 +25,11 @@ from tropt.loss import (
     FirstTokenNLLLoss,
     SimilarityLoss,
 )
+from tropt.model import PassOnModel
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.model.model_base import LMBaseModel
 from tropt.model.openai.encoder import EncoderOpenAIModel
-from tropt.model.passon import PassOnModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rs_optimizer import RandomSearchOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -254,3 +254,4 @@ def rs_oracle(
             trigger_len, tokenizer=model_obj.tokenizer, token_constraints=tc,
         ),
     )
+

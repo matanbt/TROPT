@@ -15,6 +15,7 @@ from .AdvDecoding__zhang2024 import (
     advdecoding_retrieval__zhang2024,
 )
 from .ARCA__jones2023 import arca__jones2023
+from .ask_for_directions__zhang2025 import ask_for_directions__zhang2025
 from .ARCAToxicReverse import arca_toxic_reverse
 from .AutoPrompt__shin2020 import autoprompt__shin2020
 from .BEAST__sadasivan2024 import beast__sadasivan2024
@@ -49,7 +50,11 @@ from .PromptRecovery__wen2023 import (
     get_image_embedding_for_clip_model,
     prompt_recovery__wen2023,
 )
-from .PRS__andriushchenko2024 import prs__andriushchenko2024, rs_emb
+from .PRS__andriushchenko2024 import (
+    prs__andriushchenko2024,
+    rs_emb,
+    rs_oracle,
+)
 from .QCG__hayase2024 import (
     gcgp_blackbox__hayase2024,
     gcgp_whitebox__hayase2024,
@@ -113,6 +118,10 @@ RECIPES = {
     # PRS (Andriushchenko 2024) + black-box random-search variants
     "prs__andriushchenko2024": prs__andriushchenko2024,
     "rs_emb": rs_emb,
+    "rs_oracle": rs_oracle,
+
+    # Ask-For-Directions on RS (Zhang 2025)
+    "ask_for_directions__zhang2025": ask_for_directions__zhang2025,
 
     # MAC (Zhang & Wei 2024)
     "mac__zhang2024": mac__zhang2024,

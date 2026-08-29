@@ -31,6 +31,7 @@ from .text_losses import (
     FirstTokenNLLLoss,
     GeneratedResponseBasedLoss,
     InputFluencyLoss,
+    PairwiseRelativeOracleLoss,
     ResponseHarmfulnessLoss,
     TextBasedLoss,
 )
