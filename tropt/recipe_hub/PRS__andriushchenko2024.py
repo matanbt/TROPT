@@ -19,11 +19,17 @@ import torch
 from jaxtyping import Float
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
-from tropt.loss import FirstTokenNLLLoss, SimilarityLoss
+from tropt.loss import (
+    BaseLoss,
+    ExternalTriggerPerplexityLoss,
+    FirstTokenNLLLoss,
+    SimilarityLoss,
+)
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.model.model_base import LMBaseModel
 from tropt.model.openai.encoder import EncoderOpenAIModel
+from tropt.model.passon import PassOnModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rs_optimizer import RandomSearchOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -199,4 +205,52 @@ def rs_emb(
         templates=[template],
         targets=Targets(target_vectors=target_vector),
         initial_trigger=initial_trigger,
+    )
+
+
+# ---------------------------------------------------------------------------
+# RS-Oracle: PRS-style random search against a trigger-only ("oracle") loss.
+# No actual target model — the loss alone defines the self-contained objective (e.g., an external model scoring the trigger).
+# ---------------------------------------------------------------------------
+
+
+def rs_oracle(
+    loss: Optional[BaseLoss] = None,
+    tokenizer: str = "google/gemma-3-270m-it",
+    trigger_len: int = 20,
+    num_steps: int = 500,
+    # --- misc ---
+    tracker: Optional[BaseTracker] = None,
+    seed: Optional[int] = None,
+) -> OptimizerResult:
+    """Run black-box Random Search against a standalone, trigger-only, 'oracle' loss.
+
+    The loss scores the trigger text on its own (it may hide a model of its
+    own, invisible here), so the model component is a ``PassOnModel``; it has *no* underlying model and
+    merely forwards candidates to it.
+
+    This is useful for cases where we have a complicated oracle loss, and we just want to climb-hill it.
+
+    Args:
+        loss: Loss function that scores the trigger text on its own (i.e., taking `input_trigger_strs` as input).
+        tokenizer: Auxiliary tokenizer defining the search space.
+    """
+    model_obj = PassOnModel(tokenizer=tokenizer)
+    tc = TokenConstraints()
+    loss = loss if loss is not None else ExternalTriggerPerplexityLoss()
+
+    optimizer = RandomSearchOptimizer(
+        model=model_obj,
+        loss=loss,
+        tracker=tracker,
+        seed=seed,
+        num_steps=num_steps,
+        token_constraints=tc,
+    )
+
+    return optimizer.optimize_trigger(
+        templates=[OPTIMIZED_TRIGGER_PLACEHOLDER],  # templating will be discarded anyway.
+        initial_trigger=get_printable_random_trigger(
+            trigger_len, tokenizer=model_obj.tokenizer, token_constraints=tc,
+        ),
     )
