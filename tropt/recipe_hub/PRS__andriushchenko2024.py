@@ -25,11 +25,11 @@ from tropt.loss import (
     FirstTokenNLLLoss,
     SimilarityLoss,
 )
+from tropt.model import PassOnModel
 from tropt.model.huggingface.encoder import EncoderHFModel
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.model.model_base import LMBaseModel
 from tropt.model.openai.encoder import EncoderOpenAIModel
-from tropt.model.passon import PassOnModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.rs_optimizer import RandomSearchOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
@@ -216,14 +216,13 @@ def rs_emb(
 
 def rs_oracle(
     loss: Optional[BaseLoss] = None,
-    tokenizer: str = "google/gemma-3-270m-it",
     trigger_len: int = 20,
     num_steps: int = 500,
     # --- misc ---
     tracker: Optional[BaseTracker] = None,
     seed: Optional[int] = None,
 ) -> OptimizerResult:
-    """Run black-box Random Search against a standalone, trigger-only, 'oracle' loss.
+    """Run black-box Random Search against a standalone, trigger-only, 'oracle' loss. This recipe follows the oracle loss pattern, where the black-box optimization is guided by the a loss oracle, and does not interact with the model directly.
 
     The loss scores the trigger text on its own (it may hide a model of its
     own, invisible here), so the model component is a ``PassOnModel``; it has *no* underlying model and
@@ -233,9 +232,8 @@ def rs_oracle(
 
     Args:
         loss: Loss function that scores the trigger text on its own (i.e., taking `input_trigger_strs` as input).
-        tokenizer: Auxiliary tokenizer defining the search space.
     """
-    model_obj = PassOnModel(tokenizer=tokenizer)
+    model_obj = PassOnModel()
     tc = TokenConstraints()
     loss = loss if loss is not None else ExternalTriggerPerplexityLoss()
 
@@ -254,3 +252,4 @@ def rs_oracle(
             trigger_len, tokenizer=model_obj.tokenizer, token_constraints=tc,
         ),
     )
+

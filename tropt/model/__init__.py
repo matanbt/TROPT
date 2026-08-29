@@ -49,3 +49,6 @@ from .huggingface.lm import LMHFModel, LMHFTokenInputManager
 
 # Import LiteLLM models:
 from .litellm_proxy.lm import LiteLLMModel
+
+# Import model-less (oracle-loss) backend:
+from .internal.passon import PassOnModel

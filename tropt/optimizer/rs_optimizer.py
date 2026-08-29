@@ -49,6 +49,7 @@ class RandomSearchOptimizer(BaseOptimizer):
     - The original implementation employs a "warm" initial trigger (eg another GCG suffix), and uses it as the starting point for all restarts.  Here, we sample random triggers for all restarts for diversity.
     - The original implementation employs an LLM judge for early stopping; here we use a simple patience counter for restarts.
     - The original implementation mostly use a loss-based scheduler. For generality (e.g., different potential loss values) we avoid using it.
+    - This optimizer is suitable also for relative losses,  where the current trigger is compared against the candidates (e.g. ``PairwiseRelativeOracleLoss``). This stems from the optimizer choosing the best candidate in each step----rather than comparing against the best loss across all steps---while setting the first candidate of each evaluation batch to be the incumbent (current trigger).
 
 
     Reference implementation:
@@ -198,6 +199,9 @@ class RandomSearchOptimizer(BaseOptimizer):
                     candidates, valid_token_ids, local_step, trigger_len
                 )
 
+            # Add the incumbent (current trigger) as the first candidate
+            candidates = torch.cat([trigger_ids.unsqueeze(0), candidates], dim=0)
+
             # --- Evaluate candidates (as texts) ---
             candidate_strs = tokenizer.decode_triggers(candidates)
             losses = self.model.compute_loss_from_texts(
@@ -207,10 +211,10 @@ class RandomSearchOptimizer(BaseOptimizer):
             # If improved, update current trigger; else increment patience counter
             best_idx = losses.argmin()
             candidate_loss = losses[best_idx].item()
+            trigger_ids = candidates[best_idx]
+            current_loss = candidate_loss
 
-            if candidate_loss < current_loss:
-                trigger_ids = candidates[best_idx]
-                current_loss = candidate_loss
+            if best_idx != 0:  # improved over incumbent
                 steps_without_improvement = 0
             else:
                 steps_without_improvement += 1

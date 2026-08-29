@@ -29,15 +29,16 @@ class PassOnModel(
 
     *Motivation:*
         Some losses are self-contained oracles: they score the trigger text alone
-        (e.g. ``ExternalTriggerPerplexityLoss``, or losses against compliated APIs such as coding agents).
-        These losses don't expect any model to be queried or deliver arguments to them; it would therefore be wasteful to have a model component that queries a model and then discards the result. 
+        (e.g. ``ExternalTriggerPerplexityLoss``, or losses against
+        compliated APIs such as coding agents).
+        These losses don't expect any model to be queried or deliver arguments to them; it would therefore be wasteful to have a model component that queries a model and then discards the result.
         This is precisely what this `PassOnModel` is for: it has no underlying model, and simply forwards candidate triggers to the loss.
 
     *Use for:*
-        `PassOnModel` is useful for cases where we have a loss that queries an external API using the triggers, or a loss that computes some complicated self-contained metric on top of the triggers. In such cases, we can still use TROPT's optimziers (despite querying not actual model), by using this class, and climb-hill the given metric.
+        `PassOnModel` is useful for cases where we have a loss that queries an external API using the triggers, or a loss that computes some complicated self-contained metric on top of the triggers. In such cases, we can still use TROPT's optimziers (despite querying not actual model), by using this class, and climb-hill the given metric. We refer this pattern as the oracle loss pattern, where the black-box optimization is guided by the a loss oracle, and does not interact with the model directly.
     """
 
-    def __init__(self, tokenizer: Union[str, BaseTokenizer] = "google/gemma-3-270m-it"):
+    def __init__(self, tokenizer: Union[str, BaseTokenizer] = "Qwen/Qwen3-0.6B"):
         """
         Args:
             tokenizer: Auxiliary tokenizer defining the optimizer's search space,
