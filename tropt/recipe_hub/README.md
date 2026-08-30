@@ -95,6 +95,7 @@ No gradient access required. Target model is queried only via text input/output.
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| `ask_for_directions__zhang2025` | Random search steered by the victim's own **verbalized** pairwise preference ("which prompt is likelier to elicit *Sure*? reply 0/1"); no logit access. | *None* (`PassOnModel`); victim = oracle LM | Loss (Text) | [Zhang et al., 2025](https://arxiv.org/abs/2510.16794) | [`AskForDirections__zhang2025.py`](AskForDirections__zhang2025.py) |
 | `beast__sadasivan2024` | Beam search using utility-LM logits to construct adversarial triggers. | LM (HF) | Loss (Text) | [Sadasivan et al., 2024](https://arxiv.org/abs/2402.15570) | [`BEAST__sadasivan2024.py`](BEAST__sadasivan2024.py) |
 | `ral__sitawarin2024` | Random candidate sampling (no proxy gradients); proxy used only for tokenisation. | LM (any) | Loss (Text) | [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) | [`PAL__sitawarin2024.py`](PAL__sitawarin2024.py) |
 | `gcgp_blackbox__hayase2024` | GCG+ proxy-free variant: focused position sampling, retains buffer per Sec 4.4. | LM (any) | Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`QCG__hayase2024.py`](QCG__hayase2024.py) |
@@ -145,4 +146,5 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| `rs_oracle` | Black-box Random Search against a standalone, trigger-only ("oracle") loss; no target model. Defaults to external-LM trigger perplexity as a placeholder. | *None* (`PassOnModel`) | Loss (Text) | — | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 | `prompt_recovery__wen2023` | Recover text prompts from image embeddings via CLIP + a discrete optimiser. Defaults to PEZ (Wen et al., 2023); `optimizer_type="gcg"` reproduces the paper's main run, and `optimizer_type="adv_decoding"` is a non-paper extension. | CLIP (HF) | Gradient + Loss (Token) | [Williams et al., 2025](https://arxiv.org/abs/2408.06502) | [`PromptRecovery__wen2023.py`](PromptRecovery__wen2023.py) |

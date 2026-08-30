@@ -39,7 +39,7 @@ class RunningBest:
         trigger_emb: Optional[Float[Tensor, "trigger_seq_len embed_dim"]] = None,
     ) -> bool:
         """
-        Record a step and update the best if improved. Returns True on new best.
+        Record a step and update the best if improved / equal. Returns True on new best.
 
         Args:
             loss: the loss observed at the current step
@@ -52,7 +52,7 @@ class RunningBest:
         self.losses.append(loss)
         self.trigger_strs.append(trigger_str)
 
-        if loss < self.loss:
+        if loss <= self.loss:
             self.loss = loss
             self.trigger_ids = trigger_ids.clone() if trigger_ids is not None else None
             self.trigger_str = trigger_str
