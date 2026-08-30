@@ -198,9 +198,6 @@ class RandomSearchOptimizer(BaseOptimizer):
                 block_len = self._mutate_block_random(
                     candidates, valid_token_ids, local_step, trigger_len
                 )
-            
-            # Add the incumbent (current trigger) as the first candidate
-            candidates = torch.cat([trigger_ids.unsqueeze(0), candidates], dim=0)
 
             # Add the incumbent (current trigger) as the first candidate
             candidates = torch.cat([trigger_ids.unsqueeze(0), candidates], dim=0)

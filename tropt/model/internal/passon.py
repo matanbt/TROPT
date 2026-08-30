@@ -28,7 +28,7 @@ class PassOnModel(
 
 
     *Motivation:*
-        Some losses are self-contained oracles: they score the trigger text alone (e.g. ``ExternalTriggerPerplexityLoss``, or losses 
+        Some losses are self-contained oracles: they score the trigger text alone (e.g. ``ExternalTriggerPerplexityLoss``, or losses
         against compliated APIs such as coding agents).
         These losses don't expect any model to be queried or deliver arguments to them; it would therefore be wasteful to have a model component that queries a model and then discards the result.
         This is precisely what this `PassOnModel` is for: it has no underlying model, and simply forwards candidate triggers to the loss.
