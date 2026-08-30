@@ -297,7 +297,6 @@ class PairwiseRelativeOracleLoss(TextBasedLoss):
         )
         return out.choices[0].message.content or ""
 
-
 def _first_binary_digit(reply: str) -> str:
     """First '0'/'1' character in the oracle's reply; '0' (not preferred) if none."""
     return next((c for c in reply if c in "01"), "0")
