@@ -283,3 +283,11 @@ For `PrefillCELoss`, for instance, the loss needs:
 - Each loss's documentation lists its model-output and target requirements.
 
 It is also possible to consult the [Compatibility Matrix](compatibility_matrix.md) for a *rough* automated list of compatible combinations.
+
+
+## Next: other composition patterns
+
+The recipes above are all *white-box, gradient-based* attacks. For the other families —
+black-box (API) attacks, oracle losses with no target model, embedding/retrieval
+poisoning, continuous relaxation, and proxy/surrogate transfer — see
+[Composing a Recipe: Advanced](adding_a_recipe_advanced.md).

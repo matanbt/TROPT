@@ -26,6 +26,12 @@ If you want to *contribute* a component back to the TROPT package itself, see `C
 
       Compose a Model + Loss + Optimizer + Inputs/Targets into a custom recipe.
 
+   .. grid-item-card:: Compose a Recipe: Advanced
+      :link: adding_a_recipe_advanced
+      :link-type: doc
+
+      Beyond white-box gradient attacks: black-box, oracle-loss, embedding, continuous, and proxy patterns.
+
    .. grid-item-card:: Add a Loss
       :link: adding_a_loss
       :link-type: doc
@@ -55,6 +61,7 @@ If you want to *contribute* a component back to the TROPT package itself, see `C
 
    running_a_recipe
    adding_a_recipe
+   adding_a_recipe_advanced
    adding_a_loss
    adding_an_optimizer
    adding_a_model

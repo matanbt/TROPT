@@ -231,6 +231,7 @@ Before adding or modifying any of the components below, **read the relevant guid
 |---|---|
 | Run an existing recipe | `docs/guides/running_a_recipe.md` |
 | Compose a custom recipe | `docs/guides/adding_a_recipe.md` |
+| Compose an advanced recipe (black-box, oracle-loss, embedding, continuous, proxy) | `docs/guides/adding_a_recipe_advanced.md` |
 | Add a loss | `docs/guides/adding_a_loss.md` |
 | Add an optimizer | `docs/guides/adding_an_optimizer.md` |
 | Add a model backend | `docs/guides/adding_a_model.md` |
