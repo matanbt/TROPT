@@ -145,4 +145,5 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
+| `rs_oracle` | Black-box Random Search against a standalone, trigger-only ("oracle") loss; no target model. Defaults to external-LM trigger perplexity as a placeholder. | *None* (`PassOnModel`) | Loss (Text) | — | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 | `prompt_recovery__wen2023` | Recover text prompts from image embeddings via CLIP + a discrete optimiser. Defaults to PEZ (Wen et al., 2023); `optimizer_type="gcg"` reproduces the paper's main run, and `optimizer_type="adv_decoding"` is a non-paper extension. | CLIP (HF) | Gradient + Loss (Token) | [Williams et al., 2025](https://arxiv.org/abs/2408.06502) | [`PromptRecovery__wen2023.py`](PromptRecovery__wen2023.py) |
