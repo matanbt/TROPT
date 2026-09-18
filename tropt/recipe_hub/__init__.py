@@ -15,6 +15,7 @@ from .AdvDecoding__zhang2024 import (
     advdecoding_retrieval__zhang2024,
 )
 from .ARCA__jones2023 import arca__jones2023
+from .AskForDirections__zhang2025 import ask_for_directions__zhang2025
 from .ARCAToxicReverse import arca_toxic_reverse
 from .AutoPrompt__shin2020 import autoprompt__shin2020
 from .BEAST__sadasivan2024 import beast__sadasivan2024
@@ -118,6 +119,9 @@ RECIPES = {
     "prs__andriushchenko2024": prs__andriushchenko2024,
     "rs_emb": rs_emb,
     "rs_oracle": rs_oracle,
+
+    # Ask-For-Directions on RS (Zhang 2025)
+    "ask_for_directions__zhang2025": ask_for_directions__zhang2025,
 
     # MAC (Zhang & Wei 2024)
     "mac__zhang2024": mac__zhang2024,
