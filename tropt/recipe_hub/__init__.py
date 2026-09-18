@@ -49,7 +49,11 @@ from .PromptRecovery__wen2023 import (
     get_image_embedding_for_clip_model,
     prompt_recovery__wen2023,
 )
-from .PRS__andriushchenko2024 import prs__andriushchenko2024, rs_emb
+from .PRS__andriushchenko2024 import (
+    prs__andriushchenko2024,
+    rs_emb,
+    rs_oracle,
+)
 from .QCG__hayase2024 import (
     gcgp_blackbox__hayase2024,
     gcgp_whitebox__hayase2024,
@@ -113,6 +117,7 @@ RECIPES = {
     # PRS (Andriushchenko 2024) + black-box random-search variants
     "prs__andriushchenko2024": prs__andriushchenko2024,
     "rs_emb": rs_emb,
+    "rs_oracle": rs_oracle,
 
     # MAC (Zhang & Wei 2024)
     "mac__zhang2024": mac__zhang2024,
