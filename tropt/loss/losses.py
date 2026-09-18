@@ -267,27 +267,12 @@ class PrefillCWLoss(PrefillBasedLoss):
 
 ############################
 @dataclass
-class TriggerLogitBasedLoss(BaseLoss):
-    """
-    Loss computed on full-sequence logits (`full_logits`) sliced to trigger positions.
-    Useful for optimizing properties of the triggers directly.
-    """
-
-    @abstractmethod
-    def __call__(
-        self,
-        full_logits: Float[Tensor, "bsz seq_len vocab_size"],
-        input_trigger_ids: Int[Tensor, "trigger_seq_len"],
-        input_slices: dict[SliceKey, slice],
-    ) -> Float[Tensor, "bsz"]:
-        pass
-
-
-@dataclass
-class TriggerPerplexityLoss(TriggerLogitBasedLoss):
+class TriggerPerplexityLoss(BaseLoss):
     """
     Calculates perplexity wrt to the target model logits themselves.
     Useful for penalizing non-fluent triggers.
+
+    Computed on full-sequence logits (`full_logits`) sliced to trigger positions.
     """
 
     temperature: float = 1.0
@@ -330,22 +315,7 @@ class TriggerPerplexityLoss(TriggerLogitBasedLoss):
 
 #############################
 @dataclass
-class AttentionBasedLoss(BaseLoss):
-    """Loss computed on model attention weights (`full_attentions`)."""
-
-    require_attentions: ClassVar[bool] = True
-
-    @abstractmethod
-    def __call__(
-        self,
-        full_attentions: Float[Tensor, "bsz n_layers n_heads seq_len[dst] seq_len[src]"],
-        input_slices: dict[SliceKey, slice],
-    ) -> Float[Tensor, "bsz"]:
-        pass
-
-
-@dataclass
-class AttentionEnhLoss(AttentionBasedLoss):
+class AttentionEnhLoss(BaseLoss):
     """
     Encourages attention from the trigger tokens to the chat template after the adversarial trigger.
     *Note*: the sign of the loss is set such that minimizing the loss maximizes the attention.
@@ -355,6 +325,8 @@ class AttentionEnhLoss(AttentionBasedLoss):
 
     Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also, some slices are not supported when LM prefix caching is enabled, so set `use_prefix_cache=False` when loading the model.
     """
+
+    require_attentions: ClassVar[bool] = True
 
     targeted_layers: slice = slice(None)
     src_slc_name: SliceKey = SliceKey.TRIGGER
@@ -384,24 +356,12 @@ class AttentionEnhLoss(AttentionBasedLoss):
 
 ############################
 @dataclass
-class EmbeddingBasedLoss(BaseLoss):
-    """Loss is computed based on model embeddings, compared to given target vectors.
-
-    Requires the target vectors (shape: (n_templates, d_model)) to be provided in the targets dict.
-    """
-
-    @abstractmethod
-    def __call__(
-        self,
-        output_embeddings: Float[Tensor, "bsz d_model"],
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
-        pass
-
-@dataclass
-class SimilarityLoss(EmbeddingBasedLoss):
+class SimilarityLoss(BaseLoss):
     """
     Encourages given representation(s) to align (cos-sim) with the given target vectors.
+
+    Computed on model embeddings (`output_embeddings`) against `target_vectors`
+    (shape: (n_templates, d_model)) supplied via `Targets`.
     """
 
     def __call__(
@@ -426,22 +386,7 @@ class SimilarityLoss(EmbeddingBasedLoss):
 
 ############################
 @dataclass
-class HiddenStateBasedLoss(BaseLoss):
-    """Loss computed on model hidden states (`full_hidden_states`)."""
-
-    require_hidden_states: ClassVar[bool] = True
-
-    @abstractmethod
-    def __call__(
-        self,
-        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
-        pass
-
-
-@dataclass
-class SteeringActivationLoss(HiddenStateBasedLoss):
+class SteeringActivationLoss(BaseLoss):
     """
     Encourages hidden activations at specific layers/positions to align with a target direction.
     - Each message has a target direction vector (optionally its own unique one).
@@ -465,6 +410,8 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         apply_square: Whether to square the similarity scores (default: False)
         apply_abs: Whether to take the absolute value of the similarity scores (default: False).
     """
+
+    require_hidden_states: ClassVar[bool] = True
 
     targeted_layers: slice = slice(None)
     steer_away: bool = False
@@ -535,21 +482,9 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
 
 ############################
 @dataclass
-class ClassificationBasedLoss(BaseLoss):
-    """Loss computed on classifier logits (`output_class_logits`)."""
-
-    @abstractmethod
-    def __call__(
-        self,
-        output_class_logits: Float[Tensor, "bsz n_classes"],
-        **kwargs,
-    ) -> Float[Tensor, "bsz"]:
-        pass
-
-
-@dataclass
-class MisclassCELoss(ClassificationBasedLoss):
-    """Encourages misclassification via cross-entropy on classifier logits.
+class MisclassCELoss(BaseLoss):
+    """Encourages misclassification via cross-entropy on classifier logits
+    (`output_class_logits`).
 
     Two modes:
     - Untargeted (targeted=False): minimizes probability of `true_class_idx`.

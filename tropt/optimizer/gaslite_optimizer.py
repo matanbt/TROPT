@@ -20,6 +20,7 @@ from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.retokenization import retokenize_filtering
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import random_single_flips
 from tropt.tracker import BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -117,7 +118,9 @@ class GASLITEOptimizer(BaseOptimizer):
                 )
             else:
                 # Compute grad over a list of `n_grad` triggers one-flip away from the current
-                trigger_vars = self._get_trigger_variations(trigger_ids, valid_token_ids)
+                trigger_vars = random_single_flips(
+                    trigger_ids, self.n_grad, valid_token_ids=valid_token_ids
+                )
                 grads = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
                     loss_func=self.loss_func,
@@ -195,27 +198,3 @@ class GASLITEOptimizer(BaseOptimizer):
         return best.to_result()
 
 
-    def _get_trigger_variations(
-        self,
-        trigger_ids: Float[Tensor, "trigger_seq_len"],
-        valid_token_ids: Float[Tensor, "n_valid"],
-    ) -> Float[Tensor, "n_grad trigger_seq_len"]:
-        """
-        Creates a list of `n_grad` trigger variations. The first is the
-        original trigger, and the rest are random single-token flips of its.
-        """
-        trigger_seq_len = len(trigger_ids)
-        device = self.model.device
-        trigger_vars_ids = trigger_ids.repeat(
-            self.n_grad, 1
-        )  # shape: (n_grad, trigger_seq_len)
-
-        for idx in range(1, self.n_grad):  # (keep the first intact)
-            # select a random position and a random token
-            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
-            tok_to_flip_to = int(valid_token_ids[
-                torch.randint(0, len(valid_token_ids), (1,), device=device)
-            ].item())  # apply the flip
-            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
-
-        return trigger_vars_ids

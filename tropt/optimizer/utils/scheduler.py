@@ -1,28 +1,15 @@
-import math
-from abc import ABC, abstractmethod
-
 """
 Schedulers for the n_flip parameter used in optimizers to control the number
 of token positions flipped during each optimization step.
+
+A scheduler is just a callable ``(step: int) -> int``, so a constant schedule is
+``lambda step: n_flip`` and any user-supplied function works without subclassing.
 """
 
-class NFlipScheduler(ABC):
-    @abstractmethod
-    def get_n_flip(self, step: int) -> int:
-        """Returns the n_flip value for the given step (0-indexed)."""
-        pass
+import math
 
-class ConstantScheduler(NFlipScheduler):
-    """
-    A scheduler that always returns the same n_flip value.
-    """
-    def __init__(self, n_flip: int):
-        self.n_flip = n_flip
 
-    def get_n_flip(self, step: int) -> int:
-        return self.n_flip
-
-class LinearScheduler(NFlipScheduler):
+class LinearScheduler:
     """
     A scheduler that linearly decreases n_flip from an initial value to 1
     over the course of optimization steps, starting from a specified step.
@@ -35,7 +22,7 @@ class LinearScheduler(NFlipScheduler):
         else:
             self.decline_start_step = int(decline_start)
 
-    def get_n_flip(self, step: int) -> int:
+    def __call__(self, step: int) -> int:
         if step < self.decline_start_step:
             return self.initial_n_flip
 

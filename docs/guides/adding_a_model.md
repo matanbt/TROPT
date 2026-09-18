@@ -92,7 +92,7 @@ class ModelOutput:
     full_ids: ...
 ```
 
-The fields you populate determine which loss types are compatible with your model. For example, `output_embeddings` enables `EmbeddingBasedLoss` (e.g., `SimilarityLoss`), while `generated_response_strs` enables `TextBasedLoss` (e.g., `GeneratedResponseBasedLoss`). The {py:func}`loss resolution system <tropt.loss.resolve_and_compute_loss>` validates this at runtime and raises clear errors if a required field is missing.
+The fields you populate determine which losses are compatible with your model. For example, `output_embeddings` enables embedding losses (e.g., `SimilarityLoss`), while `generated_response_strs` enables generation-scoring losses (e.g., `ResponseHarmfulnessLoss`). The {py:func}`loss resolution system <tropt.loss.resolve_and_compute_loss>` validates this at runtime and raises clear errors if a required field is missing.
 
 ### Model compatibility
 

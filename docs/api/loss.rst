@@ -27,17 +27,7 @@ Loss Classes Interfaces
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: TriggerLogitBasedLoss
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: AttentionBasedLoss
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-.. autoclass:: EmbeddingBasedLoss
+.. autoclass:: PrefillBasedLoss
    :members:
    :undoc-members:
    :show-inheritance:
@@ -66,7 +56,7 @@ Loss Implementations
 
 .. automodule:: tropt.loss
    :members:
-   :exclude-members: BaseLoss, TriggerLogitBasedLoss, AttentionBasedLoss, EmbeddingBasedLoss, TextBasedLoss, SteeringActivationLoss, CombinedLoss
+   :exclude-members: BaseLoss, PrefillBasedLoss, TextBasedLoss, SteeringActivationLoss, CombinedLoss
    :undoc-members:
    :show-inheritance:
    :imported-members:

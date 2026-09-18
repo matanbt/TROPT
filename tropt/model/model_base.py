@@ -11,15 +11,12 @@ from torch import Tensor
 from transformers import BatchEncoding
 
 from tropt.common import MessageTargets, ModelOutput
-from tropt.model.flop_counter import FlopCounterBase, ManualFlopCounter
+from tropt.model.flop_counter import ManualFlopCounter
 
 # ====================== Model Base Classes =======================
 
 
 class BaseModel(ABC):
-    def __init__(self, model_name: str):
-        pass
-
     @property
     def device(self):
         """
@@ -71,12 +68,8 @@ class BaseModel(ABC):
     halved on OOM. Any subclass may override.
     """
 
-    _flop_counter: Optional[FlopCounterBase] = None
-    """Active counter object (set by :meth:`set_flop_counting`).
-
-    Must implement ``count_forward(n_tokens) -> int`` and
-    ``count_forward_backward(n_tokens) -> int``.
-    """
+    _flop_counter: Optional[ManualFlopCounter] = None
+    """Active counter object (set by :meth:`set_flop_counting`)."""
 
     def set_flop_counting(self, mode: Literal["manual", "none"] = "manual"):
         """Enable or disable FLOP counting.

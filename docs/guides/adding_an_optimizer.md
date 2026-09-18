@@ -211,7 +211,7 @@ optimizer.optimize_trigger(...)
 
 **Trigger initialization.** Callers can pass an explicit `initial_trigger` (the `DEFAULT_INIT_TRIGGER` is `"! ! ! ..."`-style). For something smarter, sample from the constrained vocabulary itself via {py:func}`~tropt.optimizer.utils.token_initializers.get_printable_random_trigger`.
 
-The remaining building blocks in [optimizer utilities](../api/optimizer_utils) worth knowing about: `retokenize_filtering` (drop candidates that don't survive a decode → encode round-trip), `TriggerBuffer` (best-K pool instead of a single best), `NFlipScheduler` (control how many positions to mutate per step). Pull them in only when your search actually needs them — they're not boilerplate.
+The remaining building blocks in [optimizer utilities](../api/optimizer_utils) worth knowing about: `retokenize_filtering` (drop candidates that don't survive a decode → encode round-trip), `TriggerBuffer` (best-K pool instead of a single best), `LinearScheduler` (a `(step) -> n_flip` callable controlling how many positions to mutate per step; any callable works). Pull them in only when your search actually needs them — they're not boilerplate.
 
 
 ## Going White-Box: Gradient-Guided Search

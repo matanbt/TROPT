@@ -527,33 +527,17 @@ class HuggingFaceBackendModel:
     def n_layers(self) -> int:
         """Number of hidden layers in the model.
 
-        Different model families expose this differently, so we
-        try several known locations and return the first that works.
+        ``get_text_config()`` returns the config itself for text-only models and
+        the nested text config for multimodal ones (e.g. Gemma-3).
         """
         config = self._hf_model.config
-
-        # Each function below either returns the layer count, or raises.
-        def _n_layers_v1():
-            # Standard HF text models
-            return config.num_hidden_layers
-
-        def _n_layers_v2():
-            # Multimodal configs (e.g. Gemma-3) with nested text config
-            return config.text_config.num_hidden_layers
-
-        def _n_layers_v3():
-            return config.get_text_config().num_hidden_layers
-
-        for _getter in [_n_layers_v1, _n_layers_v2, _n_layers_v3]:
-            try:
-                return _getter()
-            except Exception:
-                continue
-
-        raise ValueError(
-            f"Could not extract `num_hidden_layers` from model config of `{self.get_model_name()}`. "
-            f"This model might need special care. Please report this issue."
-        )
+        n = getattr(config.get_text_config(), "num_hidden_layers", None)
+        if n is None:
+            raise ValueError(
+                f"Could not extract `num_hidden_layers` from model config of `{self.get_model_name()}`. "
+                f"This model might need special care. Please report this issue."
+            )
+        return n
 
     @property
     def dtype(self):
@@ -631,7 +615,7 @@ class HuggingFaceBackendModel:
 
         Args:
             loss_func: Loss function to optimize. Must be compatible with model outputs
-                (e.g., PrefillBasedLoss for LMs, EmbeddingBasedLoss for encoders).
+                (e.g., PrefillCELoss for LMs, SimilarityLoss for encoders).
 
             candidate_trigger_ids: Discrete token IDs for hard triggers. Can accepts multiple candidates.
                 Shape: (n_candidates, trigger_seq_len)
@@ -695,22 +679,80 @@ class HuggingFaceBackendModel:
             )
         assert (candidate_trigger_ids is not None) ^ (candidate_trigger_probs is not None), \
             "Exactly one of `candidate_trigger_ids` or `candidate_trigger_probs` must be provided."
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
 
-        device, dtype = self.device, self.dtype
         embedding_layer = self._embedding_layer
         assert isinstance(embedding_layer, torch.nn.Embedding), (
             "Expected a standard nn.Embedding layer for one-hot gradient computation."
         )
         vocab_size = embedding_layer.num_embeddings
+
+        # The differentiated leaf is the one-hot / probability matrix; the trigger
+        # embeddings are derived from it via the effective embedding matrix.
+        if candidate_trigger_probs is None:
+            leaves = torch.nn.functional.one_hot(
+                candidate_trigger_ids, num_classes=vocab_size
+            ).to(self.device, self.dtype)
+        else:
+            leaves = candidate_trigger_probs.to(self.device, self.dtype)
+
+        def _leaf_to_embeds(leaf_batch, batch_slice):
+            if do_gumbel_softmax:
+                assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
+                leaf_batch = torch.nn.functional.gumbel_softmax(
+                    logits=leaf_batch, tau=gumbel_softmax_temp, hard=False, dim=-1,
+                )
+            # (bsz, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim)
+            candidate_embeds = leaf_batch @ self.embedding_matrix
+
+            # Only check when using discrete tokens (not soft probabilities)
+            if is_debug_mode() and candidate_trigger_ids is not None:
+                assert torch.allclose(
+                    candidate_embeds,
+                    self._token_input_manager.embed_func(candidate_trigger_ids[batch_slice])
+                ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
+                "a model with non-standard embedding logic. Please report this issue!")
+
+            # Trigger ids for reference; for soft triggers take the argmax
+            # of the *pre*-Gumbel distribution.
+            ref_trigger_ids = (
+                candidate_trigger_ids[batch_slice] if candidate_trigger_ids is not None
+                else leaves[batch_slice].argmax(dim=-1)
+            )
+            return candidate_embeds, ref_trigger_ids
+
+        return self._grad_wrt_leaves(
+            loss_func, leaves, _leaf_to_embeds,
+            normalize_grads=normalize_grads,
+            keep_message_dim=keep_message_dim,
+            return_loss=return_loss,
+        )
+
+    def _grad_wrt_leaves(
+        self,
+        loss_func: BaseLoss,
+        leaves: Float[Tensor, "n_candidates trigger_seq_len leaf_dim"],
+        leaf_to_embeds,
+        normalize_grads: bool,
+        keep_message_dim: bool,
+        return_loss: bool,
+    ) -> Float[torch.Tensor, "n_candidates trigger_seq_len leaf_dim"] | Tuple[Tensor, Tensor]:
+        """Shared backward pass for :meth:`compute_grad_from_tokens` / :meth:`compute_grad_from_embeds`.
+
+        Differentiates ``loss_func`` w.r.t. ``leaves``, batching candidates (with
+        OOM backoff) and back-propagating each template separately so only one
+        autograd graph is alive at a time.
+
+        Args:
+            leaves: The tensor to differentiate w.r.t. — one-hot/probabilities for
+                the token flow, raw trigger embeddings for the embedding flow.
+            leaf_to_embeds: ``(leaf_batch, batch_slice) -> (trigger_embeds, ref_trigger_ids)``.
+        """
+        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
+
+        device, dtype = self.device, self.dtype
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
-
-        # Get shape from whichever input is provided
-        if candidate_trigger_ids is not None:
-            n_candidates, trigger_seq_len = candidate_trigger_ids.shape
-        else: # candidate_trigger_probs is not None:
-            n_candidates, trigger_seq_len = candidate_trigger_probs.shape[:2]
+        n_candidates, trigger_seq_len, leaf_dim = leaves.shape
 
         @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
         def _compute_grad__batched(
@@ -727,70 +769,28 @@ class HuggingFaceBackendModel:
             all_grads = []  # of len `n_candidate // batch_size`
             all_losses = []  # per-batch mean losses (detached)
 
-            # Prepare the one-hot encoding matrix (might be distribution-per-token for continuous trigger)
-            # (n_candidates, trigger_seq_len, vocab_size)
-            if candidate_trigger_probs is None:
-                candidate_ids_onehot_detached = torch.nn.functional.one_hot(
-                    candidate_trigger_ids,
-                    num_classes=vocab_size,
-                ).to(device, dtype)
-            else:
-                candidate_ids_onehot_detached = candidate_trigger_probs.to(device, dtype)
-
-            # Prepare the effective embedding matrix:
-            embedding_matrix = self.embedding_matrix  # (vocab_size, embd_dim)
-
             for cand_idx_start in range(0, n_candidates, batch_size):
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
                 cand_bsz = cand_idx_end - cand_idx_start
+                batch_slice = slice(cand_idx_start, cand_idx_end)
 
                 # Backward each template immediately to avoid keeping n_templates graphs at once
                 accum_grad = torch.zeros(
-                    (n_templates, cand_bsz, trigger_seq_len, vocab_size),
+                    (n_templates, cand_bsz, trigger_seq_len, leaf_dim),
                     device=device, dtype=dtype,
                 )
                 accum_loss = torch.zeros((n_templates, cand_bsz), device=device, dtype=dtype)
 
                 for template_idx in range(0, n_templates):
-                    # 1. Enable gradients on the one-hot input
-                    # (bsz_triggers, trigger_seq_len, vocab_size)
-                    candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
-                    candidate_ids_onehot.requires_grad_()
+                    # 1. Enable gradients on the leaf input
+                    leaf = leaves[batch_slice].clone()
+                    leaf.requires_grad_()
 
-                    # 1'. optionally apply gumbel-softmax to the trigger probs
-                    if do_gumbel_softmax:
-                        assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
-                        candidate_ids_onehot = torch.nn.functional.gumbel_softmax(
-                            logits=candidate_ids_onehot,
-                            tau=gumbel_softmax_temp,
-                            hard=False,
-                            dim=-1,
-                        )
-
-                    # 2. Apply embedding to get trigger_embeds
-                    # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
-                    candidate_embeds = candidate_ids_onehot @ embedding_matrix
-
-                    # Only check when using discrete tokens (not soft probabilities)
-                    if is_debug_mode() and candidate_trigger_ids is not None:
-                        assert torch.allclose(
-                            candidate_embeds,
-                            input_manager.embed_func(
-                                candidate_trigger_ids[cand_idx_start:cand_idx_end]
-                            )
-                        ), ("Mismatch between effective embedding matrix and embed-func. It could be that you use " \
-                        "a model with non-standard embedding logic. Please report this issue!")
+                    # 2. Map the leaf to trigger embeddings
+                    candidate_embeds, ref_trigger_ids = leaf_to_embeds(leaf, batch_slice)
 
                     # 3. Get batched inputs & compute loss:
                     logger.debug(f"from grad [msg={template_idx}]: {candidate_embeds.shape}")
-
-                    # Get trigger IDs for reference (if using discrete tokens)
-                    # For soft triggers, compute argmax from probabilities
-                    if candidate_trigger_ids is not None:
-                        ref_trigger_ids = candidate_trigger_ids[cand_idx_start:cand_idx_end]
-                    else:
-                        # Compute discrete tokens from soft probabilities (before Gumbel-softmax)
-                        ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
 
                     model_input = input_manager.get_triggered_inputs(
                         chosen_template_idx=template_idx,
@@ -815,18 +815,17 @@ class HuggingFaceBackendModel:
                     # 4. Backward and store per-template
                     template_grad = torch.autograd.grad(
                         outputs=loss,
-                        inputs=[candidate_ids_onehot],
+                        inputs=[leaf],
                         grad_outputs=torch.ones_like(loss, device=device),
-                    )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
+                    )[0]  # (bsz_triggers, trigger_seq_len, leaf_dim)
                     accum_grad[template_idx] = template_grad
                     accum_loss[template_idx] = loss.detach()
 
                 all_grads.append(accum_grad)
                 all_losses.append(accum_loss)
-                # clear_device_cache()  # clear unused GPU memory
 
             return (
-                torch.cat(all_grads, dim=1),  # (n_templates, n_candidates, trigger_seq_len, vocab_size)
+                torch.cat(all_grads, dim=1),  # (n_templates, n_candidates, trigger_seq_len, leaf_dim)
                 torch.cat(all_losses, dim=1),  # (n_templates, n_candidates)
             )
 
@@ -838,7 +837,7 @@ class HuggingFaceBackendModel:
             all_grads = all_grads.mean(dim=0)
             all_losses = all_losses.mean(dim=0)
 
-        # normalize each token's gradient vector (over the vocab_size dim)
+        # normalize each token's gradient vector (over the last dim)
         if normalize_grads:
             all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
 
@@ -870,98 +869,16 @@ class HuggingFaceBackendModel:
             If return_loss is True: tuple of (gradients tensor, per-candidate loss tensor (n_candidates,)),
             or per-template losses (n_templates, n_candidates) if keep_message_dim=True.
         """
-        assert self._token_input_manager is not None, "Token input manager is not initialized. Please call set_inputs_from_tokens() first."
-
-        device, dtype = self.device, self.dtype
-        input_manager = self._token_input_manager
-        n_templates = input_manager.n_templates
-        n_candidates, trigger_seq_len, embed_dim = candidate_trigger_embeds.shape
-
-        @find_executable_batch_size(starting_batch_size=self._backward_pass_batch_size)
-        def _compute_grad__batched(
-            batch_size: int,
-        ) -> Tuple[Tensor, Tensor]:
-
-            # --- Update backward batch size ---
-            if batch_size < self._backward_pass_batch_size:
-                logger.info(f"OOM detected. Reducing _backward_pass_batch_size from {self._backward_pass_batch_size} to {batch_size}")
-                self._backward_pass_batch_size = batch_size
-            # --------------------
-
-            all_grads = []
-            all_losses = []
-
-            for cand_idx_start in range(0, n_candidates, batch_size):
-                cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
-                cand_bsz = cand_idx_end - cand_idx_start
-
-                # Backward each template immediately to avoid keeping n_templates graphs at once
-                accum_grad = torch.zeros(
-                    (n_templates, cand_bsz, trigger_seq_len, embed_dim),
-                    device=device, dtype=dtype,
-                )
-                accum_loss = torch.zeros((n_templates, cand_bsz), device=device, dtype=dtype)
-
-                for template_idx in range(0, n_templates):
-                    # 1. Enable gradients on the embedding input directly
-                    candidate_embeds = candidate_trigger_embeds[cand_idx_start:cand_idx_end].clone().detach()
-                    candidate_embeds.requires_grad_()
-
-                    # 2. Get batched inputs
-                    model_input = input_manager.get_triggered_inputs(
-                        chosen_template_idx=template_idx,
-                        trigger_embeds=candidate_embeds,
-
-                        # loss-conditional flags:
-                        do_append_embeds=loss_func.require_target_prefill,
-                    )
-
-                    # 3. Forward pass
-                    model_output = self.invoke_from_tokens(
-                        **model_input.to_dict(),
-
-                        # loss-conditional flags:
-                        require_target_prefill=loss_func.require_target_prefill,
-                        require_generation=loss_func.require_generation,
-                        require_hidden_states=loss_func.require_hidden_states,
-                        require_attentions=loss_func.require_attentions,
-                        count_backward=True,
-                    )
-
-                    # 4. Loss + per-template backward, then store per-template
-                    loss = resolve_and_compute_loss(model_output, model_input, loss_func)
-                    template_grad = torch.autograd.grad(
-                        outputs=loss,
-                        inputs=[candidate_embeds],
-                        grad_outputs=torch.ones_like(loss, device=device),
-                    )[0]  # (bsz_triggers, trigger_seq_len, embed_dim)
-                    accum_grad[template_idx] = template_grad
-                    accum_loss[template_idx] = loss.detach()
-
-                all_grads.append(accum_grad)
-                all_losses.append(accum_loss)
-
-            return (
-                torch.cat(all_grads, dim=1),  # (n_templates, n_candidates, trigger_seq_len, embed_dim)
-                torch.cat(all_losses, dim=1),  # (n_templates, n_candidates)
-            )
-
-        # Per-template grads/losses of the candidates
-        all_grads, all_losses = _compute_grad__batched()
-
-        # Optionally reduce message dim
-        if not keep_message_dim:
-            all_grads = all_grads.mean(dim=0)
-            all_losses = all_losses.mean(dim=0)
-
-        # normalize each token's gradient vector (over the embed_dim dim)
-        if normalize_grads:
-            all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
-
-        if return_loss:
-            return all_grads, all_losses
-
-        return all_grads
+        # Here the differentiated leaf *is* the trigger embedding, so no mapping
+        # is needed and there are no reference trigger ids to report.
+        return self._grad_wrt_leaves(
+            loss_func,
+            candidate_trigger_embeds.detach(),
+            lambda leaf, batch_slice: (leaf, None),
+            normalize_grads=normalize_grads,
+            keep_message_dim=keep_message_dim,
+            return_loss=return_loss,
+        )
 
     @torch.no_grad()
     def compute_loss_from_tokens(

@@ -65,10 +65,9 @@ Naming: `{Value}{InputType}AccessMixin` (e.g. `LossTokenAccessMixin`, `GradientT
 
 Canonical definitions and full field lists live in `tropt/common.py`. Don't enumerate them here.
 
-### Glue: Recipe Hub & Config Runner
+### Glue: Recipe Hub
 
 - **Recipe Hub** (`tropt/recipe_hub/`): pre-configured Model + Loss + Optimizer + Inputs/Targets wirings, each callable as one function. Enumerate via `list_recipes()`; full registry in `tropt/recipe_hub/__init__.py`.
-- **Config Runner** (`runner/main.py`): YAML-driven runner via Hydra. (Hydra config support is incomplete — see Known Limitations.)
 
 ## Component Interactions
 
@@ -240,8 +239,6 @@ Auto-generated docs (`docs/api/`, `docs/guides/compatibility_matrix.md`) are pro
 
 For contributions back to the package (file placement, exports, tests, Recipe Hub naming convention), see `CONTRIBUTING.md`.
 
-For testing conventions (mirror layout, fixtures, numerical tolerances, what to test per component), see `TESTING.md`.
-
 ## Important Notes
 
 ### Scripts: separate repo
@@ -257,13 +254,12 @@ This codebase is explicitly designed for adversarial robustness research and red
 ### Known Limitations
 - Multiple-message prefix caching currently disabled due to edge cases
 - Tracker should be initialized per RUN, not per optimizer instance
-- Hydra config-runner support is incomplete
 
 ## Dependencies
 
-Core: PyTorch, Transformers, Accelerate, Hydra, Pydantic
-Models: HuggingFace, SentenceTransformers, OpenAI, LiteLLM
-Tracking: Weights & Biases, LiveLossPlot
+Core: PyTorch, Transformers, Accelerate, SentenceTransformers, Pydantic
+Optional extras: OpenAI, Google, Voyage, LiteLLM, vision, tracking, notebooks
+Tracking: Weights & Biases, Trackio, LiveLossPlot
 Dev: pytest, ruff, ty, pre-commit
 
 ## Repository Structure
@@ -279,7 +275,6 @@ tropt/
 └── utils/           # Shared utilities
 
 tests/               # Test suite mirroring tropt/ structure
-runner/              # Hydra-driven config runner
 scripts/             # Separate repo — see "Scripts: separate repo" above
 docs/                # Sphinx documentation
 ├── api/             # Auto-generated API reference (rst)
@@ -288,6 +283,5 @@ docs/                # Sphinx documentation
 └── conf.py          # Sphinx config
 quickstart.ipynb     # End-to-end notebook
 DESIGN.md            # Design philosophy and rationale
-TESTING.md           # Testing guidelines and conventions
 CONTRIBUTING.md      # Contribution workflow (file placement, exports, tests)
 ```

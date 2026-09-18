@@ -63,6 +63,24 @@ class BaseTracker(ABC):
         self._finish(summary)
         self._active = False
 
+    @staticmethod
+    def _scalarize(data: dict) -> dict:
+        """Unwrap 0-d tensors to Python floats; drop tensors that can't be scalars.
+
+        Backends like WandB/Trackio only accept scalars.
+        """
+        import torch
+
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, torch.Tensor):
+                try:
+                    v = v.item()
+                except (ValueError, RuntimeError):
+                    continue
+            out[k] = v
+        return out
+
     # ── Subclass hooks ──────────────────────────────────────────────────
 
     @abstractmethod

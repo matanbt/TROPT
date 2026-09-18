@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Annotated, Any, List, Optional
 
 from jaxtyping import Int
@@ -12,42 +11,16 @@ from tropt.common import (
 )
 
 # ======================= Triggered Input Managers =======================
-
-
-class InputsManager(ABC):
-    """
-    Base class for maintaining the input template, corresponding targets, and the method for
-    injecting triggers into the inputs.
-    This class wraps `n_templates` templates (that contain the substring `OPTIMIZED_TRIGGER_PLACEHOLDER` as
-    a trigger placeholder) and targets, and provides a unified interface for different types of inputs
-    (e.g., text-based, token-based) used in adversarial trigger optimization.
-    """
-
-    def __init__(
-        self,
-        templates: TextTemplates,
-        targets: Targets,  # n_templates elements per target entry
-    ):
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_triggered_inputs(self, chosen_template_idx: int, *args, **kwargs) -> ModelInput:
-        """
-        Returns the trigger-combined model inputs, for the specified template index.
-
-        Args:
-            chosen_template_idx: Index of the template to use for generating the inputs.
-            ... args for receiving the trigger candidates ...
-
-        Returns:
-            A ModelInput object containing the crafted triggered-combined inputs, which includes the
-            corresponding targets for the specified template.
-        """
-        raise NotImplementedError
+#
+# An inputs manager wraps `n_templates` templates (each containing the substring
+# OPTIMIZED_TRIGGER_PLACEHOLDER) plus their targets, and exposes
+# `get_triggered_inputs(chosen_template_idx, <trigger candidates>) -> ModelInput`.
+# The trigger-candidate argument differs per flow (strings vs ids vs embeds), so
+# the text and token families deliberately share no base class.
 
 
 ## Text inputs manager ##
-class TextInputManager(InputsManager):
+class TextInputManager:
     """
     Class for maintaining text-based trigger-combined inputs (fits black-box text-level query access).
     Instances of this class store `n_templates` templates and targets, and provide the method `get_triggered_inputs` to combine them with given trigger strings.
@@ -121,9 +94,10 @@ class TextInputManager(InputsManager):
         )
 
 ## Token inputs manager ##
-class TokenInputManager(InputsManager):
+class TokenInputManager:
     """
-    Abstract base class for token-level inputs managers.
+    Base class for token-level inputs managers (the shared type for
+    ``TokenAccessMixin._token_input_manager``).
 
     Subclasses manage the combination of candidate triggers into tokenized
     templates.

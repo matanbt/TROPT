@@ -4,8 +4,6 @@ import os
 from collections import defaultdict
 from typing import Any, Dict, Optional
 
-import torch
-
 from .base import DEFAULT_EXPERIMENT_NAME, BaseTracker
 
 logger = logging.getLogger(__name__)
@@ -95,15 +93,7 @@ class WandbTracker(BaseTracker):
     def _log(self, data: Dict[str, Any]):
         import wandb
 
-        sanitized = {}
-        for k, v in data.items():
-            if isinstance(v, torch.Tensor):
-                try:
-                    v = v.item()
-                except (ValueError, RuntimeError):
-                    continue
-            sanitized[k] = v
-        wandb.log(sanitized)
+        wandb.log(self._scalarize(data))
 
     def _finish(self, summary: Optional[dict] = None):
         import wandb
@@ -189,15 +179,7 @@ class TrackioTracker(BaseTracker):
     def _log(self, data: Dict[str, Any]):
         import trackio
 
-        sanitized = {}
-        for k, v in data.items():
-            if isinstance(v, torch.Tensor):
-                try:
-                    v = v.item()
-                except (ValueError, RuntimeError):
-                    continue
-            sanitized[k] = v
-        trackio.log(sanitized)
+        trackio.log(self._scalarize(data))
 
     def _finish(self, summary: Optional[dict] = None):
         import trackio

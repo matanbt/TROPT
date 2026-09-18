@@ -367,7 +367,7 @@ class LMHFModel(
         """
         if require_attentions and self._model.config._attn_implementation != "eager":
             logger.warning(
-                "AttentionBasedLoss is used but the model is not using eager attention. "
+                "An attention-based loss is used but the model is not using eager attention. "
                 "This may lead to incorrect attention outputs. Consider initializing the model with eager attention, by passing LMHFModel the flag `use_eager_attention=True`."
             )
         if require_attentions and input_prefix_cache_kwargs:

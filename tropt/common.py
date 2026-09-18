@@ -25,7 +25,6 @@ TextTemplates = Annotated[
 Length: n_templates.
 """
 TokenTrigger = Float[Tensor, "1 trigger_seq_len"]
-TextTrigger = str
 TokenTriggerCandidates = Float[Tensor, "n_candidates trigger_seq_len"]
 
 # ======================= Slice Keys Enum =======================
@@ -204,14 +203,6 @@ class Targets(pydantic.BaseModel):
     List of length n_templates.
     Used by: untargeted-misclassification losses on classifier outputs.
     """
-
-    @property
-    def n_templates(self) -> int:
-        for field_name in self.model_fields_set:
-            val = getattr(self, field_name)
-            if val is not None:
-                return len(val)
-        return 0
 
     @pydantic.model_validator(mode="after")
     def check_field_lengths(self) -> "Targets":
