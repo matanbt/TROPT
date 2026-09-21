@@ -57,7 +57,7 @@ For further readings, we provide additional material (for you, or your favorite 
 - [`DESIGN.md`](DESIGN.md) — full design philosophy (modularity, backend vs. frontend, why the contracts are the way they are).
 - [`docs/guides/`](docs/guides/) — step-by-step per-component walkthroughs.
 - **Agent files.**
-    - [`CLAUDE.md`](CLAUDE.md) — fast-path orientation: the four components, mixin contract, `ModelInput`/`ModelOutput`/`Targets`, setup-then-compute.
+    - [`AGENTS.md`](AGENTS.md) — fast-path orientation: the four components, mixin contract, `ModelInput`/`ModelOutput`/`Targets`, setup-then-compute.
     - [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) — task-routed pointers and cross-cutting pitfalls (mixin mismatches, thinking-model alignment, multi-model OOM, etc.).
 
 ### 3. PR workflow
