@@ -1,13 +1,13 @@
-# CLAUDE.md
+# AGENTS.md
 
-> Guidance for Claude Code when working with this repository. For comprehensive design philosophy see `DESIGN.md`; for step-by-step guides see `docs/guides/`.
+> Guidance for coding agents when working with this repository. For comprehensive design philosophy see `DESIGN.md`; for step-by-step guides see `docs/guides/`.
 >
-> **READ FIRST for almost every TROPT task** — load `skills/tropt/SKILL.md`. It's the user-facing companion to this dev-facing file and covers the bulk of what a contributor does day-to-day: **adding a recipe, adding a loss, adding an optimizer, adding a model backend, composing custom Model + Loss + Optimizer wirings, swapping components in an existing recipe, debugging cross-cutting pitfalls** (mixin mismatches, attention-loss requirements, thinking-model target alignment, black-box vs white-box loss, multi-model OOM, etc.), routing to the right guide / source file, and helping users without a local checkout. Skill loading is not automatic from `<repo>/skills/` — the file must be explicitly `Read` (this is intentional Claude Code behavior, not a bug). Treat the skill as required reading whenever the request touches `tropt/recipe_hub/`, `tropt/loss/`, `tropt/optimizer/`, `tropt/model/`, or composition patterns. Install is just the supporting first step it also covers.
+> **READ FIRST for almost every TROPT task** — load `skills/tropt/SKILL.md`. It's the user-facing companion to this dev-facing file and covers the bulk of what a contributor does day-to-day: **adding a recipe, adding a loss, adding an optimizer, adding a model backend, composing custom Model + Loss + Optimizer wirings, swapping components in an existing recipe, debugging cross-cutting pitfalls** (mixin mismatches, attention-loss requirements, thinking-model target alignment, black-box vs white-box loss, multi-model OOM, etc.), routing to the right guide / source file, and helping users without a local checkout. Skill loading is not automatic from `<repo>/skills/` — the file must be explicitly read (this is intentional agent behavior, not a bug). Treat the skill as required reading whenever the request touches `tropt/recipe_hub/`, `tropt/loss/`, `tropt/optimizer/`, `tropt/model/`, or composition patterns. Install is just the supporting first step it also covers.
 
 ## Tips
 
 - Prefer concise modifications — minimal changes so edits are easy to review. But if minimal changes create technical debt or unreadable code, prefer clarity.
-- Temporary scripts or markdown you create go under `claude_stuff/`. Don't make a mess.
+- Temporary scripts or markdown you create go under `agent_stuff/`. Don't make a mess.
 - Avoid over-commenting. Use clear names; only comment where intent isn't obvious.
 - **Keep docstrings short.** One or two sentences max. Only list args that aren't self-evident from name and type.
 - **Docs maintenance**: Don't enumerate specific classes/fields/signatures in docs — they go stale. Point to source instead (e.g., "see `tropt/loss/` for the full set").
