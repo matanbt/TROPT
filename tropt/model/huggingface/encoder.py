@@ -24,6 +24,7 @@ from tropt.model.huggingface.base import (
     HuggingFaceBackendModel,
     HuggingFaceTokenInputManager,
 )
+from tropt.model.huggingface.kernels import use_triton_layer_norm
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class EncoderHFModel(
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
         set_model_to_train: bool = False,
+        use_triton_kernels: bool = True,
         **kwargs,
     ):
         """
@@ -65,6 +67,7 @@ class EncoderHFModel(
             backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
             set_model_to_train (bool): Keep the model trainable (train mode + unfrozen weights). Default False (eval + frozen).
+            use_triton_kernels (bool): Use custom Triton kernels (e.g., LayerNorm) for faster no-grad forward passes.
             **kwargs: Additional arguments for SentenceTransformer.
         """
         if loaded_model is not None:
@@ -81,6 +84,9 @@ class EncoderHFModel(
             except Exception as e:
                 logger.error(f"Error loading model `{model_name}`. Please make sure you load the model properly per the HuggingFace model card (e.g., you might need to pass `trust_remote_code=True` to `{self.__class__.__name__}`): {e}")
                 raise e
+
+        if use_triton_kernels:
+            use_triton_layer_norm(self._model)
 
         # Add tokenizer and embedding layer:
         self._tokenizer = self._model.tokenizer
@@ -181,20 +187,15 @@ class EncoderHFModel(
         """
 
         assert input_embeds is not None, "input_embeds must be provided in invoke_from_tokens."
-        if input_attention_mask is None:
-            input_attention_mask = torch.ones(
-                input_embeds.shape[:-1], device=input_embeds.device, dtype=torch.int64
-            )
-
-        outputs = self._model(
-            dict(
-                inputs_embeds=input_embeds,  # (bsz, seq_len, embd_dim)
-                attention_mask=input_attention_mask,  # (bsz, seq_len)
-            )
-        )
+        # A missing mask means no padding; it is then omitted (== all ones), sparing a host sync in HF's mask handling
+        features = dict(inputs_embeds=input_embeds)  # (bsz, seq_len, embd_dim)
+        if input_attention_mask is not None:
+            features["attention_mask"] = input_attention_mask  # (bsz, seq_len)
+        outputs = self._model(features)
 
         self._update_invoke_stats(
-            n_tokens=int(input_attention_mask.sum().item()),
+            n_tokens=input_embeds.shape[0] * input_embeds.shape[1] if input_attention_mask is None
+            else input_attention_mask.sum(),
             n_samples=input_embeds.shape[0],
             count_backward=count_backward,
         )

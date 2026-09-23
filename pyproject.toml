@@ -37,6 +37,7 @@ classifiers = [
 dependencies = [
   # Core ML/numeric libraries
   "torch>=2.4.0",
+  "triton>=3.0; sys_platform == 'linux'",  # custom kernels (see tropt/model/huggingface/kernels.py)
   "numpy>=2.0.0",
   "jaxtyping",
   # HuggingFace models (core use case)
