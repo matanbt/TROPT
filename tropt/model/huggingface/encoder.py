@@ -24,7 +24,6 @@ from tropt.model.huggingface.base import (
     HuggingFaceBackendModel,
     HuggingFaceTokenInputManager,
 )
-from tropt.model.huggingface.kernels import use_triton_layer_norm
 from tropt.model.model_mixins import GradientEmbedAccessMixin
 
 logger = logging.getLogger(__name__)
@@ -53,7 +52,6 @@ class EncoderHFModel(
         backward_pass_batch_size: int = 28,
         loaded_model: Optional[SentenceTransformer] = None,
         set_model_to_train: bool = False,
-        use_triton_kernels: bool = True,
         **kwargs,
     ):
         """
@@ -67,7 +65,6 @@ class EncoderHFModel(
             backward_pass_batch_size (int): Batch size for backward passes.
             loaded_model (SentenceTransformer, optional): Pre-loaded SentenceTransformer model.
             set_model_to_train (bool): Keep the model trainable (train mode + unfrozen weights). Default False (eval + frozen).
-            use_triton_kernels (bool): Use custom Triton kernels (e.g., LayerNorm) for faster no-grad forward passes.
             **kwargs: Additional arguments for SentenceTransformer.
         """
         if loaded_model is not None:
@@ -84,9 +81,6 @@ class EncoderHFModel(
             except Exception as e:
                 logger.error(f"Error loading model `{model_name}`. Please make sure you load the model properly per the HuggingFace model card (e.g., you might need to pass `trust_remote_code=True` to `{self.__class__.__name__}`): {e}")
                 raise e
-
-        if use_triton_kernels:
-            use_triton_layer_norm(self._model)
 
         # Add tokenizer and embedding layer:
         self._tokenizer = self._model.tokenizer

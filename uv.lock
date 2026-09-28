@@ -6779,7 +6779,6 @@ dependencies = [
     { name = "torch" },
     { name = "tqdm" },
     { name = "transformers" },
-    { name = "triton", marker = "sys_platform == 'linux'" },
 ]
 
 [package.optional-dependencies]
@@ -6908,7 +6907,6 @@ requires-dist = [
     { name = "tqdm" },
     { name = "trackio", marker = "extra == 'tracking'", specifier = ">=0.3.0" },
     { name = "transformers", specifier = "==5.8.1" },
-    { name = "triton", marker = "sys_platform == 'linux'", specifier = ">=3.0" },
     { name = "tropt", extras = ["all"], marker = "extra == 'dev'" },
     { name = "tropt", extras = ["openai", "google", "voyage", "litellm", "vision", "tracking", "notebooks"], marker = "extra == 'all'" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.24" },
