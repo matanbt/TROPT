@@ -279,6 +279,16 @@ class LMHFModel(
                     **model_input.to_dict(),
                 ).full_logits
 
+                assert logits_batch is not None and model_input.input_slices is not None
+
+                # Slice per template before stacking, as templates may differ in length
+                slc_trigger = model_input.input_slices[SliceKey.TRIGGER]
+                if return_trigger_logits_only:
+                    assert slc_trigger.start > 0, "Trigger logits need the trigger to start after position 0 (use `use_prefix_cache=False`)."
+                    logits_batch = logits_batch[:, slc_trigger.start - 1 : slc_trigger.stop - 1, :]
+                elif return_after_trigger_logits_only:
+                    logits_batch = logits_batch[:, slc_trigger.stop - 1 : slc_trigger.stop, :]
+
                 full_logits[template_idx].append(logits_batch)
                 slices[template_idx] = model_input.input_slices
 
@@ -292,27 +302,8 @@ class LMHFModel(
         # (n_templates, n_candidates, seq_len, vocab_size)
 
         if return_trigger_logits_only or return_after_trigger_logits_only:
-            # return only the logits for the trigger part
-            trigger_logits = torch.zeros(
-                (n_templates, n_candidates, (trigger_seq_len if return_trigger_logits_only else 1), logits.shape[-1]),
-                device=logits.device,
-            )  # (n_templates, n_candidates, trigger_seq_len, vocab_size)
-            for i_template in range(n_templates):
-                slc_trigger = slices[i_template][SliceKey.TRIGGER]  # trigger slice for this candidate
-
-                # extract the relevant logits
-                if return_trigger_logits_only:
-                    slc = slice(slc_trigger.start - 1, slc_trigger.stop - 1)
-                    assert slc.stop - slc.start == trigger_seq_len, "Trigger slice length does not match candidate trigger length."
-                else:  # return_after_trigger_logits_only
-                    # take the logits at last trigger token
-                    slc = slice(slc_trigger.stop - 1, slc_trigger.stop)
-
-                trigger_logits[i_template] = logits[i_template, :, slc, :]
-
-                assert trigger_logits.shape[2] == slc.stop - slc.start, "Extracted trigger logits length does not match expected length."
-
-            logits = trigger_logits
+            expected_len = trigger_seq_len if return_trigger_logits_only else 1
+            assert logits.shape[2] == expected_len, "Extracted trigger logits length does not match expected length."
 
         if not keep_message_dim:
             if not (return_trigger_logits_only or return_after_trigger_logits_only):

@@ -25,11 +25,7 @@ import torch
 from datasets import load_dataset
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, Targets
-from tropt.loss import (
-    CombinedLoss,
-    ContrastiveSteeringOperatorLoss,
-    TriggerPerplexityLoss,
-)
+from tropt.loss import ContrastiveSteeringOperatorLoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
@@ -94,6 +90,7 @@ def _build_data(
                 **model.chat_template_kwargs,
             )["input_ids"].to(model.device)
             out = model.invoke_from_tokens(input_ids=input_ids, require_pre_mlp_hidden_states=True)
+            assert out.full_pre_mlp_hidden_states is not None
             a_clean.append(out.full_pre_mlp_hidden_states[0, :, -1, :])  # (n_layers, d_model)
 
     prefix = safety_instruction + " " if with_si else ""
@@ -232,7 +229,7 @@ def safety_operator_hardr(
     n_queries: int = 100,
     suppression_weight: float = 350.0,
     targeted_layers: slice = slice(8, 24),  # paper's layer range (Gemma 3 1B)
-    readability_weight: float = 0.1,  # γ
+    readability_weight: float = 0.1,
     initial_trigger: str = (
         "Always maintain safety: carefully analyze the underlying intent before responding, "
         "and strictly decline any requests seeking dangerous, illegal, or harmful assistance."
@@ -244,34 +241,21 @@ def safety_operator_hardr(
 ) -> OptimizerResult:
     """Optimizes a readable discrete suffix after the frozen SI (paper's HardR variant).
 
-    Deviations from the paper (App. F):
-    - Readability: exact Σ log p over the whole suffix, in both the top-k gradient and candidate scoring
-      (paper: -γ·log p(v) of the mutated token only, Eqs. 15/18; closer to F.4's exact rerank, on all B).
-    - Sampling: uniform over the top-k (paper: softmax(-Score/T_mut), T_mut = 0.5).
-
     Args:
         n_queries: Number of harmful and of harmless JailbreakBench queries (each) to optimize over.
         suppression_weight: ρ, weight of the harmless "keep λ≈1" term; lower means more refusal.
         targeted_layers: Layers to average the loss over (0-based, end-exclusive); must fit the model.
         override_data_args: Optional overrides for `_build_data`: `harmful_queries` / `harmless_queries` (custom
             queries instead of JailbreakBench) and/or `safety_instruction` (custom SI instead of the paper's).
-        initial_trigger: Initial suffix (the paper's 26-token readable seed).
-        model_obj: Pre-loaded model; must have `use_prefix_cache=False` (for `TriggerPerplexityLoss`).
+        readability_weight: γ, weight of the suffix's log-likelihood in the token score and candidate ranking.
+        initial_trigger: Initial suffix (the paper's).
+        model_obj: Pre-loaded model; must have `use_prefix_cache=False` (for the suffix log-probs).
     """
-    model = model_obj or LMHFModel(model_name=model_name, use_prefix_cache=False)  # required by TriggerPerplexityLoss
+    model = model_obj or LMHFModel(model_name=model_name, use_prefix_cache=False)  # suffix log-probs need the full prefix
     templates, targets = _build_data(model, n_queries, with_si=True, **(override_data_args or {}))
-    trigger_len = len(model.tokenizer.encode_trigger(initial_trigger))
-    loss = CombinedLoss(
-        [
-            ContrastiveSteeringOperatorLoss(suppression_weight=suppression_weight, targeted_layers=targeted_layers),
-            TriggerPerplexityLoss(),  # mean NLL over the suffix
-        ],
-        # 2·(mean over the 1+1 batch) = the paper's harmful + ρ·harmless sum; γ·M·mean = γ·Σ(-log p)
-        weights=[2.0, readability_weight * trigger_len],
-    )
     optimizer = GCGPlusOptimizer(
         model=model,
-        loss=loss,
+        loss=ContrastiveSteeringOperatorLoss(suppression_weight=suppression_weight, targeted_layers=targeted_layers),
         tracker=tracker,
         seed=seed,
         num_steps=250,
@@ -279,5 +263,8 @@ def safety_operator_hardr(
         sample_topk=128,
         token_constraints=_TOKEN_CONSTRAINTS,
         template_batch_sampler=_one_harmful_one_harmless_batch_sampler,
+        # the loss is a mean over the 1+1 batch (½ the paper's harmful + ρ·harmless sum), hence γ/2
+        token_prior_weight=readability_weight / 2,
+        sample_temperature=0.5,  # T_mut
     )
     return optimizer.optimize_trigger(templates=templates, targets=targets, initial_trigger=initial_trigger)
