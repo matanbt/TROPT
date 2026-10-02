@@ -141,6 +141,17 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 ---
 
+### Safety-Instruction Optimization Recipes
+
+| Key | Description | Target Model | Required Access | Paper | File(s) |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `safety_operator_soft` | Optimizes the safety instruction's embeddings so its Safety-Operator eigenvalue rises on harmful queries and stays ~1 on harmless ones (`ContrastiveSteeringOperatorLoss`). Embedding-space only. | LM | Gradient (Embed) | [Dherin et al., 2026](https://arxiv.org/abs/2609.36434) | [`SafetyOperator__dherin2026.py`](SafetyOperator__dherin2026.py) |
+| `safety_operator_mixed` | Same objective; frozen safety instruction + soft suffix. Embedding-space only. | LM | Gradient (Embed) | [Dherin et al., 2026](https://arxiv.org/abs/2609.36434) | [`SafetyOperator__dherin2026.py`](SafetyOperator__dherin2026.py) |
+| `safety_operator_gcg` | Same objective; frozen safety instruction + discrete GCG suffix. | LM | Gradient + Loss (Token) | [Dherin et al., 2026](https://arxiv.org/abs/2609.36434) | [`SafetyOperator__dherin2026.py`](SafetyOperator__dherin2026.py) |
+| `safety_operator_hardr` | Same objective plus a suffix-perplexity term, for a readable discrete suffix. | LM | Gradient + Loss (Token) | [Dherin et al., 2026](https://arxiv.org/abs/2609.36434) | [`SafetyOperator__dherin2026.py`](SafetyOperator__dherin2026.py) |
+
+---
+
 ### Other Application Recipes
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |

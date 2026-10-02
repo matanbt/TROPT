@@ -533,6 +533,65 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         return loss
 
 
+@dataclass
+class ContrastiveSteeringOperatorLoss(BaseLoss):
+    """
+    Contrastive Steering Operator Loss on the Steering Operator's eigenvalue, from https://arxiv.org/abs/2609.36434 .
+    Minimize/maximize (according to `target_class_idx`) the value of λ = <A_with, A_without> / ||A_without||²,
+    where A_with, A_without are the last-token MLP input activations of similar yet contrasting samples.
+
+    In the original paper, the particular use case is safety instructions. A_with, A_without corresponds to A_safe, A_clean,
+    user promtps with and without the safety instruction, respectively; the `target_class_idx` states whether the sample is
+    harmful (1) or harmless (0); and the loss is minimized for harmful samples and maximized for harmless samples.
+
+    Args:
+        target_hidden_states: holds A_without MLP input activations (n_layers, d_model).
+        suppression_weight: is the ρ hyperparameter in the paper, which controls how much to penalize the model for having a large λ when the target class is 0.
+        targeted_layers: is the slice of layers to compute the loss on (default: all layers).
+
+    Targets:
+        - `target_hidden_states` serves as the reference A_without pre-MLP activations.
+        - `target_class_idx` is the class index of the sample (0 or 1) to determine whether to minimize or maximize λ.
+    """
+
+    require_pre_mlp_hidden_states: ClassVar[bool] = True
+
+    suppression_weight: float = 10.0  # ρ
+    targeted_layers: slice = slice(8, 24)
+
+    def __call__(
+        self,
+        full_pre_mlp_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        target_hidden_states: Float[Tensor, "n_layers d_model"],
+        target_class_idx: int,
+    ) -> Float[Tensor, "bsz"]:
+        n_layers = full_pre_mlp_hidden_states.shape[1]
+
+        # Checks:
+        stop = self.targeted_layers.stop
+        assert (stop is None or stop <= n_layers) and len(range(*self.targeted_layers.indices(n_layers))) > 0, (
+            f"targeted_layers={self.targeted_layers} does not fit the model's {n_layers} layers."
+        )
+        assert (
+            full_pre_mlp_hidden_states.shape[1] == target_hidden_states.shape[0]
+            and full_pre_mlp_hidden_states.shape[-1] == target_hidden_states.shape[-1]
+        ), (
+            f"Shape mismatch: full_pre_mlp_hidden_states {full_pre_mlp_hidden_states.shape}, target_hidden_states {target_hidden_states.shape}"
+        )
+
+        # Compute lambda:
+        a_with = full_pre_mlp_hidden_states[:, self.targeted_layers, -1, :].float()  # (bsz, n_targeted_layers, d_model)
+        a_without = target_hidden_states[self.targeted_layers].float().to(a_with.device)  # (n_targeted_layers, d_model)
+        lam = ((a_with * a_without).sum(-1) / a_without.pow(2).sum(-1)).pow(2)  # (bsz, n_targeted_layers)
+
+        # determine loss based on class:
+        if target_class_idx == 1:
+            loss = -lam
+        else:
+            loss = self.suppression_weight * (1 - lam).pow(2)
+        return loss.mean(dim=-1)  # average across layers; (bsz,)
+
+
 ############################
 @dataclass
 class ClassificationBasedLoss(BaseLoss):

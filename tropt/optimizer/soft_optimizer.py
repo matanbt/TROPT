@@ -1,5 +1,6 @@
 import logging
-from typing import Callable, Optional
+import random
+from typing import Callable, List, Optional
 
 import torch
 
@@ -38,6 +39,9 @@ class SoftPromptOptimizer(BaseOptimizer):
         num_steps: int = 100,
         learning_rate: float = 0.001,
         gd_optimizer: Callable[..., torch.optim.Optimizer] = torch.optim.Adam,
+        # Per-step batch sampling:
+        template_batch_size: Optional[int] = None,
+        template_batch_sampler: Optional[Callable[[TextTemplates, Optional[Targets]], List[int]]] = None,
     ):
         """
 
@@ -50,13 +54,23 @@ class SoftPromptOptimizer(BaseOptimizer):
             num_steps: Number of optimization iterations
             learning_rate: Learning rate for the gradient descent optimizer
             gd_optimizer: The gradient descent optimizer Torch class to use (e.g., Adam, SGD).
-
+            template_batch_size: If set, sample this many templates (and their targets) per step instead of
+                using all templates.
+            template_batch_sampler: If set, called as `template_batch_sampler(templates, targets)` each step to pick the
+                template indices for that step (e.g., stratified batches); defaults to uniform sampling of `template_batch_size` templates.
         """
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
+        assert template_batch_sampler is None or template_batch_size is None, (
+            "Pass either `template_batch_sampler` or `template_batch_size`, not both."
+        )
 
         self.num_steps = num_steps
         self.learning_rate = learning_rate
         self.GDOptimizer = gd_optimizer
+        self.template_batch_size = template_batch_size
+        if template_batch_sampler is None and template_batch_size is not None:  # default: uniform random batch
+            template_batch_sampler = lambda templates, targets: random.sample(range(len(templates)), template_batch_size)  # noqa: E731
+        self.template_batch_sampler = template_batch_sampler
 
     def optimize_trigger(
         self,
@@ -73,6 +87,9 @@ class SoftPromptOptimizer(BaseOptimizer):
         trigger_embeds = self.model._embedding_layer(trigger_ids.unsqueeze(0))  # (1, trigger_seq_len, embd_dim)
         model_dtype = trigger_embeds.dtype
         trigger_embeds = trigger_embeds.float()  # stored in high precision for the optimizer
+        use_batch_sampling = self.template_batch_sampler is not None and (
+            self.template_batch_size is None or self.template_batch_size < len(templates)
+        )
 
         # Initialize the optimizer on the trigger embeddings
         optimizer = self.GDOptimizer([trigger_embeds], lr=self.learning_rate)
@@ -81,6 +98,13 @@ class SoftPromptOptimizer(BaseOptimizer):
 
         for step in self.track_steps(range(self.num_steps), desc="Soft Prompt Optimization"):
             optimizer.zero_grad()
+
+            if use_batch_sampling:
+                batch_indices = self.template_batch_sampler(templates, targets)
+                self.model.set_inputs_from_tokens(
+                    templates=[templates[i] for i in batch_indices],
+                    targets=targets.select_indices(batch_indices) if targets is not None else None,
+                )
 
             # Compute gradients w.r.t. trigger embeddings
             trigger_grad, curr_loss = self.model.compute_grad_from_embeds(
@@ -91,16 +115,16 @@ class SoftPromptOptimizer(BaseOptimizer):
             )  # grad: (1, trigger_seq_len, embed_dim); loss: (1,)
             curr_loss = curr_loss.item()
 
-            # Set gradient on trigger embeddings
-            trigger_embeds.grad = trigger_grad.float()
-
-            # Adam step
-            optimizer.step()
-
+            # Record the embeddings that produced this step's loss (before the update below)
             best.update(
                 loss=curr_loss,
-                trigger_emb=trigger_embeds.detach().squeeze(0).to(model_dtype),
+                trigger_emb=trigger_embeds.detach().clone().squeeze(0).to(model_dtype),
             )
+
+            # Set gradient on trigger embeddings, and step
+            trigger_embeds.grad = trigger_grad.float()
+            optimizer.step()
+
             self.log(loss=curr_loss, lr=optimizer.param_groups[0]["lr"], grad_norm=trigger_grad.norm().item())
 
         result = best.to_result()

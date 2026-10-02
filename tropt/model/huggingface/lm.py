@@ -324,6 +324,23 @@ class LMHFModel(
 
         return logits
 
+    @cached_property
+    def _mlp_modules(self) -> List[torch.nn.Module]:
+        """Per-layer MLP modules, taken from `get_decoder().layers[i].mlp`; raises if absent."""
+        try:
+            mlps = [layer.mlp for layer in self._model.get_decoder().layers]
+        except AttributeError as e:
+            raise NotImplementedError(
+                "`require_pre_mlp_hidden_states` expects the MLP modules at `get_decoder().layers[i].mlp`, "
+                f"which {type(self._model).__name__} does not have."
+            ) from e
+        logger.warning(
+            "`require_pre_mlp_hidden_states` captures the inputs of `get_decoder().layers[i].mlp`. It is recommended "
+            "to verify these are the intended MLP layers for this model (e.g., parallel attention/MLP blocks and "
+            "Mixture-of-Experts blocks may not match the intended definition)."
+        )
+        return mlps
+
     def invoke_from_tokens(
         self,
         input_embeds: Optional[Float[Tensor, "bsz seq_len embd_dim"]] = None,
@@ -336,6 +353,7 @@ class LMHFModel(
         require_target_prefill: bool = False,
         require_generation: bool = False,
         require_hidden_states: bool = False,
+        require_pre_mlp_hidden_states: bool = False,
         require_attentions: bool = False,
         require_first_token_logprobs: bool = False,
         count_backward: bool = False,
@@ -358,6 +376,7 @@ class LMHFModel(
             require_target_prefill: Whether the input includes a prefixed target, of which indices are marked by the input_slices, and we should extract it logits.
             require_generation: Whether to perform generation, in addition to forward pass.
             require_hidden_states: Whether to return hidden states in the output.
+            require_pre_mlp_hidden_states: Whether to return the per-layer MLP inputs (captured via forward pre-hooks).
             require_attentions: Whether to return attentions in the output.
             require_first_token_logprobs: Whether to return log-probabilities for the top-20 candidates for the first generated token.
             count_backward: Whether this forward pass will be back-propagated through (set by gradient methods).
@@ -383,19 +402,46 @@ class LMHFModel(
         if input_attention_mask is None:
             input_attention_mask = torch.ones(input_embeds.shape[:2], device=input_embeds.device)
 
-        outputs = self._model(
-            inputs_embeds=input_embeds,
-            attention_mask=input_attention_mask,
-            output_attentions=require_attentions,
-            output_hidden_states=require_hidden_states,
-            **(input_prefix_cache_kwargs or {})
-        )
+        mlp_inputs: List[Tensor] = []
+        mlp_hooks = []
+        if require_pre_mlp_hidden_states:
+            # register MLP forward pre-hooks to capture the inputs to each MLP module (HF decoders pass it positionally)
+            def _capture_mlp_input(mod, args):
+                assert len(args) > 0, f"`require_pre_mlp_hidden_states`: {type(mod).__name__} was called without positional input."
+                mlp_inputs.append(args[0])
+
+            mlp_hooks = [m.register_forward_pre_hook(_capture_mlp_input) for m in self._mlp_modules]
+
+        # Run the model
+        try:
+            outputs = self._model(
+                inputs_embeds=input_embeds,
+                attention_mask=input_attention_mask,
+                output_attentions=require_attentions,
+                output_hidden_states=require_hidden_states,
+                **(input_prefix_cache_kwargs or {})
+            )
+        finally:
+            for hook in mlp_hooks:
+                hook.remove()
 
         self._update_invoke_stats(
             n_tokens=int(input_attention_mask.sum().item()),
             n_samples=input_embeds.shape[0],
             count_backward=count_backward,
         )
+
+        # Extract pre-MLP hidden states, if requested
+        full_pre_mlp_hidden_states = None
+        if require_pre_mlp_hidden_states:
+            # collect the pre-MLP hidden states; ensure they match the expected shape
+            expected = (*input_embeds.shape[:2], self._model.config.get_text_config().hidden_size)
+            if len(mlp_inputs) != len(mlp_hooks) or any(tuple(x.shape) != expected for x in mlp_inputs):
+                raise RuntimeError(
+                    f"`require_pre_mlp_hidden_states`: expected {len(mlp_hooks)} MLP inputs of shape {expected}, "
+                    f"got {[tuple(x.shape) for x in mlp_inputs]}."
+                )
+            full_pre_mlp_hidden_states = torch.stack([x.to(input_embeds.device) for x in mlp_inputs], dim=1)
 
         # Extract first-token logprobs, if requested
         response_first_token_logprobs = None
@@ -453,6 +499,7 @@ class LMHFModel(
             prefill_response_logits=prefill_response_logits,
             full_attentions=torch.stack(outputs.attentions, dim=1) if require_attentions else None,
             full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if require_hidden_states else None,  # (skips input embedding (layer 0))
+            full_pre_mlp_hidden_states=full_pre_mlp_hidden_states,
             generated_response_strs=generated_response_strs,
             generated_response_ids=generated_response_ids,
             generated_response_logits=generated_response_logits,

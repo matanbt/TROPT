@@ -1,7 +1,7 @@
 import logging
 import math
 import random
-from typing import Literal, Optional, Tuple, Union
+from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -76,6 +76,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         n_grad_avg: int = 1,
         # Per-step batch sampling:
         template_batch_size: Optional[int] = None,
+        template_batch_sampler: Optional[Callable[[TextTemplates, Optional[Targets]], List[int]]] = None,
     ):
         """
         Args:
@@ -111,7 +112,12 @@ class GCGPlusOptimizer(BaseOptimizer):
                 simultaneously.
                 Useful for large template sets.
                 Reference: https://arxiv.org/abs/1908.07125 . Defaults to None (use all templates).
+            template_batch_sampler: If set, called as `template_batch_sampler(templates, targets)` each step to pick
+                the template indices for that step (e.g., stratified batches); defaults to uniform sampling of `template_batch_size` templates.
         """
+        assert template_batch_sampler is None or template_batch_size is None, (
+            "Pass either `template_batch_sampler` or `template_batch_size`, not both."
+        )
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
         # Proxy model setup
@@ -155,6 +161,9 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.buffer_size = buffer_size
         self.n_grad_avg = n_grad_avg
         self.template_batch_size = template_batch_size
+        if template_batch_sampler is None and template_batch_size is not None:  # default: uniform random batch
+            template_batch_sampler = lambda templates, targets: random.sample(range(len(templates)), template_batch_size)  # noqa: E731
+        self.template_batch_sampler = template_batch_sampler
 
     def optimize_trigger(
         self,
@@ -169,9 +178,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         target_model = self.model
 
         # Batch sampling setup
-        use_batch_sampling = (
-            self.template_batch_size is not None
-            and self.template_batch_size < len(templates)
+        use_batch_sampling = self.template_batch_sampler is not None and (
+            self.template_batch_size is None or self.template_batch_size < len(templates)
         )
 
         proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -215,9 +223,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         for step_i in self.track_steps(range(self.num_steps)):
             # --- batch sampling: re-set model inputs with a random subset ---
             if use_batch_sampling:
-                batch_indices = random.sample(
-                    range(len(templates)), self.template_batch_size
-                )
+                batch_indices = self.template_batch_sampler(templates, targets)
                 batch_templates = [templates[i] for i in batch_indices]
                 batch_targets = (
                     targets.select_indices(batch_indices)
