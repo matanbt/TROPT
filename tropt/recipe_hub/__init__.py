@@ -60,6 +60,12 @@ from .QCG__hayase2024 import (
     qcg__hayase2024,
 )
 from .RASLITEPlus import rasliteplus, rasliteplus_llm
+from .SafetyOperator__dherin2026 import (
+    safety_operator_gcg,
+    safety_operator_hardr,
+    safety_operator_mixed,
+    safety_operator_soft,
+)
 from .SoftPrompt__schwinn2024 import soft_prompt__schwinn2024, soft_prompt_encoder
 from .UAT import uat_classifier, uat_prompt_injection
 from .utils import generate_from_model
@@ -140,6 +146,12 @@ RECIPES = {
     # IRIS (Huang 2025)
     "iris__huang2025": iris__huang2025,
     "iris2": iris2,
+
+    # Safety Operator (Dherin 2026) — defense: safety-instruction optimization
+    "safety_operator_soft": safety_operator_soft,
+    "safety_operator_mixed": safety_operator_mixed,
+    "safety_operator_gcg": safety_operator_gcg,
+    "safety_operator_hardr": safety_operator_hardr,
 }
 
 

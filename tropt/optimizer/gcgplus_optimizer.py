@@ -1,7 +1,7 @@
 import logging
 import math
 import random
-from typing import Literal, Optional, Tuple, Union
+from typing import Callable, List, Literal, Optional, Tuple, Union
 
 import torch
 from jaxtyping import Float, Int
@@ -16,6 +16,7 @@ from tropt.loss import BaseLoss
 from tropt.model import (
     BaseModel,
     GradientTokenAccessMixin,
+    LogitsTokenAccessMixin,
     LossTextAccessMixin,
     LossTokenAccessMixin,
     TokenAccessMixin,
@@ -76,6 +77,10 @@ class GCGPlusOptimizer(BaseOptimizer):
         n_grad_avg: int = 1,
         # Per-step batch sampling:
         template_batch_size: Optional[int] = None,
+        template_batch_sampler: Optional[Callable[[TextTemplates, Optional[Targets]], List[int]]] = None,
+        # Token prior (readability):
+        token_prior_weight: float = 0.0,
+        sample_temperature: Optional[float] = None,
     ):
         """
         Args:
@@ -111,7 +116,15 @@ class GCGPlusOptimizer(BaseOptimizer):
                 simultaneously.
                 Useful for large template sets.
                 Reference: https://arxiv.org/abs/1908.07125 . Defaults to None (use all templates).
+            template_batch_sampler: If set, called as `template_batch_sampler(templates, targets)` each step to pick
+                the template indices for that step (e.g., stratified batches); defaults to uniform sampling of `template_batch_size` templates.
+            token_prior_weight: weight of the readability prior (under gradient selection only). When non zero, in each step, the proxy's log p(v | prefix) at every trigger position (one forward on the current trigger) is added to the loss. Inspired by AutoDAN (https://arxiv.org/abs/2310.15140). Requires a proxy with logits access and a trigger slice that starts after position 0 (i.e., `use_prefix_cache=False`). Defaults to 0.0 (off).
+            sample_temperature: If set, sample tokens from the top-k by softmax(score / T) instead of uniformly
+                (under gradient selection only). Defaults to None (uniform).
         """
+        assert template_batch_sampler is None or template_batch_size is None, (
+            "Pass either `template_batch_sampler` or `template_batch_size`, not both."
+        )
         super().__init__(model, loss=loss, tracker=tracker, seed=seed)
 
         # Proxy model setup
@@ -131,6 +144,14 @@ class GCGPlusOptimizer(BaseOptimizer):
                     f"Pass a differentiable proxy_loss (e.g. PrefillCELoss())."
                 )
         assert candidate_oversample_factor >= 1.0, "candidate_oversample_factor must be >= 1.0"
+        if token_prior_weight > 0 or sample_temperature is not None:
+            assert candidate_selection == "gradient", (
+                "`token_prior_weight` / `sample_temperature` require candidate_selection='gradient'."
+            )
+        if token_prior_weight > 0:
+            assert isinstance(self.proxy_model, LogitsTokenAccessMixin), (
+                "`token_prior_weight` requires a proxy_model with LogitsTokenAccessMixin."
+            )
 
         # Prefer token-level target evaluation when proxy and target share the same tokenizer
         # (otherwise, if tokenizer are not shared, or we don't have access to the target model's tokenzier, we simply use text-level loss compuation)
@@ -155,6 +176,11 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.buffer_size = buffer_size
         self.n_grad_avg = n_grad_avg
         self.template_batch_size = template_batch_size
+        if template_batch_sampler is None and template_batch_size is not None:  # default: uniform random batch
+            template_batch_sampler = lambda templates, targets: random.sample(range(len(templates)), template_batch_size)  # noqa: E731
+        self.template_batch_sampler = template_batch_sampler
+        self.token_prior_weight = token_prior_weight
+        self.sample_temperature = sample_temperature
 
     def optimize_trigger(
         self,
@@ -169,9 +195,8 @@ class GCGPlusOptimizer(BaseOptimizer):
         target_model = self.model
 
         # Batch sampling setup
-        use_batch_sampling = (
-            self.template_batch_size is not None
-            and self.template_batch_size < len(templates)
+        use_batch_sampling = self.template_batch_sampler is not None and (
+            self.template_batch_size is None or self.template_batch_size < len(templates)
         )
 
         proxy_model.set_inputs_from_tokens(templates=templates, targets=targets)
@@ -215,9 +240,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         for step_i in self.track_steps(range(self.num_steps)):
             # --- batch sampling: re-set model inputs with a random subset ---
             if use_batch_sampling:
-                batch_indices = random.sample(
-                    range(len(templates)), self.template_batch_size
-                )
+                batch_indices = self.template_batch_sampler(templates, targets)
                 batch_templates = [templates[i] for i in batch_indices]
                 batch_targets = (
                     targets.select_indices(batch_indices)
@@ -245,6 +268,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 trigger_ids = buffer.get_best_trigger()
 
             # === Stage 1: Candidate Selection (on proxy) ===
+            token_log_probs: Optional[Tensor] = None
 
             if self.candidate_selection == "gradient":
                 grad_triggers = self._get_grad_trigger_variations(
@@ -267,9 +291,16 @@ class GCGPlusOptimizer(BaseOptimizer):
                         )
                     trigger_grad = momentum_buffer
 
+                if self.token_prior_weight > 0:
+                    # log p(v | prefix) at every trigger position, from one forward on the current trigger
+                    token_log_probs = proxy_model.compute_logits_from_tokens(
+                        trigger_ids.unsqueeze(0), return_trigger_logits_only=True,
+                    )[0].float().log_softmax(dim=-1)  # (trigger_seq_len, vocab_size)
+
                 candidate_trigger_ids = self._sample_ids_from_grad(
                     trigger_ids=trigger_ids,
                     trigger_grad=trigger_grad,
+                    token_log_probs=token_log_probs,
                     blacklist_ids=blacklist_ids,
                     n_candidates=n_candidates_oversampled,
                     n_replace=cur_n_replace,
@@ -310,6 +341,10 @@ class GCGPlusOptimizer(BaseOptimizer):
 
             # === Stage 2: Candidate Evaluation (on target) ===
             losses = self._evaluate_candidates(candidate_trigger_ids)
+            if token_log_probs is not None:
+                positions = torch.arange(candidate_trigger_ids.shape[1], device=candidate_trigger_ids.device)
+                cand_log_probs = token_log_probs[positions, candidate_trigger_ids].sum(dim=-1)  # (n_candidates,)
+                losses = losses - self.token_prior_weight * cand_log_probs.to(losses)
 
             # === Update best / buffer ===
             if buffer is not None:
@@ -384,6 +419,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         blacklist_ids: list,
         n_candidates: int,
         n_replace: int = 1,
+        token_log_probs: Optional[Float[Tensor, "trigger_seq_len vocab_size"]] = None,
     ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
         """Sample candidate token sequences via GCG-style random multi-position replacement."""
         trigger_seq_len = trigger_grad.shape[0]
@@ -391,10 +427,15 @@ class GCGPlusOptimizer(BaseOptimizer):
         n_replace = min(n_replace, trigger_seq_len)
 
         # Top-k candidates per position
-        trigger_grad = trigger_grad.clone()  # avoid mutating momentum buffer
-        trigger_grad *= -1
-        trigger_grad[:, blacklist_ids] = float("-inf")
-        topk_ids = trigger_grad.topk(self.sample_topk, dim=-1).indices
+        scores = -trigger_grad  # (new tensor; avoids mutating the momentum buffer)
+        if token_log_probs is not None:
+            assert token_log_probs.shape == scores.shape, (
+                f"Token log-probs {tuple(token_log_probs.shape)} do not match the gradient {tuple(scores.shape)}."
+            )
+            scores = scores + self.token_prior_weight * token_log_probs.to(scores)
+        scores[:, blacklist_ids] = float("-inf")
+        topk = scores.topk(self.sample_topk, dim=-1)
+        topk_ids = topk.indices
 
         candidate_trigger_ids = trigger_ids.repeat(n_candidates, 1).clone()
 
@@ -405,12 +446,16 @@ class GCGPlusOptimizer(BaseOptimizer):
 
         # Select relevant top-k lists and sample one token from each
         relevant_topk_lists = topk_ids[sampled_ids_pos]
-        rand_k_indices = torch.randint(
-            0,
-            self.sample_topk,
-            (n_candidates, n_replace, 1),
-            device=device,
-        )
+        if self.sample_temperature is None:
+            rand_k_indices = torch.randint(
+                0,
+                self.sample_topk,
+                (n_candidates, n_replace, 1),
+                device=device,
+            )
+        else:  # softmax(score / T) over each position's top-k
+            probs = (topk.values[sampled_ids_pos] / self.sample_temperature).softmax(dim=-1)  # (n_cand, n_replace, k)
+            rand_k_indices = torch.multinomial(probs.view(-1, self.sample_topk), 1).view(n_candidates, n_replace, 1)
         sampled_ids_val = torch.gather(
             input=relevant_topk_lists,
             dim=-1,

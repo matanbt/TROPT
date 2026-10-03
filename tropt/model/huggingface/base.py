@@ -807,6 +807,7 @@ class HuggingFaceBackendModel:
                         require_target_prefill=loss_func.require_target_prefill,
                         require_generation=loss_func.require_generation,
                         require_hidden_states=loss_func.require_hidden_states,
+                        require_pre_mlp_hidden_states=loss_func.require_pre_mlp_hidden_states,
                         require_attentions=loss_func.require_attentions,
                         count_backward=True,
                     )
@@ -924,6 +925,7 @@ class HuggingFaceBackendModel:
                         require_target_prefill=loss_func.require_target_prefill,
                         require_generation=loss_func.require_generation,
                         require_hidden_states=loss_func.require_hidden_states,
+                        require_pre_mlp_hidden_states=loss_func.require_pre_mlp_hidden_states,
                         require_attentions=loss_func.require_attentions,
                         count_backward=True,
                     )
@@ -1034,6 +1036,7 @@ class HuggingFaceBackendModel:
                         require_target_prefill=loss_func.require_target_prefill,
                         require_generation=loss_func.require_generation,
                         require_hidden_states=loss_func.require_hidden_states,
+                        require_pre_mlp_hidden_states=loss_func.require_pre_mlp_hidden_states,
                         require_attentions=loss_func.require_attentions,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
@@ -1057,6 +1060,7 @@ class HuggingFaceBackendModel:
         require_target_prefill: bool = False,
         require_generation: bool = False,
         require_hidden_states: bool = False,
+        require_pre_mlp_hidden_states: bool = False,
         require_attentions: bool = False,
         count_backward: bool = False,
         **kwargs,
@@ -1074,6 +1078,8 @@ class HuggingFaceBackendModel:
                 whether to perform autoregressive generation after the forward pass (for LMs).
             require_hidden_states: bool
                 whether to return the hidden states from the model output.
+            require_pre_mlp_hidden_states: bool
+                whether to return the per-layer inputs to the feed-forward (MLP) blocks.
             require_attentions: bool
                 whether to return the attention weights from the model output.
             count_backward: bool

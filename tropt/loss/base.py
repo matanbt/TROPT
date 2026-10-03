@@ -41,6 +41,9 @@ class BaseLoss(ABC):
     require_hidden_states: ClassVar[bool] = False
     """Whether this loss requires the model to provide the forward pass's hidden states."""
 
+    require_pre_mlp_hidden_states: ClassVar[bool] = False
+    """Whether this loss requires the per-layer inputs to the feed-forward (MLP) blocks."""
+
     require_attentions: ClassVar[bool] = False
     """Whether this loss requires the model to return attention weights."""
 
@@ -166,6 +169,10 @@ class CombinedLoss(BaseLoss):
     @property
     def require_hidden_states(self) -> bool:  # ty: ignore[invalid-attribute-override]
         return any(lf.require_hidden_states for lf in self.loss_funcs)
+
+    @property
+    def require_pre_mlp_hidden_states(self) -> bool:  # ty: ignore[invalid-attribute-override]
+        return any(lf.require_pre_mlp_hidden_states for lf in self.loss_funcs)
 
     @property
     def require_attentions(self) -> bool:  # ty: ignore[invalid-attribute-override]

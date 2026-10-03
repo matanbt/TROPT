@@ -10,6 +10,7 @@ from .losses import (
     AttentionBasedLoss,
     AttentionEnhLoss,
     ClassificationBasedLoss,
+    ContrastiveSteeringOperatorLoss,
     EmbeddingBasedLoss,
     HiddenStateBasedLoss,
     # Concrete losses:
