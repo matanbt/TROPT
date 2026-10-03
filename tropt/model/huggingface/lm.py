@@ -37,7 +37,7 @@ _MAX_TOP_LOGPROBS = 20  # matches OpenAI/LiteLLM convention
 
 # HF Architectures supported for MLP module extraction with `get_decoder().layers[i].mlp`.
 # We currently only support models with MLPs where the first linear multiplies its input post-attention activations.
-# We maintain a whitelist to avoid silent breakage for unspported architectures
+# We maintain a whitelist to avoid silent breakage for unsupported architectures
 _PRE_MLP_MODEL_TYPES = frozenset({
     "exaone4", "gemma", "gemma2", "gemma3_text", "gemma3n_text", "glm4", "granite", "llama", "mistral",
     "nemotron", "olmo", "olmo2", "phi3", "qwen2", "qwen3", "smollm3", "starcoder2",
@@ -330,7 +330,7 @@ class LMHFModel(
         if model_type not in _PRE_MLP_MODEL_TYPES:
             raise NotImplementedError(
                 f"`require_pre_mlp_hidden_states`: model type `{model_type}` is not supported. Supported (dense, "
-                f"sequential decoders): {sorted(_PRE_MLP_MODEL_TYPES)}. We currnently only support MLPs where the first linear multiplies the post-attention activations."
+                f"sequential decoders): {sorted(_PRE_MLP_MODEL_TYPES)}. We currently only support MLPs where the first linear multiplies the post-attention activations."
             )
         return [layer.mlp for layer in self._model.get_decoder().layers]
 
