@@ -546,7 +546,8 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
 
     Args:
         target_hidden_states: holds A_without MLP input activations (n_layers, d_model).
-        suppression_weight: is the ρ hyperparameter in the paper, which controls how much to penalize the model for having a large λ when the target class is 0.
+        suppression_weight: is the ρ hyperparameter in the paper, which controls how much
+        to penalize the model for having a large λ when the target class is 0.
         targeted_layers: is the slice of layers to compute the loss on (default: all layers).
 
     Targets:

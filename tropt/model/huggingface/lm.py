@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 
 _MAX_TOP_LOGPROBS = 20  # matches OpenAI/LiteLLM convention
 
+# HF Architectures supported for MLP module extraction with `get_decoder().layers[i].mlp`.
+# We currently only support models with MLPs where the first linear multiplies its input post-attention activations.
+# We maintain a whitelist to avoid silent breakage for unspported architectures
+_PRE_MLP_MODEL_TYPES = frozenset({
+    "exaone4", "gemma", "gemma2", "gemma3_text", "gemma3n_text", "glm4", "granite", "llama", "mistral",
+    "nemotron", "olmo", "olmo2", "phi3", "qwen2", "qwen3", "smollm3", "starcoder2",
+})
+
 
 # ======================= Input/Output Handlers logic =======================
 class LMHFTokenInputManager(HuggingFaceTokenInputManager):
@@ -317,20 +325,14 @@ class LMHFModel(
 
     @cached_property
     def _mlp_modules(self) -> List[torch.nn.Module]:
-        """Per-layer MLP modules, taken from `get_decoder().layers[i].mlp`; raises if absent."""
-        try:
-            mlps = [layer.mlp for layer in self._model.get_decoder().layers]
-        except AttributeError as e:
+        """Per-layer MLP modules (`get_decoder().layers[i].mlp`), for white-listed architectures only."""
+        model_type = self._model.config.get_text_config().model_type
+        if model_type not in _PRE_MLP_MODEL_TYPES:
             raise NotImplementedError(
-                "`require_pre_mlp_hidden_states` expects the MLP modules at `get_decoder().layers[i].mlp`, "
-                f"which {type(self._model).__name__} does not have."
-            ) from e
-        logger.warning(
-            "`require_pre_mlp_hidden_states` captures the inputs of `get_decoder().layers[i].mlp`. It is recommended "
-            "to verify these are the intended MLP layers for this model (e.g., parallel attention/MLP blocks and "
-            "Mixture-of-Experts blocks may not match the intended definition)."
-        )
-        return mlps
+                f"`require_pre_mlp_hidden_states`: model type `{model_type}` is not supported. Supported (dense, "
+                f"sequential decoders): {sorted(_PRE_MLP_MODEL_TYPES)}. We currnently only support MLPs where the first linear multiplies the post-attention activations."
+            )
+        return [layer.mlp for layer in self._model.get_decoder().layers]
 
     def invoke_from_tokens(
         self,
