@@ -126,9 +126,9 @@ Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer 
 Run **head-to-head fair, reproducible comparisons** of optimizers and their enhancements on shared infrastructure and a rich bank of optimizers, losses, etc.
 :::
 
-:::{grid-item-card} 🤖 &nbsp;Agent-ready
+:::{grid-item-card} 🧑‍🔬 &nbsp;Human-verified implementations
 :class-card: tropt-feature-card
-Ships a skill at [`skills/tropt/`](https://github.com/matanbt/TROPT/tree/main/skills/tropt) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT.
+Every optimizer and loss is human-reviewed, tested, and checked against the original implementation where one exists.
 :::
 
 ::::

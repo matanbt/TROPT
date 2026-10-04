@@ -29,14 +29,15 @@
 ***TROPT*** is a **T**extual T**r**igger **Op**timization **T**oolbox for executing and developing discrete text optimizers that elicit (un)desired behaviors for various types of NLP models (LLMs, embeddings, classifiers) and applications (red-teaming, interpretability, etc.).
 
 
-- ⚔️ **Red-team LLMs out of the box:** Craft jailbreaks and other LLM attacks with **30+ ready-to-run recipes** — spanning white- and black-box methods (GCG, BEAST, MAC, GASLITE, …) — each invocable in a single call, to evaluate model and defense robustness.
-- 🔁 **Extend to any NLP model:** Seamlessly port existing optimization schemes (e.g., LLM jailbreaks) to any model (e.g., retrievers, classifiers, multimodal systems), or to novel tasks (e.g., new attack vectors, interpretability research).
-- 🧩 **Compose new optimization recipes:** Mix and match any optimizer (gradient-based, continuous-relaxation, black-box) with any loss (logits, embeddings, attention, activations, LM-as-judge) to create adaptive and novel optimization recipes in new domains.
-- 🔬 **Build new optimizers and losses:** Build **new optimizers** leveraging TROPT's standardized, lightweight optimizer implementation and its extensive toolkit. Or, **customize loss** by only defining its core logic. TROPT **automatically integrates** new optimizers and losses with any model and recipe (including batching, trigger combination, gradients), avoiding annoying yet subtle boilerplate.
-- 🛡️ **Reliable Benchmarking:** Run fair, reproducible comparisons of optimizers and their enhancements on shared infrastructure and a rich bank of optimizers, losses, etc.
+- ⚔️ **Red-team LLMs out of the box:** 40+ ready-to-run recipes (GCG, BEAST, MAC, GASLITE, …), white- and black-box, each a single call.
+- 🔁 **Extend to any NLP model:** Seamlessly port existing schemes (e.g., LLM jailbreaks) to new models (retrievers, classifiers, multimodal) or new tasks (new attacks, interpretability).
+- 🧩 **Compose new recipes:** Mix and match any optimizer (gradient-based, black-box) with any loss (logits, embeddings, activation-based, LM-as-judge).
+- 🔬 **Build new optimizers and losses** by implementing *only* the core logic; TROPT handles all the annoying yet subtle boilerplace (batching, trigger insertion, gradients, ...) and composes it with every model.
+- 🛡️ **Reliable benchmarking:** Run fair, reproducible comparisons of optimizers, losses, and recipes on shared infrastructure.
+- 🧑‍🔬 **Human-verified implementations:** Every optimizer and loss is human-reviewed, tested, and checked against the original implementation where one exists.
 
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Installation
 
@@ -53,7 +54,9 @@ cd tropt
 uv sync --extra dev
 ```
 
-### Quick Start: Run a Recipe 🥗
+Using a coding agent? Point it to the [TROPT skill](skills/tropt/SKILL.md) and [`AGENTS.md`](AGENTS.md).
+
+### Quick Start: Run a Recipe
 
 TROPT lets you run an optimization scheme — a _recipe_ — in a single function call. 30+ recipes ship out of the box in the [Recipe Hub](https://tropt.dev/guides/running_a_recipe.html), covering LLM jailbreaks (white- and black-box), embedding attacks, and interpretability studies.
 
@@ -72,7 +75,7 @@ print("Lowest loss:", result.best_loss)
 ```
 
 
-### Compose Your Own Recipe 🪄
+### Compose Your Own Recipe
 
 Pick any model, loss, and optimizer and assemble them directly — this is how the _recipes_ are built underneath:
 
@@ -97,18 +100,13 @@ result = optimizer.optimize_trigger(
 You can replace any component in this recipe code with another compatible one; e.g., swap the loss or optimizer with a more sophisticated one to enhance the jailbreak. 
 For more examples see [quickstart.ipynb](quickstart.ipynb) notebook, and the detailed guide on [adding a recipe](https://tropt.dev/guides/adding_a_recipe.html).
 
-### Build New Optimizers & Losses 🔬
+### Build New Optimizers & Losses
 
 TROPT is designed as a **factory for new optimizers and losses**. Each is a self-contained module behind a compact, standardized interface. This makes optimizer and loss modules more transparent and easy to read, and easily extensible: creating a new optimizer largely amounts to defining its search algorithm, and a new loss to defining its core computation.
 TROPT internally handles the repeated logic required to operate these modules, including input--trigger management, batching, tokenization blocking, trigger gradient computation, etc.
 Your new optimizer or loss then composes automatically with every existing model and counterpart component.
 
 Quick examples for a custom optimizer and loss are in [quickstart.ipynb](quickstart.ipynb); the docs have more detailed guides on building [optimizers](https://tropt.dev/guides/adding_an_optimizer.html) and [losses](https://tropt.dev/guides/adding_a_loss.html).
-
-
-## 🤖 Use TROPT with Your Coding Agent
-
-TROPT includes a skill for coding agents at [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) that tells any AI coding assistant (Claude Code, Codex, Gemini CLI, Cursor, …) how to install, run, and extend TROPT.
 
 
 ## Contributing
