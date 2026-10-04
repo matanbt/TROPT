@@ -60,6 +60,8 @@ For further readings, we provide additional material (for you, or your favorite 
     - [`AGENTS.md`](AGENTS.md) — fast-path orientation: the four components, mixin contract, `ModelInput`/`ModelOutput`/`Targets`, setup-then-compute.
     - [`skills/tropt/SKILL.md`](skills/tropt/SKILL.md) — task-routed pointers and cross-cutting pitfalls (mixin mismatches, thinking-model alignment, multi-model OOM, etc.).
 
+**No vibe-coding.** LLMs may draft code or assist editing it, but every line must be inspected and understood by a human before it is submitted. This is especially strict for optimizers and losses: they must be tested from several angles and, when a reference implementation exists, verified to reproduce its results. TROPT is a research tool, so correctness outweighs speed and performance.
+
 ### 3. PR workflow
 
 After implementing your addition to TROPT, and running the essential checks, open a PR as follows:

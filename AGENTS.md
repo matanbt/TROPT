@@ -6,11 +6,21 @@
 
 ## Tips
 
+- Keep answers short and technical; no filler.
+- If the user asks a question, answer it before making any edits.
+- Read files fully before making broad changes.
 - Prefer concise modifications — minimal changes so edits are easy to review. But if minimal changes create technical debt or unreadable code, prefer clarity.
 - Temporary scripts or markdown you create go under `agent_stuff/`. Don't make a mess.
 - Avoid over-commenting. Use clear names; only comment where intent isn't obvious.
 - **Keep docstrings short.** One or two sentences max. Only list args that aren't self-evident from name and type.
 - **Docs maintenance**: Don't enumerate specific classes/fields/signatures in docs — they go stale. Point to source instead (e.g., "see `tropt/loss/` for the full set").
+
+## Git
+
+- Never commit or push unless the user explicitly asks.
+- No emojis in commits, PRs, or code.
+- Stage explicit paths only; never `git add -A` / `git add .`. Run `git status` before any requested commit.
+- Never run `git reset --hard`, `git checkout .`, `git clean -fd`, `git stash`, or `--no-verify`; they destroy work in progress.
 
 ## Project Overview
 
