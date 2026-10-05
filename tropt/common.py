@@ -73,8 +73,8 @@ class MessageTargets(pydantic.BaseModel):
     # ── Representation targets ─────────────────────────────────────────────
     # Consumed by losses that operate on embeddings or hidden-state directions.
 
-    target_vectors: Optional[Float[Tensor, "d_model"]] = None
-    """Target embedding vector for this message."""
+    target_vectors: Optional[Float[Tensor, "d_model"] | Float[Tensor, "bsz d_model"]] = None
+    """Target embedding vector for this message (or one per candidate, when candidates are assigned to templates)."""
 
     target_directions: Optional[Float[Tensor, "d_model"]] = None
     """Target direction in activation space for this message.

@@ -9,6 +9,7 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding
+from transformers.tokenization_utils_tokenizers import TokenizersBackend
 
 from tropt.common import MessageTargets, ModelOutput
 from tropt.model.flop_counter import FlopCounterBase, ManualFlopCounter
@@ -99,6 +100,11 @@ class BaseModel(ABC):
 
     def get_usage_stats(self) -> Dict[str, int]:
         """Returns summary of model usage statistics for logging."""
+        # Resolve token counts deferred as device tensors (host-synced only here)
+        pending = self.__dict__.pop("_pending_n_tokens", [])
+        for n_tokens, count_backward in pending:
+            n_tokens = int(n_tokens)
+            self._update_usage_stats(tokens=n_tokens, flops=self._count_flops(n_tokens, count_backward))
         stats: dict[str, Any | int] = {
             "total_tokens": getattr(self, "_token_used", 0),
             "forward_calls": getattr(self, "_forward_call_count", 0),
@@ -113,7 +119,7 @@ class BaseModel(ABC):
     def _update_invoke_stats(
         self,
         *,
-        n_tokens: int,
+        n_tokens: int | Tensor,
         n_samples: int,
         count_backward: bool = False,
     ):
@@ -124,26 +130,31 @@ class BaseModel(ABC):
         computation.
 
         Args:
-            n_tokens: Total tokens processed in this invocation.
+            n_tokens: Total tokens processed in this invocation. May be a 0-d device tensor, to avoid a host
+                sync per invocation (resolved lazily in :meth:`get_usage_stats`).
             n_samples: Batch size (number of sequences).
             count_backward: Whether this forward pass will also be
                 back-propagated through (set by gradient methods).
         """
-        flops = 0
-        if self._flop_counter is not None:
-            if count_backward:
-                flops = self._flop_counter.count_forward_backward(n_tokens)
-            else:
-                flops = self._flop_counter.count_forward(n_tokens)
+        if isinstance(n_tokens, Tensor):
+            self.__dict__.setdefault("_pending_n_tokens", []).append((n_tokens.detach(), count_backward))
+            n_tokens = 0
 
         self._update_usage_stats(
             tokens=n_tokens,
             forward_calls=1,
             forward_samples=n_samples,
-            flops=flops,
+            flops=self._count_flops(n_tokens, count_backward),
             grad_calls=1 if count_backward else 0,
             grad_samples=n_samples if count_backward else 0,
         )
+
+    def _count_flops(self, n_tokens: int, count_backward: bool) -> int:
+        if self._flop_counter is None:
+            return 0
+        if count_backward:
+            return self._flop_counter.count_forward_backward(n_tokens)
+        return self._flop_counter.count_forward(n_tokens)
 
     def _update_usage_stats(
         self,
@@ -172,6 +183,7 @@ class BaseModel(ABC):
 
     def reset_usage_stats(self):
         """Resets the usage statistics."""
+        self.__dict__.pop("_pending_n_tokens", None)
         self._token_used = 0
         self._forward_call_count = 0
         self._forward_sample_count = 0
@@ -425,6 +437,17 @@ class HFTokenizerWrapper(BaseTokenizer):
         return self._hf_tokenizer.encode(text, **kwargs)
 
     def batch_decode(self, ids, **kwargs) -> List[str]:
+        if isinstance(ids, torch.Tensor):
+            ids = ids.tolist()
+        # Fast path: parallel Rust batch-decode, equivalent to HF's (clean-up-free) batched decode
+        if (
+            getattr(type(self._hf_tokenizer), "_decode", None) is TokenizersBackend._decode
+            and kwargs.keys() <= {"skip_special_tokens"}
+            and ids and isinstance(ids[0], list)
+        ):
+            return self._hf_tokenizer.backend_tokenizer.decode_batch(
+                ids, skip_special_tokens=kwargs.get("skip_special_tokens", False)
+            )
         return self._hf_tokenizer.batch_decode(ids, **kwargs)
 
     @property
