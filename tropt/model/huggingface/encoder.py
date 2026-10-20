@@ -181,20 +181,15 @@ class EncoderHFModel(
         """
 
         assert input_embeds is not None, "input_embeds must be provided in invoke_from_tokens."
-        if input_attention_mask is None:
-            input_attention_mask = torch.ones(
-                input_embeds.shape[:-1], device=input_embeds.device, dtype=torch.int64
-            )
-
-        outputs = self._model(
-            dict(
-                inputs_embeds=input_embeds,  # (bsz, seq_len, embd_dim)
-                attention_mask=input_attention_mask,  # (bsz, seq_len)
-            )
-        )
+        # A missing mask means no padding; it is then omitted (== all ones), sparing a host sync in HF's mask handling
+        features = dict(inputs_embeds=input_embeds)  # (bsz, seq_len, embd_dim)
+        if input_attention_mask is not None:
+            features["attention_mask"] = input_attention_mask  # (bsz, seq_len)
+        outputs = self._model(features)
 
         self._update_invoke_stats(
-            n_tokens=int(input_attention_mask.sum().item()),
+            n_tokens=input_embeds.shape[0] * input_embeds.shape[1] if input_attention_mask is None
+            else input_attention_mask.sum(),
             n_samples=input_embeds.shape[0],
             count_backward=count_backward,
         )
