@@ -250,33 +250,20 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             assert append_embeds is not None
             curr_append = append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
 
-        # Build embeddings and attention mask
-        embeds_parts = []
-        attn_parts = []
-
-        # add before part
-        if not self.use_prefix_cache:
-            # add 'before' part only if not using prefix cache
-            embeds_parts.append(curr_before)
-        # always add 'before' part attention (even with prefix cache)
-        attn_parts.append(torch.ones((n_candidates, curr_before.shape[-2])))
-
-        # add trigger and after trigger parts
+        # Build embeddings (the 'before' part is dropped when prefix-cached)
+        embeds_parts = [] if self.use_prefix_cache else [curr_before]
         embeds_parts.extend([curr_trigger, curr_after])
-        attn_parts.extend([
-            torch.ones((n_candidates, curr_trigger.shape[-2])),
-            torch.ones((n_candidates, curr_after.shape[-2])),
-        ])
-
         # optionally add the appended part (e.g., target prefiling in LMs)
         if curr_append is not None:
             embeds_parts.append(curr_append)
-            attn_parts.append(torch.ones((n_candidates, curr_append.shape[-2])))
-
-        # concatenate parts
         inputs_embeds = torch.cat(embeds_parts, dim=-2)  # (n_candidates, seq_len, embd_dim)
-        attention_mask = torch.cat(attn_parts, dim=-1)  # (n_candidates, seq_len)
-        attention_mask = attention_mask.to(self.device, torch.int64)
+
+        # Attention mask is all ones (always covering the 'before' part, even with prefix cache). Without prefix cache
+        # it is left as None (== all ones), sparing a host sync per forward in HF's mask handling.
+        attention_mask = None
+        if self.use_prefix_cache:
+            mask_len = sum(p.shape[-2] for p in (curr_before, curr_trigger, curr_after, curr_append) if p is not None)
+            attention_mask = torch.ones((n_candidates, mask_len), device=self.device, dtype=torch.int64)
 
         # Calculate slices for different regions
         # Note: since prefix-caching removes the 'before' part from the input, we need to adjust the slices accordingly
@@ -320,7 +307,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         return ModelInput(
             input_trigger_ids=trigger_ids,  # detached triggers for reference
             input_embeds=inputs_embeds.to(self.device, self.float_dtype),
-            input_attention_mask=attention_mask.to(self.device, torch.int64),
+            input_attention_mask=attention_mask,
             input_slices=input_slices,
             message_targets=message_targets,
             input_prefix_cache_kwargs=prefix_cache_kwargs,
