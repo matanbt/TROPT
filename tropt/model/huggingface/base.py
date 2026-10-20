@@ -215,6 +215,8 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             do_append_embeds: If True, the provided `append_embeds` will be used and appended at the end of the input.
             chosen_template_idx: int (required)
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
+                May also be a per-candidate index tensor (n_candidates,), to batch different templates together
+                (these must share token lengths; not supported with prefix caching).
 
         Returns: A ModelInput object containing:
                 - input_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
@@ -241,14 +243,19 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         n_candidates = trigger_embeds.shape[0]
         template_idx = chosen_template_idx
 
+        def _per_candidate(parts):
+            if isinstance(template_idx, Tensor):
+                return torch.stack(parts)[template_idx]
+            return parts[template_idx].unsqueeze(0).expand(n_candidates, -1, -1)
+
         ## Construct the parts of the input for this message:
-        curr_before = self.before_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_before = _per_candidate(self.before_embeds)
         curr_trigger = trigger_embeds
-        curr_after = self.after_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+        curr_after = _per_candidate(self.after_embeds)
         curr_append = None
         if do_append_embeds:
             assert append_embeds is not None
-            curr_append = append_embeds[template_idx].unsqueeze(0).repeat(n_candidates, 1, 1)
+            curr_append = _per_candidate(append_embeds)
 
         # Build embeddings and attention mask
         embeds_parts = []
@@ -312,6 +319,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         ## Prepare prefix cache kwargs (only if both message and batching are provided)
         prefix_cache_kwargs: dict[str, Any] = {}
         if self.use_prefix_cache:
+            assert not isinstance(template_idx, Tensor), "Per-candidate templates are not supported with prefix caching."
             prefix_cache_kwargs = self._get_prefix_cache_kwargs(
                 batch_size=n_candidates,
                 template_idx=chosen_template_idx,
@@ -618,6 +626,7 @@ class HuggingFaceBackendModel:
         normalize_grads: bool = False,
         keep_message_dim: bool = False,
         return_loss: bool = False,
+        candidate_template_idx: Optional[Int[Tensor, "n_candidates"]] = None,
         mean_over_candidates: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
@@ -661,8 +670,12 @@ class HuggingFaceBackendModel:
 
             return_loss: If True, also return the computed detached loss values for each candidate. Useful for debugging.
 
-            mean_over_candidates: If True, average the (normalized) gradients over the candidates dim. For hard
-                triggers with `normalize_grads`, this avoids materializing the per-candidate vocab-sized gradients.
+            candidate_template_idx: If given (n_candidates,), each candidate is evaluated only on its own template
+                (see `compute_loss_from_tokens`).
+
+            mean_over_candidates: If True, average the (normalized) gradients over the candidates dim (per template,
+                if `candidate_template_idx` is given). For hard triggers with `normalize_grads`, this avoids
+                materializing the per-candidate vocab-sized gradients.
 
         Returns:
             Gradients w.r.t. one-hot token matrix.
@@ -708,7 +721,11 @@ class HuggingFaceBackendModel:
         )
         vocab_size, embed_dim = embedding_layer.num_embeddings, embedding_layer.embedding_dim
         input_manager = self._token_input_manager
-        n_templates = input_manager.n_templates
+        # Each entry is a template index, or the per-candidate template indices (all evaluated in shared batches)
+        templates_to_eval: List[int | Tensor] = (
+            list(range(input_manager.n_templates)) if candidate_template_idx is None else [candidate_template_idx]
+        )
+        n_templates = len(templates_to_eval)
 
         # Get shape from whichever input is provided
         if candidate_trigger_ids is not None:
@@ -750,7 +767,7 @@ class HuggingFaceBackendModel:
                 )
                 accum_loss = torch.zeros((n_templates, cand_bsz), device=device, dtype=dtype)
 
-                for template_idx in range(0, n_templates):
+                for accum_idx, template_idx in enumerate(templates_to_eval):
                     if candidate_trigger_probs is None:
                         # 1+2. Gather the trigger embeddings (== one-hot @ embedding_matrix) and enable gradients on them
                         assert candidate_trigger_ids is not None
@@ -787,7 +804,7 @@ class HuggingFaceBackendModel:
                         "a model with non-standard embedding logic. Please report this issue!")
 
                     # 3. Get batched inputs & compute loss:
-                    logger.debug(f"from grad [msg={template_idx}]: {candidate_embeds.shape}")
+                    logger.debug(f"from grad [msg={accum_idx}]: {candidate_embeds.shape}")
 
                     # Get trigger IDs for reference (if using discrete tokens)
                     # For soft triggers, compute argmax from probabilities
@@ -798,7 +815,10 @@ class HuggingFaceBackendModel:
                         ref_trigger_ids = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].argmax(dim=-1)
 
                     model_input = input_manager.get_triggered_inputs(
-                        chosen_template_idx=template_idx,
+                        chosen_template_idx=(
+                            template_idx if isinstance(template_idx, int)
+                            else template_idx[cand_idx_start:cand_idx_end]
+                        ),
                         trigger_embeds=candidate_embeds,
                         trigger_ids=ref_trigger_ids,  # Also pass trigger ids as a reference
 
@@ -824,8 +844,8 @@ class HuggingFaceBackendModel:
                         inputs=[grad_input],
                         grad_outputs=torch.ones_like(loss, device=device),
                     )[0]  # (bsz_triggers, trigger_seq_len, embed_dim or vocab_size)
-                    accum_grad[template_idx] = template_grad
-                    accum_loss[template_idx] = loss.detach()
+                    accum_grad[accum_idx] = template_grad
+                    accum_loss[accum_idx] = loss.detach()
 
                 all_grads.append(accum_grad)
                 all_losses.append(accum_loss)
@@ -844,13 +864,21 @@ class HuggingFaceBackendModel:
             all_grads = all_grads.mean(dim=0)
             all_losses = all_losses.mean(dim=0)
 
+        def _mean_over_candidates(x: Tensor) -> Tensor:
+            if candidate_template_idx is None:
+                return x.mean(dim=-3)
+            # per-template mean: (n_candidates, ...) -> (n_templates, ...)
+            n_all = input_manager.n_templates
+            sums = x.new_zeros((n_all, *x.shape[-2:])).index_add_(0, candidate_template_idx, x.reshape(-1, *x.shape[-2:]))
+            return sums / torch.bincount(candidate_template_idx, minlength=n_all)[:, None, None]
+
         if candidate_trigger_probs is None:
             # Hard triggers: map the embedding grads to the one-hot grads (`grad_embeds @ E^T`)
             embedding_matrix = self.embedding_matrix
             if normalize_grads and mean_over_candidates:
                 # mean_i(g_i E^T / |g_i E^T|) == (mean_i g_i / |g_i E^T|) E^T, where |g E^T|^2 = g (E^T E) g^T
                 sq_norms = ((all_grads @ self._embedding_gram) * all_grads).sum(dim=-1, keepdim=True)
-                all_grads = (all_grads / (sq_norms.clamp_min(0).sqrt() + 1e-10)).mean(dim=-3)
+                all_grads = _mean_over_candidates(all_grads / (sq_norms.clamp_min(0).sqrt() + 1e-10))
                 all_grads = all_grads @ embedding_matrix.T
                 normalize_grads = mean_over_candidates = False  # already applied
             else:
@@ -860,7 +888,7 @@ class HuggingFaceBackendModel:
         if normalize_grads:
             all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
         if mean_over_candidates:
-            all_grads = all_grads.mean(dim=-3)
+            all_grads = _mean_over_candidates(all_grads)
 
         if return_loss:
             return all_grads, all_losses
@@ -994,6 +1022,7 @@ class HuggingFaceBackendModel:
         candidate_trigger_ids: Int[Tensor, "n_candidates trigger_seq_len"],
         loss_func: BaseLoss,
         keep_message_dim: bool = False,
+        candidate_template_idx: Optional[Int[Tensor, "n_candidates"]] = None,
     ) -> Float[Tensor, "n_candidates"] | Float[Tensor, "n_templates n_candidates"]:
         """Computes the loss on all candidate token id sequences. Runs under
         ``torch.no_grad`` unless the loss sets ``require_gradients`` (e.g. gradient
@@ -1006,6 +1035,9 @@ class HuggingFaceBackendModel:
                 the loss to compute for each candidate
             keep_message_dim : bool
                 whether to return the loss per message (shape = (n_templates, n_candidates))
+            candidate_template_idx : Tensor, shape = (n_candidates,), optional
+                if given, each candidate is evaluated only on its own template, all in shared batches
+                (e.g., for independently optimizing a trigger per template); templates must share token lengths.
         Returns:
             Tensor, shape = (n_candidates,), or (n_templates, n_candidates) if keep_message_dim=True
                 the loss for each candidate sequence
@@ -1028,22 +1060,28 @@ class HuggingFaceBackendModel:
                 self._forward_pass_batch_size = batch_size
             # --------------------
 
+            # we avoid mixing messages, per a potentially different objective (unless explicitly assigned per candidate)
+            # Each entry is a template index, or the per-candidate template indices (all evaluated in shared batches)
+            templates_to_eval: List[int | Tensor] = (
+                list(range(n_templates)) if candidate_template_idx is None else [candidate_template_idx]
+            )
             all_loss = [
-                [] for _ in range(n_templates)
+                [] for _ in templates_to_eval
             ]  # list of list of tensors, to be concatenated later
 
-            for template_idx, cand_idx in itertools.product(
-                # we avoid mixing messages, per a potentially different objective
-                range(0, n_templates),
+            for (accum_idx, template_idx), cand_idx in itertools.product(
+                enumerate(templates_to_eval),
                 range(0, n_candidates, batch_size),
             ):
                 cand_idx_end = min(cand_idx + batch_size, n_candidates)
                 batch_candidate_trigger_ids = candidate_trigger_ids[cand_idx:cand_idx_end]
 
-                logger.debug(f"from loss [msg={template_idx}]: {(cand_idx_end - cand_idx)}")
+                logger.debug(f"from loss [msg={accum_idx}]: {(cand_idx_end - cand_idx)}")
 
                 model_input = input_manager.get_triggered_inputs(
-                    chosen_template_idx=template_idx,
+                    chosen_template_idx=(
+                        template_idx if isinstance(template_idx, int) else template_idx[cand_idx:cand_idx_end]
+                    ),
                     trigger_ids=batch_candidate_trigger_ids,
 
                     # loss-conditional flags:
@@ -1063,7 +1101,7 @@ class HuggingFaceBackendModel:
                         require_attentions=loss_func.require_attentions,
                     )
                     loss = resolve_and_compute_loss(model_output, model_input, loss_func)
-                all_loss[template_idx].append(loss)
+                all_loss[accum_idx].append(loss)
 
             return torch.stack([torch.cat(_l, dim=0) for _l in all_loss], dim=0)
 
