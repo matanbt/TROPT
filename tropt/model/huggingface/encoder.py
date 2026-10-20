@@ -194,7 +194,7 @@ class EncoderHFModel(
         )
 
         self._update_invoke_stats(
-            n_tokens=int(input_attention_mask.sum().item()),
+            n_tokens=input_attention_mask.sum(),
             n_samples=input_embeds.shape[0],
             count_backward=count_backward,
         )
