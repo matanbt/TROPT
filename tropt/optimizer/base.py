@@ -28,6 +28,7 @@ class OptimizerResult:
     best_trigger_str: Optional[str] = None
     best_trigger_emb: Optional[Float[torch.Tensor, "trigger_seq_len embed_dim"]] = None
     best_trigger_probs: Optional[Float[torch.Tensor, "trigger_seq_len vocab_size"]] = None
+    best_trigger_strs: Optional[List[str]] = None  # when optimizing multiple triggers at once
 
     # Optiomazation records:
     losses: Optional[List[float]] = None
