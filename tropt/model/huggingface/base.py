@@ -23,7 +23,7 @@ from tropt.common import (
     is_debug_mode,
 )
 from tropt.loss import BaseLoss
-from tropt.loss.resolution import resolve_and_compute_loss
+from tropt.loss.resolution import loss_reads_input, resolve_and_compute_loss
 from tropt.model import (
     TokenInputManager,
 )
@@ -189,6 +189,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         append_embeds: Optional[List[Float[Tensor, "n_app_ids embd_dim"]]] = None,  # of length n_templates
         do_append_embeds: bool = False,
         chosen_template_idx: Optional[int] = None,
+        decode_trigger_strs: bool = True,
     ) -> ModelInput:
         """
         Returns the input embeddings with the given trigger merged in for a specific message.
@@ -215,6 +216,7 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             do_append_embeds: If True, the provided `append_embeds` will be used and appended at the end of the input.
             chosen_template_idx: int (required)
                 the index of the message to process. Must be provided; multi-message is not supported by this method.
+            decode_trigger_strs: whether to populate `input_trigger_strs` (costly; only needed by losses reading it).
 
         Returns: A ModelInput object containing:
                 - input_trigger_ids: Tensor, shape = (n_candidates, trigger_seq_len)
@@ -325,7 +327,9 @@ class HuggingFaceTokenInputManager(TokenInputManager):
             message_targets=message_targets,
             input_prefix_cache_kwargs=prefix_cache_kwargs,
 
-            input_trigger_strs=self.tokenizer.batch_decode(trigger_ids) if trigger_ids is not None else None,
+            input_trigger_strs=(
+                self.tokenizer.batch_decode(trigger_ids) if trigger_ids is not None and decode_trigger_strs else None
+            ),
         )
 
     def _get_prefix_cache_kwargs(
@@ -799,6 +803,7 @@ class HuggingFaceBackendModel:
 
                         # loss-conditional flags:
                         do_append_embeds=loss_func.require_target_prefill,
+                        decode_trigger_strs=loss_reads_input(loss_func, "input_trigger_strs"),
                     )
                     model_output = self.invoke_from_tokens(
                         **model_input.to_dict(),
@@ -915,6 +920,7 @@ class HuggingFaceBackendModel:
 
                         # loss-conditional flags:
                         do_append_embeds=loss_func.require_target_prefill,
+                        decode_trigger_strs=loss_reads_input(loss_func, "input_trigger_strs"),
                     )
 
                     # 3. Forward pass
@@ -1025,6 +1031,7 @@ class HuggingFaceBackendModel:
 
                     # loss-conditional flags:
                     do_append_embeds=loss_func.require_target_prefill,
+                    decode_trigger_strs=loss_reads_input(loss_func, "input_trigger_strs"),
                 )
 
                 # Only enable gradient is it's required by the loss (e.g. for gradient matching losses); mostly false.
