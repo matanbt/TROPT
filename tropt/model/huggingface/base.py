@@ -740,6 +740,7 @@ class HuggingFaceBackendModel:
             # Prepare the effective embedding matrix:
             embedding_matrix = self.embedding_matrix  # (vocab_size, embd_dim)
 
+            batch_size = -(-n_candidates // -(-n_candidates // batch_size))  # even chunks (e.g., 2x258, not 512+4)
             for cand_idx_start in range(0, n_candidates, batch_size):
                 cand_idx_end = min(cand_idx_start + batch_size, n_candidates)
                 cand_bsz = cand_idx_end - cand_idx_start
@@ -1005,6 +1006,7 @@ class HuggingFaceBackendModel:
                 self._forward_pass_batch_size = batch_size
             # --------------------
 
+            batch_size = -(-n_candidates // -(-n_candidates // batch_size))  # even chunks (e.g., 2x258, not 512+4)
             all_loss = [
                 [] for _ in range(n_templates)
             ]  # list of list of tensors, to be concatenated later
