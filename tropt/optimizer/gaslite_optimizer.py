@@ -118,14 +118,13 @@ class GASLITEOptimizer(BaseOptimizer):
             else:
                 # Compute grad over a list of `n_grad` triggers one-flip away from the current
                 trigger_vars = self._get_trigger_variations(trigger_ids, valid_token_ids)
-                grads = self.model.compute_grad_from_tokens(
+                # Average the (normalized) gradients to get the final approximation
+                trigger_grad = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
                     loss_func=self.loss_func,
                     normalize_grads=True,
-                )  # (n_trigger_vars, trigger_seq_len, vocab_size)
-
-                # Average the gradients to get the final approximation
-                trigger_grad = grads.mean(dim=0)
+                    mean_over_candidates=True,
+                )
                 trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"]
                 trigger_grad *= -1  # we want to minimize the loss
 

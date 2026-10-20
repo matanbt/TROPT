@@ -618,6 +618,7 @@ class HuggingFaceBackendModel:
         normalize_grads: bool = False,
         keep_message_dim: bool = False,
         return_loss: bool = False,
+        mean_over_candidates: bool = False,
     ) -> Float[torch.Tensor, "n_candidates trigger_seq_len vocab_size"] | Tuple[Tensor, Tensor]:
         """Compute gradients of loss w.r.t. one-hot token representations for gradient-based optimization.
 
@@ -659,6 +660,9 @@ class HuggingFaceBackendModel:
                 (mean-reduced over templates).
 
             return_loss: If True, also return the computed detached loss values for each candidate. Useful for debugging.
+
+            mean_over_candidates: If True, average the (normalized) gradients over the candidates dim. For hard
+                triggers with `normalize_grads`, this avoids materializing the per-candidate vocab-sized gradients.
 
         Returns:
             Gradients w.r.t. one-hot token matrix.
@@ -702,7 +706,7 @@ class HuggingFaceBackendModel:
         assert isinstance(embedding_layer, torch.nn.Embedding), (
             "Expected a standard nn.Embedding layer for one-hot gradient computation."
         )
-        vocab_size = embedding_layer.num_embeddings
+        vocab_size, embed_dim = embedding_layer.num_embeddings, embedding_layer.embedding_dim
         input_manager = self._token_input_manager
         n_templates = input_manager.n_templates
 
@@ -727,14 +731,9 @@ class HuggingFaceBackendModel:
             all_grads = []  # of len `n_candidate // batch_size`
             all_losses = []  # per-batch mean losses (detached)
 
-            # Prepare the one-hot encoding matrix (might be distribution-per-token for continuous trigger)
-            # (n_candidates, trigger_seq_len, vocab_size)
-            if candidate_trigger_probs is None:
-                candidate_ids_onehot_detached = torch.nn.functional.one_hot(
-                    candidate_trigger_ids,
-                    num_classes=vocab_size,
-                ).to(device, dtype)
-            else:
+            # Distribution-per-token for continuous trigger (n_candidates, trigger_seq_len, vocab_size).
+            # Hard triggers skip the one-hot matrix: embeddings are gathered, and the one-hot grad is `grad_embeds @ E^T`.
+            if candidate_trigger_probs is not None:
                 candidate_ids_onehot_detached = candidate_trigger_probs.to(device, dtype)
 
             # Prepare the effective embedding matrix:
@@ -745,31 +744,37 @@ class HuggingFaceBackendModel:
                 cand_bsz = cand_idx_end - cand_idx_start
 
                 # Backward each template immediately to avoid keeping n_templates graphs at once
-                accum_grad = torch.zeros(
-                    (n_templates, cand_bsz, trigger_seq_len, vocab_size),
+                accum_grad = torch.empty(
+                    (n_templates, cand_bsz, trigger_seq_len, embed_dim if candidate_trigger_probs is None else vocab_size),
                     device=device, dtype=dtype,
                 )
                 accum_loss = torch.zeros((n_templates, cand_bsz), device=device, dtype=dtype)
 
                 for template_idx in range(0, n_templates):
-                    # 1. Enable gradients on the one-hot input
-                    # (bsz_triggers, trigger_seq_len, vocab_size)
-                    candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
-                    candidate_ids_onehot.requires_grad_()
+                    if candidate_trigger_probs is None:
+                        # 1+2. Gather the trigger embeddings (== one-hot @ embedding_matrix) and enable gradients on them
+                        assert candidate_trigger_ids is not None
+                        candidate_embeds = embedding_matrix[candidate_trigger_ids[cand_idx_start:cand_idx_end]]
+                        grad_input = candidate_embeds.requires_grad_()
+                    else:
+                        # 1. Enable gradients on the one-hot input
+                        # (bsz_triggers, trigger_seq_len, vocab_size)
+                        candidate_ids_onehot = candidate_ids_onehot_detached[cand_idx_start:cand_idx_end].clone()
+                        grad_input = candidate_ids_onehot.requires_grad_()
 
-                    # 1'. optionally apply gumbel-softmax to the trigger probs
-                    if do_gumbel_softmax:
-                        assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
-                        candidate_ids_onehot = torch.nn.functional.gumbel_softmax(
-                            logits=candidate_ids_onehot,
-                            tau=gumbel_softmax_temp,
-                            hard=False,
-                            dim=-1,
-                        )
+                        # 1'. optionally apply gumbel-softmax to the trigger probs
+                        if do_gumbel_softmax:
+                            assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
+                            candidate_ids_onehot = torch.nn.functional.gumbel_softmax(
+                                logits=candidate_ids_onehot,
+                                tau=gumbel_softmax_temp,
+                                hard=False,
+                                dim=-1,
+                            )
 
-                    # 2. Apply embedding to get trigger_embeds
-                    # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
-                    candidate_embeds = candidate_ids_onehot @ embedding_matrix
+                        # 2. Apply embedding to get trigger_embeds
+                        # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
+                        candidate_embeds = candidate_ids_onehot @ embedding_matrix
 
                     # Only check when using discrete tokens (not soft probabilities)
                     if is_debug_mode() and candidate_trigger_ids is not None:
@@ -816,9 +821,9 @@ class HuggingFaceBackendModel:
                     # 4. Backward and store per-template
                     template_grad = torch.autograd.grad(
                         outputs=loss,
-                        inputs=[candidate_ids_onehot],
+                        inputs=[grad_input],
                         grad_outputs=torch.ones_like(loss, device=device),
-                    )[0]  # (bsz_triggers, trigger_seq_len, vocab_size)
+                    )[0]  # (bsz_triggers, trigger_seq_len, embed_dim or vocab_size)
                     accum_grad[template_idx] = template_grad
                     accum_loss[template_idx] = loss.detach()
 
@@ -827,7 +832,7 @@ class HuggingFaceBackendModel:
                 # clear_device_cache()  # clear unused GPU memory
 
             return (
-                torch.cat(all_grads, dim=1),  # (n_templates, n_candidates, trigger_seq_len, vocab_size)
+                torch.cat(all_grads, dim=1),  # (n_templates, n_candidates, trigger_seq_len, embed_dim or vocab_size)
                 torch.cat(all_losses, dim=1),  # (n_templates, n_candidates)
             )
 
@@ -839,14 +844,32 @@ class HuggingFaceBackendModel:
             all_grads = all_grads.mean(dim=0)
             all_losses = all_losses.mean(dim=0)
 
+        if candidate_trigger_probs is None:
+            # Hard triggers: map the embedding grads to the one-hot grads (`grad_embeds @ E^T`)
+            embedding_matrix = self.embedding_matrix
+            if normalize_grads and mean_over_candidates:
+                # mean_i(g_i E^T / |g_i E^T|) == (mean_i g_i / |g_i E^T|) E^T, where |g E^T|^2 = g (E^T E) g^T
+                sq_norms = ((all_grads @ self._embedding_gram) * all_grads).sum(dim=-1, keepdim=True)
+                all_grads = (all_grads / (sq_norms.clamp_min(0).sqrt() + 1e-10)).mean(dim=-3)
+                all_grads = all_grads @ embedding_matrix.T
+                normalize_grads = mean_over_candidates = False  # already applied
+            else:
+                all_grads = all_grads @ embedding_matrix.T
+
         # normalize each token's gradient vector (over the vocab_size dim)
         if normalize_grads:
             all_grads = all_grads / (all_grads.norm(dim=-1, keepdim=True) + 1e-10)
+        if mean_over_candidates:
+            all_grads = all_grads.mean(dim=-3)
 
         if return_loss:
             return all_grads, all_losses
 
         return all_grads
+
+    @cached_property
+    def _embedding_gram(self) -> Float[Tensor, "embd_dim embd_dim"]:
+        return self.embedding_matrix.T @ self.embedding_matrix
 
     def compute_grad_from_embeds(
         self,
