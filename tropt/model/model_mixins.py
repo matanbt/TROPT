@@ -3,7 +3,6 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 import torch
-from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from torch import Tensor
 
@@ -17,6 +16,7 @@ from tropt.common import (
 )
 from tropt.loss import BaseLoss
 from tropt.loss.resolution import resolve_and_compute_loss
+from tropt.utils.memory import find_executable_batch_size
 
 from .inputs_manager import (
     TextInputManager,

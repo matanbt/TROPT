@@ -5,7 +5,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 import transformers
-from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -30,6 +29,7 @@ from tropt.model.huggingface.base import (
     HuggingFaceTokenInputManager,
 )
 from tropt.model.model_mixins import GradientEmbedAccessMixin
+from tropt.utils.memory import find_executable_batch_size
 
 logger = logging.getLogger(__name__)
 
