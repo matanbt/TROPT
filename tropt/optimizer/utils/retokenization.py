@@ -10,14 +10,22 @@ from typing import List
 
 import torch
 import transformers
-from jaxtyping import Float
+from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
 
 logger = logging.getLogger(__name__)
 
-# TODO need to profile whether these functions are bottlenecks, and if so parallelize them. (e.g., `retokenize_filtering` loop over the vocab can be parallelized)
+def retokenize_mask(
+    ids: Int[Tensor, "bsz n_ids"] | List[List[int]],
+    tokenizer: transformers.PreTrainedTokenizer,
+) -> List[bool]:
+    """Whether each sequence of token ids is unchanged after a decode -> re-encode round-trip (batched)."""
+    ids_list = ids.tolist() if isinstance(ids, Tensor) else ids
+    ids_encoded = tokenizer(tokenizer.batch_decode(ids_list), add_special_tokens=False)["input_ids"]
+    return [orig == enc for orig, enc in zip(ids_list, ids_encoded)]
+
 
 def retokenize_filtering(
         ids: Float[Tensor, "bsz n_ids"],
@@ -39,26 +47,18 @@ def retokenize_filtering(
         filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
             all token ids that are the same after retokenization
     """
-    ids_decoded = tokenizer.batch_decode(ids)
-    filtered_ids = []
+    keep = [i for i, ok in enumerate(retokenize_mask(ids, tokenizer)) if ok]
+    filtered_ids = ids[torch.tensor(keep, device=ids.device, dtype=torch.long)]
 
-    for i in range(len(ids_decoded)):
-        # Retokenize the decoded token ids
-        ids_encoded = tokenizer.encode_trigger(ids_decoded[i]).to(ids.device)
-
-        if torch.equal(ids[i], ids_encoded):
-            # trigger is the same after retokenization
-            filtered_ids.append(ids[i])
-
-    if not filtered_ids:
+    if not keep:
         # This occurs in some cases, e.g. using the Llama-3 tokenizer with a bad initialization
         raise RuntimeError(
             "No token sequences are the same after decoding and re-encoding. "
             "Consider disabling retokenization filtering by setting `use_retokenize=False` or trying a different initial trigger string."
         )
-    logger.debug(f"Retokenization filtering: {len(filtered_ids)}/{len(ids)} = {100 * len(filtered_ids) / len(ids):.2f}% candidates kept.")
+    logger.debug(f"Retokenization filtering: {len(keep)}/{len(ids)} = {100 * len(keep) / len(ids):.2f}% candidates kept.")
 
-    return torch.stack(filtered_ids)
+    return filtered_ids
 
 
 def retokenize_transform(

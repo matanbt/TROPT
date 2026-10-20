@@ -17,7 +17,7 @@ from tropt.model import (
     LossTokenAccessMixin,
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
-from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.retokenization import retokenize_mask
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.tracker import BaseTracker
@@ -118,74 +118,62 @@ class GASLITEOptimizer(BaseOptimizer):
             else:
                 # Compute grad over a list of `n_grad` triggers one-flip away from the current
                 trigger_vars = self._get_trigger_variations(trigger_ids, valid_token_ids)
-                grads = self.model.compute_grad_from_tokens(
+                # Average the (normalized) gradients to get the final approximation
+                trigger_grad = self.model.compute_grad_from_tokens(
                     candidate_trigger_ids=trigger_vars,
                     loss_func=self.loss_func,
                     normalize_grads=True,
-                )  # (n_trigger_vars, trigger_seq_len, vocab_size)
-
-                # Average the gradients to get the final approximation
-                trigger_grad = grads.mean(dim=0)
+                    mean_over_candidates=True,
+                )
                 trigger_grad: Float[Tensor, "trigger_seq_len vocab_size"]
                 trigger_grad *= -1  # we want to minimize the loss
 
             # Get Top-k Candidates *per position*
             trigger_grad[:, blacklist_ids] = float("-inf")
-            topk_ids: Float[Tensor, "trigger_seq_len n_candidates"]
-            topk_ids = trigger_grad.topk(self.n_candidates, dim=-1).indices
+            topk_ids: list = trigger_grad.topk(self.n_candidates, dim=-1).indices.tolist()
 
             # --- (II) Greedy coordinate ascent step ---
-            current_trigger_ids = trigger_ids.clone()
+            # Candidates are built host-side, so each flip needs a single host sync (for the losses)
+            current_trigger_ids = trigger_ids.tolist()
             # Sample `n_flip` unique positions to optimize
-            sampled_positions = torch.randperm(trigger_seq_len, device=self.model.device)[
-                : self.n_flip
-            ]
-            sampled_positions, _ = sampled_positions.sort()
+            sampled_positions = sorted(
+                torch.randperm(trigger_seq_len, device=self.model.device)[: self.n_flip].tolist()
+            )
 
             # Sequentially optimize each position
             for pos in sampled_positions:
-                # Get candidate tokens for this position
-                all_candidate_tokens = torch.unique(
-                    torch.cat(
-                        [
-                            current_trigger_ids[pos].unsqueeze(0),  # keep the "no flip" option
-                            topk_ids[pos],
-                        ]
-                    )
-                )
-                n_unique_candidates = len(all_candidate_tokens)
+                # Candidate tokens for this position (sorted & unique; keeps the "no flip" option)
+                tokens = sorted(set(topk_ids[pos]) | {current_trigger_ids[pos]})
 
                 # Create all candidate triggers by flipping this *single* position
-                candidate_triggers = current_trigger_ids.repeat(n_unique_candidates, 1)
-                candidate_triggers[:, pos] = all_candidate_tokens
-
-                # (Optional) Retokenize filtering
-                if self.use_retokenize:
-                    candidate_triggers = retokenize_filtering(
-                        candidate_triggers, tokenizer
-                    )
-                    if len(candidate_triggers) == 0:
-                        logger.debug(
-                            f"[WARNING] Retokenize filtering removed all candidates for pos {pos}. Skipping."
-                        )
-                        continue  # Keep `current_trigger_ids` as is for this position
+                candidate_triggers = torch.tensor(current_trigger_ids).repeat(len(tokens), 1)
+                candidate_triggers[:, pos] = torch.tensor(tokens)
+                candidate_triggers = candidate_triggers.to(self.model.device)
 
                 # Compute losses on candidate flips
                 losses = self.model.compute_loss_from_tokens(
                     candidate_triggers,
                     self.loss_func,
-                )  # (n_cands,)
+                ).tolist()  # (n_cands,)
 
-                # Find the best token for this position
-                best_candidate_idx = losses.argmin()
-
-                # Update `current_trigger_ids` for the next iteration of the greedy (inner) loop
-                current_trigger_ids = candidate_triggers[best_candidate_idx].clone()
-                current_loss = losses[best_candidate_idx].item()
+                # Find the best token for this position: the first minimum (as `argmin`) among the candidates that
+                # survive (optional) retokenize filtering, checked lazily in ascending-loss order.
+                for idx in sorted(range(len(losses)), key=losses.__getitem__):
+                    if not self.use_retokenize or retokenize_mask(candidate_triggers[idx : idx + 1], tokenizer)[0]:
+                        # Update `current_trigger_ids` for the next iteration of the greedy (inner) loop
+                        current_trigger_ids = candidate_triggers[idx].tolist()
+                        current_loss = losses[idx]
+                        break
+                else:
+                    # Mirrors `retokenize_filtering`'s behavior when no candidate survives
+                    raise RuntimeError(
+                        "No token sequences are the same after decoding and re-encoding. "
+                        "Consider disabling retokenization filtering by setting `use_retokenize=False`."
+                    )
 
             # --- (III) Update the main trigger ----
             # After the inner loop, `current_trigger_ids` is the best trigger for this *entire* step
-            trigger_ids = current_trigger_ids
+            trigger_ids = torch.tensor(current_trigger_ids, device=self.model.device)
             trigger_str = tokenizer.decode_trigger(trigger_ids)
 
             # Logging:
@@ -206,16 +194,12 @@ class GASLITEOptimizer(BaseOptimizer):
         """
         trigger_seq_len = len(trigger_ids)
         device = self.model.device
-        trigger_vars_ids = trigger_ids.repeat(
-            self.n_grad, 1
-        )  # shape: (n_grad, trigger_seq_len)
+        trigger_vars_ids = trigger_ids.repeat(self.n_grad, 1)  # shape: (n_grad, trigger_seq_len)
 
-        for idx in range(1, self.n_grad):  # (keep the first intact)
-            # select a random position and a random token
-            pos_to_flip = int(torch.randint(0, trigger_seq_len, (1,), device=device).item())
-            tok_to_flip_to = int(valid_token_ids[
-                torch.randint(0, len(valid_token_ids), (1,), device=device)
-            ].item())  # apply the flip
-            trigger_vars_ids[idx, pos_to_flip] = tok_to_flip_to
+        # For each variation but the first (kept intact), flip a random position to a random valid token
+        n_flips = self.n_grad - 1
+        pos_to_flip = torch.randint(0, trigger_seq_len, (n_flips,), device=device)
+        tok_to_flip_to = valid_token_ids[torch.randint(0, len(valid_token_ids), (n_flips,), device=device)]
+        trigger_vars_ids[torch.arange(1, self.n_grad, device=device), pos_to_flip] = tok_to_flip_to
 
         return trigger_vars_ids
