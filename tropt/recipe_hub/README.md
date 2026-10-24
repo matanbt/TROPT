@@ -111,7 +111,7 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `gaslite__bentov2024` | Gradient + multi-coordinate ascent for corpus poisoning of embedding models. | Encoder (HF) | Gradient + Loss (Token) | [Ben-Tov et al., 2024](https://arxiv.org/abs/2412.20953) | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
+| `gaslite__bentov2024` | Gradient + multi-coordinate ascent for corpus poisoning of embedding models. | Encoder (HF) | Gradient + Loss (Token) | [Ben-Tov & Sharif, 2025](https://arxiv.org/abs/2412.20953) | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
 | `gasliteplus_encoder` | Extension of GASLITE with buffer and adaptive parameters. | Encoder (HF) | Gradient + Loss (Token) | — | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |
 | `gcg_emb` | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `advdecoding_retrieval__zhang2024` | Beam-search decoding under combined similarity + utility-LM fluency for retrieval poisoning. | Encoder (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding__zhang2024.py`](AdvDecoding__zhang2024.py) |
