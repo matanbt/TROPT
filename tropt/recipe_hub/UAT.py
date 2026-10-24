@@ -49,12 +49,6 @@ def uat_classifier(
     assert model_obj is not None
 
     loss = MisclassCELoss(targeted=True)
-    initial_trigger = get_printable_random_trigger(
-        trigger_len=trigger_len,
-        tokenizer=model_obj.tokenizer,
-        token_constraints=_UAT_TOKEN_CONSTRAINTS,
-    )
-
     optimizer = GCGPlusOptimizer(
         model=model_obj,
         loss=loss,
@@ -67,6 +61,13 @@ def uat_classifier(
         token_constraints=_UAT_TOKEN_CONSTRAINTS,
         use_retokenize=False,
         template_batch_size=template_batch_size,
+    )
+
+    # drawn after the optimizer sets the seed
+    initial_trigger = get_printable_random_trigger(
+        trigger_len=trigger_len,
+        tokenizer=model_obj.tokenizer,
+        token_constraints=_UAT_TOKEN_CONSTRAINTS,
     )
 
     return optimizer.optimize_trigger(

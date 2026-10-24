@@ -142,15 +142,6 @@ def prompt_recovery__wen2023(
 
     token_constraints = TokenConstraints()
 
-    if initial_trigger is None:
-        # Wen 2023 Algorithm 1: P ~ E^{|V|} (random vocab-embedded init).
-        random_trigger = get_printable_random_trigger(
-            trigger_len=trigger_len,
-            tokenizer=model_obj.tokenizer,
-        )
-        assert isinstance(random_trigger, str)
-        initial_trigger = random_trigger
-
     if optimizer_type == "mac":
         # MAC (momentum-accelerated GCG+, Zhang & Wei 2024) with paper params.
         optimizer = GCGPlusOptimizer(
@@ -224,6 +215,16 @@ def prompt_recovery__wen2023(
             f"Unknown optimizer_type={optimizer_type!r}; "
             f"expected 'mac', 'gcg', 'pez', or 'adv_decoding'."
         )
+
+    # drawn after the optimizer sets the seed
+    if initial_trigger is None:
+        # Wen 2023 Algorithm 1: P ~ E^{|V|} (random vocab-embedded init).
+        random_trigger = get_printable_random_trigger(
+            trigger_len=trigger_len,
+            tokenizer=model_obj.tokenizer,
+        )
+        assert isinstance(random_trigger, str)
+        initial_trigger = random_trigger
 
     result = optimizer.optimize_trigger(
         templates=[template],

@@ -183,10 +183,6 @@ def rs_emb(
             model_obj = EncoderHFModel(model_name=model_name)
 
     tc = TokenConstraints()
-    initial_trigger = get_printable_random_trigger(
-        trigger_len=50, tokenizer=model_obj.tokenizer, token_constraints=tc,
-    )
-
     optimizer = RandomSearchOptimizer(
         model=model_obj,
         loss=SimilarityLoss(),
@@ -199,6 +195,11 @@ def rs_emb(
         schedule="fixed",
         initial_block_len=8,
         patience=25,
+    )
+
+    # drawn after the optimizer sets the seed
+    initial_trigger = get_printable_random_trigger(
+        trigger_len=50, tokenizer=model_obj.tokenizer, token_constraints=tc,
     )
 
     return optimizer.optimize_trigger(
