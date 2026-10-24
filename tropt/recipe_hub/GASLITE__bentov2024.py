@@ -1,4 +1,4 @@
-"""GASLITE (Ben-Tov et al., 2024) and GASLITE-derived recipes.
+"""GASLITE (Ben-Tov & Sharif, 2025) and GASLITE-derived recipes.
 
 Hosts the paper-faithful `gaslite__bentov2024` plus the `GASLITEPlus` extension
 (`gasliteplus_encoder`, `gasliteplus_llm`) which adds a buffer and adaptive
@@ -30,7 +30,7 @@ def gaslite__bentov2024(
     model_obj: Optional[EncoderHFModel] = None,
     tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
-    """Reproduces GASLITE (Ben-Tov et al., 2024): gradient-based multi-coordinate
+    """Reproduces GASLITE (Ben-Tov & Sharif, 2025): gradient-based multi-coordinate
     ascent for corpus poisoning of embedding models.
     https://arxiv.org/abs/2412.20953
 

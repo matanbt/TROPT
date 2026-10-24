@@ -70,7 +70,7 @@ print(result.best_trigger_str)
 ### Corpus Poisoning (white-box)
 
 Following the threat model of [Zhong et al. (2023)](https://arxiv.org/abs/2310.19156), a corpus-poisoning attack inserts adversarial passages that are crafted to be *retrieved* for a target query set.
-GASLITE ([Ben-Tov et al., 2024](https://arxiv.org/abs/2412.20953)) does this by optimizing a discrete trigger appended to a "malicious" passage so that the passage's embedding is pulled toward the centroid of the target queries.
+GASLITE ([Ben-Tov & Sharif, 2025](https://arxiv.org/abs/2412.20953)) does this by optimizing a discrete trigger appended to a "malicious" passage so that the passage's embedding is pulled toward the centroid of the target queries.
 The target vector is the centroid of a target query set.
 
 ```python
