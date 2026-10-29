@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class GCGPlusOptimizer(BaseOptimizer):
-    """Flexible GCG implementation, supporting tricks from GCG, QCG, GASLITE, and UAT.
+    """Flexible GCG implementation, supporting tricks from GCG, GCQ, GASLITE, and UAT.
 
     Two-stage design:
       1. Candidate selection (on proxy model) — gradient-based, random, or focused.
@@ -41,7 +41,7 @@ class GCGPlusOptimizer(BaseOptimizer):
 
     References:
       - GCG: https://arxiv.org/abs/2307.15043
-      - QCG: https://arxiv.org/abs/2402.12329
+      - GCQ: https://arxiv.org/abs/2402.12329
       - PAL: https://arxiv.org/abs/2402.09674
       - GASLITE: https://arxiv.org/abs/2412.20953
       - UAT: https://arxiv.org/abs/1908.07125
@@ -91,7 +91,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 candidate_selection="gradient". Defaults to `loss`.
             candidate_selection: "gradient" uses gradient-ranked top-k sampling;
                 "random" uses uniform random token sampling; "focused" probes
-                all positions with target model loss then focuses on the best one (from QCG paper).
+                all positions with target model loss then focuses on the best one (from GCQ paper).
             sample_n_replace: (start, end) number of token positions to replace per
                 candidate. Linearly interpolated over optimization steps; from PAL paper.
                 Defaults to (1, 1) for single-token flips only.
@@ -105,7 +105,7 @@ class GCGPlusOptimizer(BaseOptimizer):
                 Reference: https://arxiv.org/abs/2405.01229 .
             skip_visited: If True, never re-select a previously accepted trigger
                 (PAL-style); avoids cycling/stalling. Defaults to False.
-            buffer_size: If set, maintain a buffer of the best triggers seen (from QCG paper). Each step
+            buffer_size: If set, maintain a buffer of the best triggers seen (from GCQ paper). Each step
                 starts from the best buffer entry and updates it with improved candidates.
                 Defaults to None (no buffer).
             n_grad_avg: Number of trigger perturbations to average gradients
@@ -537,7 +537,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         valid_token_ids: Int[Tensor, "n_valid"],
         n_candidates: int,
     ) -> Int[Tensor, "n_candidates trigger_seq_len"]:
-        """Focused position sampling (from QCG paper).
+        """Focused position sampling (from GCQ paper).
 
         Phase 1: Probe each position with one random token replacement,
         evaluate all probes on the target (via _evaluate_candidates) to find

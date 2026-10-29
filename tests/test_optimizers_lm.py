@@ -14,7 +14,7 @@ from tropt.optimizer import (
     GCGOptimizer,
     GCGPlusOptimizer,
     PALOptimizer,
-    QCGOptimizer,
+    GCQOptimizer,
 )
 
 INITIAL_TRIGGER = "! ! ! ! !"
@@ -99,9 +99,9 @@ def test_pal_optimizer_end_to_end(tiny_lm, lm_templates, lm_targets):
     _assert_result_ok(result, expected_num_steps=2)
 
 
-def test_qcg_optimizer_end_to_end(tiny_lm, lm_templates, lm_targets):
-    # QCG defaults are tuned for real runs (thousands of candidates); shrink for tests.
-    optimizer = QCGOptimizer(
+def test_gcq_optimizer_end_to_end(tiny_lm, lm_templates, lm_targets):
+    # GCQ defaults are tuned for real runs (thousands of candidates); shrink for tests.
+    optimizer = GCQOptimizer(
         model=tiny_lm,
         loss=PrefillCELoss(),
         num_steps=2,
