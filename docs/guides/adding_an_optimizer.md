@@ -304,7 +304,7 @@ Same overall flow, swapped at the access boundary:
 
 **Multi-template aggregation.** When you pass multiple templates, `compute_loss_from_tokens` averages per-candidate losses across them by default. If your search needs the per-template losses (e.g. for adaptive template sampling), pass `keep_message_dim=True` to get a `(n_templates, n_candidates)` tensor back.
 
-**Auxiliary models.** Surrogate-based optimizers (PAL, BEAST, QCG, AdvDecoding) carry one or more *auxiliary* models on the optimizer — proxy gradients, sampling LMs, etc. Make them constructor arguments and store them as attributes; usage stats and the FLOP budget will roll them up automatically (any `BaseModel` attribute on the optimizer is summed into the budget).
+**Auxiliary models.** Surrogate-based optimizers (PAL, BEAST, GCQ, AdvDecoding) carry one or more *auxiliary* models on the optimizer — proxy gradients, sampling LMs, etc. Make them constructor arguments and store them as attributes; usage stats and the FLOP budget will roll them up automatically (any `BaseModel` attribute on the optimizer is summed into the budget).
 
 **Splitting a long `optimize_trigger`.** If the method grows past a screenful, delegate logical chunks to private methods (`self._propose_candidates(...)`, `self._update_best(...)`). Don't over-do it though — the top-level `optimize_trigger` should still read as the *algorithm*, not as glue.
 

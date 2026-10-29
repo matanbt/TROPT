@@ -30,7 +30,7 @@ from tropt.tracker import BaseTracker
 logger = logging.getLogger(__name__)
 
 
-class QCGOptimizer(BaseOptimizer):
+class GCQOptimizer(BaseOptimizer):
     """Greedy Coordinate Query optimizer (Hayase et al., 2024).
 
     Buffer-based query attack: maintains a buffer of B best triggers, expands
@@ -50,7 +50,7 @@ class QCGOptimizer(BaseOptimizer):
         seed: Optional[int] = None,
         # Proxy model for candidate filtering:
         proxy_model: Optional[BaseModel] = None,
-        # Core QCG params:
+        # Core GCQ params:
         num_steps: int = 500,
         n_proxy_candidates: int = 8192,
         n_target_candidates: int = 32,

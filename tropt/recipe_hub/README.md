@@ -86,8 +86,8 @@ Use a white-box proxy model to guide candidate selection; evaluate on a (potenti
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `pal__sitawarin2024` | Proxy-guided: proxy gradients for candidate selection, target evaluation via text. | LM (any) | Proxy: Gradient; Target: Loss (Text) | [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) | [`PAL__sitawarin2024.py`](PAL__sitawarin2024.py) |
 | `gcgp_pal__sitawarin2024` | GCG++: white-box GCG with CW loss + oversampling. Optional random-candidates flag. | LM (HF) | Proxy: Gradient; Target: Loss (Text) | [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) | [`PAL__sitawarin2024.py`](PAL__sitawarin2024.py) |
-| `qcg__hayase2024` | Proxy ranks random candidates; best evaluated on target. Buffer-based optimisation. | LM (any) | Proxy: Loss (Token); Target: Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`QCG__hayase2024.py`](QCG__hayase2024.py) |
-| `gcgp_whitebox__hayase2024` | GCG+ white-box variant: proxy gradients + target evaluation. When proxy == target, equivalent to GCG. | LM (any) | Proxy: Gradient; Target: Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`QCG__hayase2024.py`](QCG__hayase2024.py) |
+| `gcq__hayase2024` | Proxy ranks random candidates; best evaluated on target. Buffer-based optimisation. | LM (any) | Proxy: Loss (Token); Target: Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`GCQ__hayase2024.py`](GCQ__hayase2024.py) |
+| `gcgp_whitebox__hayase2024` | GCG+ white-box variant: proxy gradients + target evaluation. When proxy == target, equivalent to GCG. | LM (any) | Proxy: Gradient; Target: Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`GCQ__hayase2024.py`](GCQ__hayase2024.py) |
 
 #### Black-Box Jailbreaks
 
@@ -97,7 +97,7 @@ No gradient access required. Target model is queried only via text input/output.
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | `beast__sadasivan2024` | Beam search using utility-LM logits to construct adversarial triggers. | LM (HF) | Loss (Text) | [Sadasivan et al., 2024](https://arxiv.org/abs/2402.15570) | [`BEAST__sadasivan2024.py`](BEAST__sadasivan2024.py) |
 | `ral__sitawarin2024` | Random candidate sampling (no proxy gradients); proxy used only for tokenisation. | LM (any) | Loss (Text) | [Sitawarin et al., 2024](https://arxiv.org/abs/2402.09674) | [`PAL__sitawarin2024.py`](PAL__sitawarin2024.py) |
-| `gcgp_blackbox__hayase2024` | GCG+ proxy-free variant: focused position sampling, retains buffer per Sec 4.4. | LM (any) | Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`QCG__hayase2024.py`](QCG__hayase2024.py) |
+| `gcgp_blackbox__hayase2024` | GCG+ proxy-free variant: focused position sampling, retains buffer per Sec 4.4. | LM (any) | Loss (Text) | [Hayase et al., 2024](https://arxiv.org/abs/2402.12329) | [`GCQ__hayase2024.py`](GCQ__hayase2024.py) |
 | `prs__andriushchenko2024` | Random search with coarse-to-fine schedule and patience-based restarts. | LM (any) | Loss (Text) | [Andriushchenko et al., 2024](https://arxiv.org/abs/2404.02151) | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 | `advdecoding_jailbreak__zhang2024` | Beam-search decoding under combined CE + utility-LM fluency for LM jailbreak. | LM (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding__zhang2024.py`](AdvDecoding__zhang2024.py) |
 | `gasliteplus_llm` | GASLITE+ applied to causal LMs for jailbreaking. | LM (HF) | Gradient + Loss (Token) | — | [`GASLITE__bentov2024.py`](GASLITE__bentov2024.py) |

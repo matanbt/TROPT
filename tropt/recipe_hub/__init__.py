@@ -54,10 +54,10 @@ from .PRS__andriushchenko2024 import (
     rs_emb,
     rs_oracle,
 )
-from .QCG__hayase2024 import (
+from .GCQ__hayase2024 import (
     gcgp_blackbox__hayase2024,
     gcgp_whitebox__hayase2024,
-    qcg__hayase2024,
+    gcq__hayase2024,
 )
 from .RASLITEPlus import rasliteplus, rasliteplus_llm
 from .SafetyOperator__dherin2026 import (
@@ -112,8 +112,8 @@ RECIPES = {
     "ral__sitawarin2024": ral__sitawarin2024,
     "gcgp_pal__sitawarin2024": gcgp_pal__sitawarin2024,
 
-    # QCG (Hayase 2024)
-    "qcg__hayase2024": qcg__hayase2024,
+    # GCQ (Hayase 2024)
+    "gcq__hayase2024": gcq__hayase2024,
     "gcgp_whitebox__hayase2024": gcgp_whitebox__hayase2024,
     "gcgp_blackbox__hayase2024": gcgp_blackbox__hayase2024,
 
