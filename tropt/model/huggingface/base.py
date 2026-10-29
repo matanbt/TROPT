@@ -758,9 +758,11 @@ class HuggingFaceBackendModel:
                     candidate_ids_onehot.requires_grad_()
 
                     # 1'. optionally apply gumbel-softmax to the trigger probs
+                    # (the gradient is taken w.r.t. the leaf `candidate_ids_onehot`, i.e., through the softmax)
+                    trigger_onehot = candidate_ids_onehot
                     if do_gumbel_softmax:
                         assert gumbel_softmax_temp is not None, "gumbel_softmax_temp must be provided if do_gumbel_softmax is True."
-                        candidate_ids_onehot = torch.nn.functional.gumbel_softmax(
+                        trigger_onehot = torch.nn.functional.gumbel_softmax(
                             logits=candidate_ids_onehot,
                             tau=gumbel_softmax_temp,
                             hard=False,
@@ -769,7 +771,7 @@ class HuggingFaceBackendModel:
 
                     # 2. Apply embedding to get trigger_embeds
                     # (n_candidates, trigger_seq_len, vocab_size) @ (vocab_size, embed_dim) -> (n_candidates, trigger_seq_len, embed_dim)
-                    candidate_embeds = candidate_ids_onehot @ embedding_matrix
+                    candidate_embeds = trigger_onehot @ embedding_matrix
 
                     # Only check when using discrete tokens (not soft probabilities)
                     if is_debug_mode() and candidate_trigger_ids is not None:
