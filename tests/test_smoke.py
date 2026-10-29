@@ -12,8 +12,8 @@ def test_top_level_imports():
         GBDAOptimizer,
         GCGOptimizer,
         GCGPlusOptimizer,
-        PALOptimizer,
         GCQOptimizer,
+        PALOptimizer,
     )
 
     assert tropt is not None

@@ -13,8 +13,8 @@ from tropt.optimizer import (
     GBDAOptimizer,
     GCGOptimizer,
     GCGPlusOptimizer,
-    PALOptimizer,
     GCQOptimizer,
+    PALOptimizer,
 )
 
 INITIAL_TRIGGER = "! ! ! ! !"
