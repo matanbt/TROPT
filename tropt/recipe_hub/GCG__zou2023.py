@@ -209,7 +209,6 @@ def classifier_gcg(
     return optimizer.optimize_trigger(
         templates=[template],
         targets=Targets(true_class_idx=[true_class_idx]),
-        # "! ! ..." doesn't round-trip on SentencePiece tokenizers (e.g. DeBERTa)
         initial_trigger=get_printable_random_trigger(
             20, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
         ),
