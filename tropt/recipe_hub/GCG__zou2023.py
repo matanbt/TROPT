@@ -25,6 +25,7 @@ from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
 _GCG_TOKEN_CONSTRAINTS = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
@@ -208,5 +209,8 @@ def classifier_gcg(
     return optimizer.optimize_trigger(
         templates=[template],
         targets=Targets(true_class_idx=[true_class_idx]),
-        initial_trigger=_INITIAL_TRIGGER,
+        # "! ! ..." doesn't round-trip on SentencePiece tokenizers (e.g. DeBERTa)
+        initial_trigger=get_printable_random_trigger(
+            20, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
+        ),
     )
