@@ -202,7 +202,7 @@ def classifier_gcg(
         sample_topk=256,
         sample_n_replace=1,
         token_constraints=_GCG_TOKEN_CONSTRAINTS,
-        use_retokenize=False,
+        use_retokenize=True,
     )
 
     return optimizer.optimize_trigger(

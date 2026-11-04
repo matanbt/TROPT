@@ -59,7 +59,7 @@ def uat_classifier(
         sample_topk=256,
         sample_n_replace=1,
         token_constraints=_UAT_TOKEN_CONSTRAINTS,
-        use_retokenize=False,
+        use_retokenize=False,  # paper does not retokenize
         template_batch_size=template_batch_size,
     )
 
