@@ -133,7 +133,7 @@ def rasliteplus_llm(
         token_constraints=TokenConstraints(
             disallow_non_ascii=True, disallow_special_tokens=True
         ),
-        use_retokenize=False,
+        use_retokenize=False,  # black-box target; trigger is evaluated as a string
         n_candidates=64,
         n_flip=1,
         use_random_logits=True,

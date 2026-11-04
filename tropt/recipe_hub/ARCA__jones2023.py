@@ -72,7 +72,7 @@ def arca__jones2023(
         sample_topk=sample_topk,
         # (original paper did not specify any token constraints)
         token_constraints=_TOKEN_CONSTRAINTS,
-        use_retokenize=False,
+        use_retokenize=False,  # paper does not retokenize
     )
 
     return optimizer.optimize_trigger(
