@@ -553,6 +553,9 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
     Targets:
         - `target_hidden_states` serves as the reference A_without pre-MLP activations.
         - `target_class_idx` is the class index of the sample (0 or 1) to determine whether to minimize or maximize λ.
+
+    λ is read at `SliceKey.INPUT_LAST_TOKEN`, so it stays on the prompt's last token when a target response is
+    prefilled after it -- e.g. when this loss is summed with a prefill loss.
     """
 
     require_pre_mlp_hidden_states: ClassVar[bool] = True
@@ -565,6 +568,7 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
         full_pre_mlp_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_hidden_states: Float[Tensor, "n_layers d_model"],
         target_class_idx: int,
+        input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         n_layers = full_pre_mlp_hidden_states.shape[1]
 
@@ -581,7 +585,10 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
         )
 
         # Compute lambda:
-        a_with = full_pre_mlp_hidden_states[:, self.targeted_layers, -1, :].float()  # (bsz, n_targeted_layers, d_model)
+        # The last *input* token, not the last position: with a target response prefilled after the prompt,
+        # position -1 sits inside that response and λ would be read off the wrong activation.
+        last = input_slices[SliceKey.INPUT_LAST_TOKEN].start
+        a_with = full_pre_mlp_hidden_states[:, self.targeted_layers, last, :].float()  # (bsz, n_targeted_layers, d_model)
         a_without = target_hidden_states[self.targeted_layers].float().to(a_with.device)  # (n_targeted_layers, d_model)
         lam = ((a_with * a_without).sum(-1) / a_without.pow(2).sum(-1)).pow(2)  # (bsz, n_targeted_layers)
 
