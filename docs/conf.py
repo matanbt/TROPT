@@ -133,8 +133,8 @@ html_theme_options = {
     "footer_start": [],
     "footer_center": ["footer-tropt"],
     "footer_end": [],
-    # The leaderboards, served under this site by .github/workflows/deploy_docs.yml (absolute: pages sit in subfolders).
-    "external_links": [{"name": "Leaderboards", "url": "https://www.tropt.dev/leaderboards/"}],
+    # The leaderboards (JBOptBench, JBEnhanceBench, EmbOptBench), on their own site.
+    "external_links": [{"name": "Leaderboards", "url": "https://matanbt.github.io/tropt-leaderboards/"}],
     # GitHub icon in the top-right of the navbar (GEPA-style).
     "icon_links": [
         {

@@ -12,7 +12,7 @@
   <a href="https://tropt.dev"><strong>Website</strong></a> &ensp;|&ensp;
   <strong>Quick Start (<a href="https://tropt.dev#get-started">Examples</a>, <a href="quickstart.ipynb">Notebook</a>)</strong> &ensp;|&ensp;
   <a href="https://arxiv.org/abs/2606.23496"><strong>Paper</strong></a> &ensp;|&ensp;
-  <a href="https://www.tropt.dev/leaderboards/"><strong>Leaderboards</strong></a>
+  <a href="https://matanbt.github.io/tropt-leaderboards/"><strong>Leaderboards</strong></a>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
 - 🔁 **Extend to any NLP model:** Seamlessly port existing schemes (e.g., LLM jailbreaks) to new models (retrievers, classifiers, multimodal) or new tasks (new attacks, interpretability).
 - 🧩 **Compose new recipes:** Mix and match any optimizer (gradient-based, black-box) with any loss (logits, embeddings, activation-based, LM-as-judge).
 - 🔬 **Build new optimizers and losses** by implementing *only* the core logic; TROPT handles all the annoying yet subtle boilerplace (batching, trigger insertion, gradients, ...) and composes it with every model.
-- 🛡️ **Reliable benchmarking:** Run fair, reproducible comparisons of optimizers, losses, and recipes on shared infrastructure; see the [leaderboards](https://www.tropt.dev/leaderboards/).
+- 🛡️ **Reliable benchmarking:** Run fair, reproducible comparisons of optimizers, losses, and recipes on shared infrastructure; see the [leaderboards](https://matanbt.github.io/tropt-leaderboards/).
 - 🧑‍🔬 **Human-verified implementations:** Every optimizer and loss is human-reviewed, tested, and checked against the original implementation where one exists.
 
 
