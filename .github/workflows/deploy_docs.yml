@@ -65,6 +65,14 @@ jobs:
       - name: Build Sphinx Docs
         run: |
           sphinx-build -b html docs docs/_build/html
+      - name: Add the leaderboards (www.tropt.dev/leaderboards)
+        run: |
+          # The leaderboard site (matanbt/tropt-leaderboards) publishes its built pages as one bundle, and redeploys
+          # these docs after each of its own deploys. A failed fetch leaves the docs deploy going, without /leaderboards.
+          mkdir -p docs/_build/html/leaderboards
+          curl -fsSL https://matanbt.github.io/tropt-leaderboards/leaderboards.tar.gz \
+            | tar xz -C docs/_build/html/leaderboards \
+            || echo "::warning::could not fetch the leaderboard bundle; /leaderboards is not deployed"
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
