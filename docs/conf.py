@@ -90,7 +90,7 @@ html_title = "Textual Trigger Optimization Toolbox"
 # the html dir). The file lives at docs/robots.txt; extra_path copies it
 # verbatim so it lands at the SITE ROOT (tropt.dev/robots.txt) which is where
 # crawlers look for it — placement inside _static/ wouldn't be discoverable.
-html_extra_path = ['robots.txt']
+html_extra_path = ['robots.txt', '_extra']  # _extra/leaderboards: www.tropt.dev/leaderboards redirects to the leaderboard site
 
 # sphinx-sitemap config — emits sitemap.xml at the docs root.
 # `sitemap_url_scheme` template: {link} = relative URL of each page.
