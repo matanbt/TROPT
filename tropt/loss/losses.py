@@ -464,6 +464,8 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
         apply_square: Whether to square the similarity scores (default: False)
         apply_abs: Whether to take the absolute value of the similarity scores (default: False).
+        hinge: If set, a similarity counts only past this value (below it when steering away, above it
+            when steering towards); once it is passed the loss is 0 and stops pushing (default: None).
     """
 
     targeted_layers: slice = slice(None)
@@ -472,6 +474,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
     do_cosine_sim: bool = False
     apply_square: bool = False
     apply_abs: bool = False
+    hinge: Optional[float] = None
 
     def __call__(
         self,
@@ -518,6 +521,11 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
             res = res.abs()
         if self.apply_square:
             res = res.pow(2)
+
+        if self.hinge is not None:
+            # Only the part past the hinge counts, so the loss reaches 0 once the hinge is passed
+            res = torch.relu(res - self.hinge) if self.steer_away else torch.relu(self.hinge - res)
+            return res.mean(dim=(-1, -2))
 
         # Average over layers and positions -> (bsz,)
         loss = res.mean(dim=(-1, -2))
