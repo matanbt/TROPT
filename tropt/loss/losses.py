@@ -458,7 +458,8 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         https://arxiv.org/abs/2412.09565
 
     Args:
-        targeted_layers: Which layers to apply steering on (default: all layers)
+        targeted_layers: Which layers to apply steering on (default: all layers). Indexes `full_hidden_states`
+            by transformer block, so layer `i` is HF `hidden_states[i + 1]` (see `ModelOutput.full_hidden_states`).
         steer_away: Whether to minimize alignment instead of maximizing (default: False = steer towards)
         slc_name: Which token positions to apply steering on (default: "input_last_token")
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
