@@ -156,7 +156,7 @@ class MyLoss(HiddenStateBasedLoss):
     """Steers hidden activations along (or away from) a target direction."""
 
     # Hyperparameters
-    targeted_layers: slice = slice(None)
+    targeted_layers: slice = slice(1, None)  # HF-indexed; 0 = embeddings
     steer_away: bool = False  # if True, push activations *away* from the direction
 
     # Ask the model to return all hidden states.
@@ -165,7 +165,7 @@ class MyLoss(HiddenStateBasedLoss):
 
     def __call__(
         self,
-        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
+        full_hidden_states: Float[Tensor, "bsz n_layers_plus_1 seq_len d_model"],
         target_directions: Float[Tensor, "d_model"],
     ) -> Float[Tensor, "bsz"]:
         # Score the last token of each sample, averaged over the selected layers.
@@ -280,7 +280,7 @@ The resolver matches your `__call__` parameter names against fields on three cla
 | `output_embeddings` | `Float[Tensor, "bsz d_model"]` | Encoder models |
 | `full_logits` | `Float[Tensor, "bsz seq_len vocab_size"]` | LMs (full sequence) |
 | `prefill_response_logits` | `Float[Tensor, "bsz response_seq_len vocab_size"]` | Loss has `require_target_prefill=True` |
-| `full_hidden_states` | `Float[Tensor, "bsz n_layers seq_len d_model"]` | Loss has `require_hidden_states=True` |
+| `full_hidden_states` | `Float[Tensor, "bsz n_layers_plus_1 seq_len d_model"]` (HF-indexed, 0 = embeddings) | Loss has `require_hidden_states=True` |
 | `full_attentions` | `Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]` | Loss has `require_attentions=True` |
 | `generated_response_strs` | `List[str]` | Loss has `require_generation=True` |
 | `response_first_token_logprobs` | `List[Dict[str, float]]` | Loss has `require_first_token_logprobs=True` |

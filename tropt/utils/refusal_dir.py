@@ -95,7 +95,7 @@ def extract_activations(
         position: Which position to extract ("last" or "mean")
 
     Returns:
-        Activations tensor of shape (n_prompts, n_layers, d_model)
+        Activations tensor of shape (n_prompts, n_layers + 1, d_model), indexed like HF `hidden_states`
     """
     all_activations = []
 
@@ -120,20 +120,20 @@ def extract_activations(
             )
 
         # Extract activations from all layers
-        hidden_states = outputs.hidden_states[1:]  # Skip input embeddings, keep hidden layers
+        hidden_states = outputs.hidden_states  # index 0 = embeddings, as in HF and `full_hidden_states`
 
         if position == "last":  # the `INPUT_LAST_TOKEN` position
             # Take last token from each layer
-            activations = torch.stack([h[0, -1, :] for h in hidden_states])  # (n_layers, d_model)
+            activations = torch.stack([h[0, -1, :] for h in hidden_states])  # (n_layers + 1, d_model)
         elif position == "mean":
             # Average over sequence
-            activations = torch.stack([h[0].mean(dim=0) for h in hidden_states])  # (n_layers, d_model)
+            activations = torch.stack([h[0].mean(dim=0) for h in hidden_states])  # (n_layers + 1, d_model)
         else:
             raise ValueError(f"Unknown position: {position}")
 
         all_activations.append(activations.cpu())
 
-    return torch.stack(all_activations)  # (n_prompts, n_layers, d_model)
+    return torch.stack(all_activations)  # (n_prompts, n_layers + 1, d_model)
 
 
 def compute_refusal_directions(
@@ -142,7 +142,7 @@ def compute_refusal_directions(
     harmless_prompts: Optional[List[str]] = None,
     n_samples: int = 128,
     position: str = "last",
-) -> Float[torch.Tensor, "n_layers d_model"]:
+) -> Float[torch.Tensor, "n_layers_plus_1 d_model"]:
     """
     Compute refusal directions for all layers using difference-in-means.
 
@@ -154,7 +154,8 @@ def compute_refusal_directions(
         position: Which position to extract ("last" or "mean"); it's common to use the last token's activations.
 
     Returns:
-        Refusal directions tensor of shape (n_layers, d_model), normalized per layer
+        Refusal directions tensor of shape (n_layers + 1, d_model), normalized per layer; row `i` is HF
+        `hidden_states[i]`, like `ModelOutput.full_hidden_states` (row 0, embeddings, is near-degenerate).
     """
     # Load datasets if not provided
     if harmful_prompts is None:
@@ -169,13 +170,13 @@ def compute_refusal_directions(
 
     # Extract activations
     logger.info(f"Extracting activations for {len(harmful_prompts)} harmful prompts...")
-    harmful_acts = extract_activations(model, harmful_prompts, position)  # (n_prompts, n_layers, d_model)
+    harmful_acts = extract_activations(model, harmful_prompts, position)  # (n_prompts, n_layers + 1, d_model)
 
     logger.info(f"Extracting activations for {len(harmless_prompts)} harmless prompts...")
-    harmless_acts = extract_activations(model, harmless_prompts, position)  # (n_prompts, n_layers, d_model)
+    harmless_acts = extract_activations(model, harmless_prompts, position)  # (n_prompts, n_layers + 1, d_model)
 
     # Compute refusal directions (mean difference per layer)
-    refusal_dirs = harmful_acts.mean(dim=0) - harmless_acts.mean(dim=0)  # (n_layers, d_model)
+    refusal_dirs = harmful_acts.mean(dim=0) - harmless_acts.mean(dim=0)  # (n_layers + 1, d_model)
 
     # Normalize per layer
     refusal_dirs = refusal_dirs / (refusal_dirs.norm(dim=1, keepdim=True) + 1e-8)

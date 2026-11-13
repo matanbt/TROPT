@@ -367,7 +367,7 @@ class ModelOutput(pydantic.BaseModel):
 
     Shape Notation:
         - bsz: batch size (number of candidates or samples in a batch)
-        - n_layers: number of model layers
+        - n_layers: number of transformer blocks (`full_hidden_states` has n_layers + 1 entries, incl. embeddings)
         - n_heads: number of attention heads per layer
         - seq_len: total sequence length
         - response_len: length of generated response (variable per sample)
@@ -413,22 +413,21 @@ class ModelOutput(pydantic.BaseModel):
     """
 
     # === Hidden states (Transformer models with output_hidden_states=True) ===
-    full_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
-    """Hidden states from all layers.
+    full_hidden_states: Optional[Float[Tensor, "bsz n_layers_plus_1 seq_len d_model"]] = None
+    """Residual-stream states indexed exactly like HuggingFace's `output_hidden_states`: index `i` == HF `hidden_states[i]`.
 
-    Note: Typically requires stacking tuple outputs from HuggingFace models:
-        `torch.stack(outputs.hidden_states, dim=1)`
+    Has `model.n_layers + 1` entries: index 0 is the embedding output, index `i >= 1` is the output of block `i - 1`
+    (for most HF decoders the last entry has the final norm applied). Use `slice(1, None)` for "all blocks".
     """
 
     full_pre_mlp_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
-    """Per-layer inputs to the feed-forward (MLP) blocks: what each MLP's first linear multiplies (post pre-MLP norm, where one exists)."""
+    """Per-layer inputs to the feed-forward (MLP) blocks: what each MLP's first linear multiplies (post pre-MLP norm, where one exists).
+    One entry per transformer block (`model.n_layers`), index `i` = block `i`; unlike `full_hidden_states`,
+    there is no embedding entry."""
 
     # === Attention weights (Transformer models with output_attentions=True) ===
     full_attentions: Optional[Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]] = None
-    """Attention weights from all layers.
-
-    Note: Typically requires stacking tuple outputs from HuggingFace models:
-        `torch.stack(outputs.attentions, dim=1)`
+    """Attention weights, one entry per transformer block (`model.n_layers`), as in HF's `output_attentions`.
     """
 
     # === Generated responses (Language models with generation) ===
