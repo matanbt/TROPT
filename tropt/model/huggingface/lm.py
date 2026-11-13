@@ -491,7 +491,7 @@ class LMHFModel(
             full_logits=outputs.logits,
             prefill_response_logits=prefill_response_logits,
             full_attentions=torch.stack(outputs.attentions, dim=1) if require_attentions else None,
-            full_hidden_states=torch.stack(outputs.hidden_states[1:], dim=1) if require_hidden_states else None,  # (skips input embedding (layer 0))
+            full_hidden_states=torch.stack(outputs.hidden_states, dim=1) if require_hidden_states else None,  # index 0 = embeddings, as in HF
             full_pre_mlp_hidden_states=full_pre_mlp_hidden_states,
             generated_response_strs=generated_response_strs,
             generated_response_ids=generated_response_ids,
