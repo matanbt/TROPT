@@ -154,7 +154,8 @@ def compute_refusal_directions(
         position: Which position to extract ("last" or "mean"); it's common to use the last token's activations.
 
     Returns:
-        Refusal directions tensor of shape (n_layers, d_model), normalized per layer
+        Refusal directions tensor of shape (n_layers, d_model), normalized per layer; indexed like
+        `ModelOutput.full_hidden_states` (row `i` is HF `hidden_states[i + 1]`).
     """
     # Load datasets if not provided
     if harmful_prompts is None:

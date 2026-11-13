@@ -414,14 +414,16 @@ class ModelOutput(pydantic.BaseModel):
 
     # === Hidden states (Transformer models with output_hidden_states=True) ===
     full_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
-    """Hidden states from all layers.
+    """Per-layer residual-stream outputs, indexed by transformer block (`n_layers == model.n_layers`).
 
-    Note: Typically requires stacking tuple outputs from HuggingFace models:
-        `torch.stack(outputs.hidden_states, dim=1)`
+    Index `i` is the output of block `i` (for most HF decoders the last entry has the final norm applied);
+    the embedding output is excluded. This is off by one from HuggingFace's `output_hidden_states`:
+    TROPT index `i` == HF `hidden_states[i + 1]`.
     """
 
     full_pre_mlp_hidden_states: Optional[Float[Tensor, "bsz n_layers seq_len d_model"]] = None
-    """Per-layer inputs to the feed-forward (MLP) blocks: what each MLP's first linear multiplies (post pre-MLP norm, where one exists)."""
+    """Per-layer inputs to the feed-forward (MLP) blocks: what each MLP's first linear multiplies (post pre-MLP norm, where one exists).
+    Indexed by transformer block, like `full_hidden_states`."""
 
     # === Attention weights (Transformer models with output_attentions=True) ===
     full_attentions: Optional[Float[Tensor, "bsz n_layers n_heads seq_len seq_len"]] = None
