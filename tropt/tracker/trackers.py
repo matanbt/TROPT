@@ -276,6 +276,7 @@ class LiveLossPlotTracker(BaseTracker):
                 ax.set_yscale("log")
             ax.legend(loc="center right")
         self._plotlosses = livelossplot.PlotLosses(
+            groups={"loss": list(self.focus_on_metrics)},  # all focused metrics on one plot
             outputs=[MatplotlibPlot(figsize=(7, 3), after_subplot=_after_subplot)],
         )
 
