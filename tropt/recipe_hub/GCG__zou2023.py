@@ -178,6 +178,7 @@ def classifier_gcg(
     model_obj: Optional[ClassifierHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     num_steps: int = 250,
+    target_class_idx: Optional[int] = None,
     trigger_len: int = 20,
     override_opt_kwargs: Optional[dict] = None,
 ) -> OptimizerResult:
@@ -192,15 +193,17 @@ def classifier_gcg(
         model_obj: Pre-loaded ClassifierHFModel to reuse.
         tracker: Optional tracker for logging.
         num_steps: Optimization steps.
+        target_class_idx: If set, push toward this class (targeted) instead of away from `true_class_idx`.
         trigger_len: Number of trigger tokens (initialized as random printable tokens).
         override_opt_kwargs: GCGOptimizer kwargs that override the defaults (e.g. `n_candidates`).
     """
     if model_obj is None:
         model_obj = ClassifierHFModel(model_name=model_name)
 
+    targeted = target_class_idx is not None
     opt_kwargs = dict(
         model=model_obj,
-        loss=MisclassCELoss(targeted=False),
+        loss=MisclassCELoss(targeted=targeted),
         tracker=tracker,
         num_steps=num_steps,
         n_candidates=512,
@@ -213,7 +216,7 @@ def classifier_gcg(
 
     return optimizer.optimize_trigger(
         templates=[template],
-        targets=Targets(true_class_idx=[true_class_idx]),
+        targets=Targets(target_class_idx=[target_class_idx]) if targeted else Targets(true_class_idx=[true_class_idx]),
         initial_trigger=get_printable_random_trigger(
             trigger_len, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
         ),
