@@ -156,7 +156,7 @@ class MyLoss(HiddenStateBasedLoss):
     """Steers hidden activations along (or away from) a target direction."""
 
     # Hyperparameters
-    targeted_layers: slice = slice(None)
+    targeted_layers: slice = slice(1, None)  # skip the embeddings
     steer_away: bool = False  # if True, push activations *away* from the direction
 
     # Ask the model to return all hidden states.

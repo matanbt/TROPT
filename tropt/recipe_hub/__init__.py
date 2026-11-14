@@ -51,6 +51,7 @@ from .PromptRecovery__wen2023 import (
 )
 from .PRS__andriushchenko2024 import (
     prs__andriushchenko2024,
+    rs_classifier,
     rs_emb,
     rs_oracle,
 )
@@ -122,6 +123,7 @@ RECIPES = {
 
     # PRS (Andriushchenko 2024) + black-box random-search variants
     "prs__andriushchenko2024": prs__andriushchenko2024,
+    "rs_classifier": rs_classifier,
     "rs_emb": rs_emb,
     "rs_oracle": rs_oracle,
 

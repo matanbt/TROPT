@@ -120,7 +120,7 @@ def extract_activations(
             )
 
         # Extract activations from all layers
-        hidden_states = outputs.hidden_states[1:]  # Skip input embeddings, keep hidden layers
+        hidden_states = outputs.hidden_states
 
         if position == "last":  # the `INPUT_LAST_TOKEN` position
             # Take last token from each layer

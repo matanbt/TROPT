@@ -112,6 +112,7 @@ class CombinedLoss(BaseLoss):
         assert all(isinstance(loss, BaseLoss) for loss in loss_funcs), "All elements in losses must be instances of BaseLoss"
         assert all(not isinstance(loss, CombinedLoss) for loss in loss_funcs), "CombinedLoss cannot contain another CombinedLoss"
         self.loss_funcs: List[BaseLoss] = loss_funcs
+        self._best_since_log: Optional[tuple] = None  # (total, components) of the lowest-total candidate since the last log
 
         if weights is None:
             # if weights not provided, set equal weights
@@ -133,21 +134,24 @@ class CombinedLoss(BaseLoss):
         loss = losses * weights
         loss = loss.sum(dim=0)  # reduce over n_losses
 
+        i = int(loss.argmin())
+        if self._best_since_log is None or loss[i].item() < self._best_since_log[0]:
+            self._best_since_log = (loss[i].item(), losses[:, i].tolist())
+
         return loss  # shape: (bsz,)
 
     def get_loss_log_dict(self) -> dict:
         """
-        Returns a loggable dict of the last computed loss value (of *all* the component losses), keyed by loss class name.
-        Useful for verbose loss logging in optimizers.
+        Returns a loggable dict of the lowest combined loss since the previous call, and that candidate's
+        (unweighted) component losses, keyed by loss class name. Useful for verbose loss logging in optimizers.
         """
-        if self._last_loss_vals is None or self._last_component_loss_vals is None:
+        if self._best_since_log is None:
             return {}
+        total, components = self._best_since_log
+        self._best_since_log = None
         return {
-            f"{type(self).__name__}": self._last_loss_vals.min().item(),
-            **{
-                f"{type(lf).__name__}": val.min().item()
-                for lf, val in zip(self.loss_funcs, self._last_component_loss_vals)
-            },
+            f"{type(self).__name__}": total,
+            **{f"{type(lf).__name__}": val for lf, val in zip(self.loss_funcs, components)},
         }
 
     @property

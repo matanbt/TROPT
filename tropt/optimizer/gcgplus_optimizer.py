@@ -23,7 +23,10 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.retokenization import (
+    full_messages_retokenize_filtering,
+    retokenize_filtering,
+)
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
@@ -66,7 +69,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         n_candidates: int = 512,
         sample_topk: int = 256,
         token_constraints: TokenConstraints = TokenConstraints(),
-        use_retokenize: bool = True,
+        use_retokenize: Union[bool, Literal["full"]] = True,
         # Later tricks:
         sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
         candidate_oversample_factor: float = 1.1,
@@ -95,6 +98,8 @@ class GCGPlusOptimizer(BaseOptimizer):
             sample_n_replace: (start, end) number of token positions to replace per
                 candidate. Linearly interpolated over optimization steps; from PAL paper.
                 Defaults to (1, 1) for single-token flips only.
+            use_retokenize: Keep only candidates whose tokens survive decode + re-encode. ``"full"`` checks
+                this inside each full template (catches a trigger merging with the text around it).
             candidate_oversample_factor: Craft n_candidates * factor candidates (>1.0), then
                 truncate after retokenization filtering, to fill the required number of candidates.
                 From PAL paper.
@@ -320,7 +325,11 @@ class GCGPlusOptimizer(BaseOptimizer):
                 )
 
             # === Retokenization filtering ===
-            if self.use_retokenize:
+            if self.use_retokenize == "full":
+                candidate_trigger_ids = full_messages_retokenize_filtering(
+                    candidate_trigger_ids, proxy_tokenizer, templates
+                )
+            elif self.use_retokenize:
                 candidate_trigger_ids = retokenize_filtering(
                     candidate_trigger_ids, proxy_tokenizer
                 )

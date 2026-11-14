@@ -258,9 +258,11 @@ class LiveLossPlotTracker(BaseTracker):
         self,
         experiment_name: str = DEFAULT_EXPERIMENT_NAME,
         focus_on_metrics: tuple = ("loss",),
+        log_y: bool = False,
     ):
         super().__init__(experiment_name)
         self.focus_on_metrics = focus_on_metrics
+        self.log_y = log_y
         self._plotlosses = None  # of type `livelossplot.PlotLosses`
 
     def _init(self, config: Optional[dict] = None):
@@ -270,8 +272,11 @@ class LiveLossPlotTracker(BaseTracker):
         def _after_subplot(ax, group_name, x_label):
             ax.set_title(group_name)
             ax.set_xlabel("step")
+            if self.log_y:
+                ax.set_yscale("log")
             ax.legend(loc="center right")
         self._plotlosses = livelossplot.PlotLosses(
+            groups={"loss": list(self.focus_on_metrics)},  # all focused metrics on one plot
             outputs=[MatplotlibPlot(figsize=(7, 3), after_subplot=_after_subplot)],
         )
 
