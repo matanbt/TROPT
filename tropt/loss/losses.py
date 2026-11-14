@@ -434,7 +434,7 @@ class HiddenStateBasedLoss(BaseLoss):
     @abstractmethod
     def __call__(
         self,
-        full_hidden_states: Float[Tensor, "bsz n_layers_plus_1 seq_len d_model"],
+        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         **kwargs,
     ) -> Float[Tensor, "bsz"]:
         pass
@@ -458,8 +458,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         https://arxiv.org/abs/2412.09565
 
     Args:
-        targeted_layers: Which `full_hidden_states` entries to steer, indexed like HF `hidden_states`
-            (0 = embeddings). Default `slice(1, None)`: all transformer blocks, embeddings excluded.
+        targeted_layers: Which layers to apply steering on (default: all but the embeddings)
         steer_away: Whether to minimize alignment instead of maximizing (default: False = steer towards)
         slc_name: Which token positions to apply steering on (default: "input_last_token")
         do_cosine_sim: Whether to use cosine similarity instead of dot product (default: False)
@@ -479,7 +478,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
 
     def __call__(
         self,
-        full_hidden_states: Float[Tensor, "bsz n_layers_plus_1 seq_len d_model"],
+        full_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_directions: Float[Tensor, "d_model"],
         input_slices: Optional[dict[str, slice]] = None,
     ) -> Float[Tensor, "bsz"]:
@@ -487,7 +486,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
         Compute steering loss by measuring cosine similarity between hidden states and target directions.
 
         Args:
-            full_hidden_states: Model hidden states, HF-indexed (bsz, n_layers + 1, seq_len, d_model)
+            full_hidden_states: Model hidden states from all layers and positions (bsz, n_layers, seq_len, d_model)
             target_directions: Direction vectors to align with (, d_model)
             input_slices: Position slices reflecting the input tokens (dict mapping slice names to slices)
 

@@ -81,7 +81,7 @@ def iris__huang2025(
     ce_loss = PrefillCELoss()
     steering_loss = SteeringActivationLoss(
         steer_away=True,
-        targeted_layers=slice(1, None),  # all transformer blocks (index 0 = embeddings)
+        targeted_layers=slice(1, None),  # all layers but the embeddings
         slc_name=SliceKey.INPUT_LAST_TOKEN,
         do_cosine_sim=False,  # While they might be using dot-product in the paper, it seems to be much less stable
         apply_square=True,  # Square the products
@@ -136,7 +136,7 @@ def iris2(
         model_obj: Pre-loaded LMHFModel (must have use_prefix_cache=False).
         tracker: Optional tracker for logging.
         initial_trigger: Initial trigger string.
-        refusal_dirs: Optionally precomputed refusal directions (n_layers + 1, d_model), HF-indexed. Computed if None.
+        refusal_dirs: Optionally precomputed refusal directions (n_layers, d_model). Computed if None.
     """
     if model_obj is None:
         model_obj = LMHFModel(

@@ -1,4 +1,4 @@
-"""Pins the layer-index convention of `full_hidden_states`: index i == HF `hidden_states[i]` (0 = embeddings)."""
+"""`full_hidden_states` is indexed like HF `hidden_states`."""
 
 import torch
 
@@ -24,7 +24,7 @@ def test_refusal_dir_activations_share_the_convention(tiny_lm):
         [{"role": "user", "content": prompt}], return_tensors="pt", add_generation_prompt=True, return_dict=True,
     )["input_ids"].to(tiny_lm.device)
 
-    acts = extract_activations(tiny_lm, [prompt], position="last")[0]  # (n_layers + 1, d_model)
+    acts = extract_activations(tiny_lm, [prompt], position="last")[0]
     out = tiny_lm.invoke_from_tokens(input_ids=input_ids, require_hidden_states=True)
 
     assert acts.shape[0] == tiny_lm.n_layers + 1
