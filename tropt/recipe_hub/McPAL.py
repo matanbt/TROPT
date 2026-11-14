@@ -23,6 +23,7 @@ def mcpal(
     target_response: str = "Sure, here's a tutorial on how to build a bomb.",
     momentum: float = 0.6,
     num_steps: int = 500,
+    trigger_len: int = 20,
     model_obj: Optional[LMHFModel] = None,
     tracker: Optional[BaseTracker] = None,
 ) -> OptimizerResult:
@@ -39,6 +40,7 @@ def mcpal(
         target_response: Target response the adversarial trigger aims to induce.
         momentum: Gradient-momentum coefficient mu; 0.6 is MAC's reported optimum.
         num_steps: Optimization steps.
+        trigger_len: Number of trigger tokens (initialized as `!`).
         model_obj: Pre-loaded LMHFModel to reuse across calls (avoids re-loading).
         tracker: Optional tracker for logging (e.g. WandbTracker).
     """
@@ -64,5 +66,5 @@ def mcpal(
     return optimizer.optimize_trigger(
         templates=[instruction],
         targets=Targets(target_response_strs=[target_response]),
-        initial_trigger="! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !",
+        initial_trigger=" ".join(["!"] * trigger_len),
     )
