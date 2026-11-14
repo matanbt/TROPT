@@ -178,6 +178,8 @@ def classifier_gcg(
     model_obj: Optional[ClassifierHFModel] = None,
     tracker: Optional[BaseTracker] = None,
     num_steps: int = 250,
+    trigger_len: int = 20,
+    override_opt_kwargs: Optional[dict] = None,
 ) -> OptimizerResult:
     """Run GCG for untargeted misclassification against a given classifier.
 
@@ -190,11 +192,13 @@ def classifier_gcg(
         model_obj: Pre-loaded ClassifierHFModel to reuse.
         tracker: Optional tracker for logging.
         num_steps: Optimization steps.
+        trigger_len: Number of trigger tokens (initialized as random printable tokens).
+        override_opt_kwargs: GCGOptimizer kwargs that override the defaults (e.g. `n_candidates`).
     """
     if model_obj is None:
         model_obj = ClassifierHFModel(model_name=model_name)
 
-    optimizer = GCGOptimizer(
+    opt_kwargs = dict(
         model=model_obj,
         loss=MisclassCELoss(targeted=False),
         tracker=tracker,
@@ -205,11 +209,12 @@ def classifier_gcg(
         token_constraints=_GCG_TOKEN_CONSTRAINTS,
         use_retokenize=True,
     )
+    optimizer = GCGOptimizer(**{**opt_kwargs, **(override_opt_kwargs or {})})
 
     return optimizer.optimize_trigger(
         templates=[template],
         targets=Targets(true_class_idx=[true_class_idx]),
         initial_trigger=get_printable_random_trigger(
-            20, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
+            trigger_len, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
         ),
     )
