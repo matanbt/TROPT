@@ -148,8 +148,6 @@ class HuggingFaceTokenInputManager(TokenInputManager):
                 prefix_cache.append(curr_prefix)
 
         self.prefix_cache = prefix_cache if use_prefix_cache else None
-        # Memory for formatted prefix cache kwargs, keyed by (batch_size, template_idx)
-        self._prefix_cache_kwargs_mem: dict = {}
 
     @property
     def n_templates(self):
@@ -338,43 +336,13 @@ class HuggingFaceTokenInputManager(TokenInputManager):
         if template_idx is None:
             raise ValueError("Prefix cache without specific template_idx is not supported.")
 
-        # Check memory first
-        mem_key = (batch_size, template_idx)
-        if mem_key in self._prefix_cache_kwargs_mem:
-            # Retrieve from memory (stored as legacy tuple on CPU) and convert/move to device
-            saved_kv = self._prefix_cache_kwargs_mem[mem_key]
-            # Move tensors to device
-            saved_kv = tuple(
-                (k.to(self.device), v.to(self.device)) for k, v in saved_kv
-            )
-            past_key_values = DynamicCache(ddp_cache_data=saved_kv)
-            return dict(
-                past_key_values=past_key_values,
-                use_cache=True,
-            )
-
-        # Compute if not in memory
         assert self.prefix_cache is not None
-        past_key_values = self.prefix_cache[template_idx]
+        # Expand the stored 1-row cache (on device) to the batch as views, without copying.
         # Structure: tuple(layers) of tuple(k, v) where k,v are (1, heads, seq, dim)
-
-        if batch_size != 1:
-            batch_prefix_cache = []
-            for k, v in past_key_values:
-                # Expand batch dimension
-                k = k.expand(batch_size, -1, -1, -1)
-                v = v.expand(batch_size, -1, -1, -1)
-                batch_prefix_cache.append((k, v))
-            past_key_values = tuple(batch_prefix_cache)
-
-        # Store in memory on CPU as legacy format (tuple of tensors)
-        # This avoids issues with DynamicCache not having a .to() method
-        cache_cpu = tuple(
-            (k.cpu(), v.cpu()) for k, v in past_key_values
+        past_key_values = tuple(
+            (k.expand(batch_size, -1, -1, -1), v.expand(batch_size, -1, -1, -1))
+            for k, v in self.prefix_cache[template_idx]
         )
-        self._prefix_cache_kwargs_mem[mem_key] = cache_cpu
-
-        # Convert to DynamicCache and return with values on device
         past_key_values = DynamicCache(ddp_cache_data=past_key_values)
         return dict(
             past_key_values=past_key_values,
