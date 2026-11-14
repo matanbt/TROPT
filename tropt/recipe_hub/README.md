@@ -135,7 +135,7 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `classifier_gcg` | GCG for untargeted misclassification against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
+| `classifier_gcg` | GCG for misclassification (untargeted, or targeted via `target_class_idx`) against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `uat_classifier` | UAT framework on a classifier; uses GCG-style optimisation instead of the original HotFlip variant. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 | `uat_prompt_injection` | UAT applied to a prompt-injection detector (Llama-Prompt-Guard-2); held-in/held-out/benign evaluation included. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 
