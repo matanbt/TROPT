@@ -9,7 +9,7 @@ Crosses two hosted recipes, differing from each by a single knob:
 from typing import List, Optional, Union
 
 from tropt.common import Targets
-from tropt.loss import PrefillCELoss
+from tropt.loss import BaseLoss, PrefillCELoss
 from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
@@ -27,6 +27,9 @@ def mcpal(
     trigger_len: int = 20,
     model_obj: Optional[LMHFModel] = None,
     tracker: Optional[BaseTracker] = None,
+    loss: Optional[BaseLoss] = None,
+    targets: Optional[Targets] = None,
+    initial_trigger: Optional[str] = None,
 ) -> OptimizerResult:
     """McPAL: PAL's search configuration with MAC's gradient momentum.
 
@@ -44,6 +47,9 @@ def mcpal(
         trigger_len: Number of trigger tokens (initialized as random printable tokens).
         model_obj: Pre-loaded LMHFModel to reuse across calls (avoids re-loading).
         tracker: Optional tracker for logging (e.g. WandbTracker).
+        loss: Loss to minimize (default `PrefillCELoss`).
+        targets: Targets for a custom loss; replaces the ones built from `target_response`.
+        initial_trigger: Starting trigger (default: `trigger_len` random printable tokens).
     """
     if model_obj is None:
         model_obj = LMHFModel(model_name=model_name, use_prefix_cache=True)
@@ -51,7 +57,7 @@ def mcpal(
     token_constraints = TokenConstraints()
     optimizer = GCGPlusOptimizer(
         model=model_obj,
-        loss=PrefillCELoss(),
+        loss=loss if loss is not None else PrefillCELoss(),
         proxy_model=model_obj,  # self-proxy: white-box
         tracker=tracker,
         candidate_selection="gradient",
@@ -67,8 +73,10 @@ def mcpal(
 
     return optimizer.optimize_trigger(
         templates=[instruction] if isinstance(instruction, str) else instruction,
-        targets=Targets(target_response_strs=[target_response] if isinstance(target_response, str) else target_response),
-        initial_trigger=get_printable_random_trigger(
+        targets=targets if targets is not None else Targets(
+            target_response_strs=[target_response] if isinstance(target_response, str) else target_response
+        ),
+        initial_trigger=initial_trigger if initial_trigger is not None else get_printable_random_trigger(
             trigger_len, tokenizer=model_obj.tokenizer, token_constraints=token_constraints
         ),
     )
