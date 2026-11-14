@@ -14,6 +14,7 @@ from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcgplus_optimizer import GCGPlusOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
 
@@ -40,13 +41,14 @@ def mcpal(
         target_response: Target response the adversarial trigger aims to induce.
         momentum: Gradient-momentum coefficient mu; 0.6 is MAC's reported optimum.
         num_steps: Optimization steps.
-        trigger_len: Number of trigger tokens (initialized as `!`).
+        trigger_len: Number of trigger tokens (initialized as random printable tokens).
         model_obj: Pre-loaded LMHFModel to reuse across calls (avoids re-loading).
         tracker: Optional tracker for logging (e.g. WandbTracker).
     """
     if model_obj is None:
         model_obj = LMHFModel(model_name=model_name, use_prefix_cache=True)
 
+    token_constraints = TokenConstraints()
     optimizer = GCGPlusOptimizer(
         model=model_obj,
         loss=PrefillCELoss(),
@@ -59,12 +61,14 @@ def mcpal(
         sample_n_replace=(1, 1),  # PAL's single-token replacement
         momentum=momentum,  # MAC's contribution
         candidate_oversample_factor=1.1,  # PAL's oversampling
-        token_constraints=TokenConstraints(),
+        token_constraints=token_constraints,
         use_retokenize=True,
     )
 
     return optimizer.optimize_trigger(
         templates=[instruction],
         targets=Targets(target_response_strs=[target_response]),
-        initial_trigger=" ".join(["!"] * trigger_len),
+        initial_trigger=get_printable_random_trigger(
+            trigger_len, tokenizer=model_obj.tokenizer, token_constraints=token_constraints
+        ),
     )
