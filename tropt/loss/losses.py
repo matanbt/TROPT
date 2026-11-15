@@ -6,7 +6,7 @@ for unified loss resolution to work properly.
 """
 import logging
 from abc import abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import ClassVar, Optional
 
 import torch
@@ -356,7 +356,7 @@ class AttentionEnhLoss(AttentionBasedLoss):
     Note that it requires setting `use_eager_attention=True` when loading the model (for explicit attention computations); also, some slices are not supported when LM prefix caching is enabled, so set `use_prefix_cache=False` when loading the model.
     """
 
-    targeted_layers: slice = slice(None)
+    targeted_layers: slice = field(default_factory=lambda: slice(None))
     src_slc_name: SliceKey = SliceKey.TRIGGER
     dst_slc_name: SliceKey = SliceKey.INPUT_AFTER
 
@@ -468,7 +468,7 @@ class SteeringActivationLoss(HiddenStateBasedLoss):
             when steering towards); once it is passed the loss is 0 and stops pushing (default: None).
     """
 
-    targeted_layers: slice = slice(1, None)
+    targeted_layers: slice = field(default_factory=lambda: slice(1, None))
     steer_away: bool = False
     slc_name: SliceKey = SliceKey.INPUT_LAST_TOKEN
     do_cosine_sim: bool = False
@@ -566,7 +566,7 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
     require_pre_mlp_hidden_states: ClassVar[bool] = True
 
     suppression_weight: float = 10.0  # ρ
-    targeted_layers: slice = slice(8, 24)
+    targeted_layers: slice = field(default_factory=lambda: slice(8, 24))
 
     def __call__(
         self,
