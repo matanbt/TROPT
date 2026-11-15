@@ -116,6 +116,7 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 | `gcg_emb` | GCG repurposed for embedding models. | Encoder (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `advdecoding_retrieval__zhang2024` | Beam-search decoding under combined similarity + utility-LM fluency for retrieval poisoning. | Encoder (HF) | Loss (Text) | [Zhang et al., 2024](https://arxiv.org/abs/2410.02163) | [`AdvDecoding__zhang2024.py`](AdvDecoding__zhang2024.py) |
 | `rasliteplus` | Black-box variant of GASLITE+ (random logits instead of gradients). | Encoder (HF / OpenAI) | Loss (Text) | — | [`RASLITEPlus.py`](RASLITEPlus.py) |
+| `rs_classifier` | Black-box Random Search for misclassification (untargeted, or targeted via `target_class_idx`) against classifiers; the black-box counterpart of `classifier_gcg`. | Classifier (HF) | Loss (Text) | — | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 | `rs_emb` | Black-box Random Search with coarse-to-fine block mutations toward a target vector. Supports HF and OpenAI encoders. | Encoder (HF / OpenAI) | Loss (Text) | — | [`PRS__andriushchenko2024.py`](PRS__andriushchenko2024.py) |
 
 ---
@@ -135,7 +136,7 @@ Optimising triggers for embedding-model corpus poisoning (retrieval attacks).
 
 | Key | Description | Target Model | Required Access | Paper | File(s) |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| `classifier_gcg` | GCG for untargeted misclassification against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
+| `classifier_gcg` | GCG for misclassification (untargeted, or targeted via `target_class_idx`) against classifiers (e.g., prompt-injection detectors). | Classifier (HF) | Gradient + Loss (Token) | — | [`GCG__zou2023.py`](GCG__zou2023.py) |
 | `uat_classifier` | UAT framework on a classifier; uses GCG-style optimisation instead of the original HotFlip variant. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 | `uat_prompt_injection` | UAT applied to a prompt-injection detector (Llama-Prompt-Guard-2); held-in/held-out/benign evaluation included. | Classifier (HF) | Gradient + Loss (Token) | [Wallace et al., 2019](https://arxiv.org/abs/1908.07125) | [`UAT.py`](UAT.py) |
 
