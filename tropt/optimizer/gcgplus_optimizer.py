@@ -23,7 +23,10 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.retokenization import (
+    full_messages_retokenize_filtering,
+    retokenize_filtering,
+)
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
@@ -67,6 +70,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         sample_topk: int = 256,
         token_constraints: TokenConstraints = TokenConstraints(),
         use_retokenize: bool = True,
+        use_message_retokenize: bool = False,
         # Later tricks:
         sample_n_replace: Union[int, Tuple[int, int]] = (1, 1),
         candidate_oversample_factor: float = 1.1,
@@ -95,6 +99,9 @@ class GCGPlusOptimizer(BaseOptimizer):
             sample_n_replace: (start, end) number of token positions to replace per
                 candidate. Linearly interpolated over optimization steps; from PAL paper.
                 Defaults to (1, 1) for single-token flips only.
+            use_message_retokenize: Keep only candidates whose tokens stay the same when re-tokenized inside
+                each full message (catches a trigger merging with the text around it). Independent of
+                ``use_retokenize``. Defaults to False.
             candidate_oversample_factor: Craft n_candidates * factor candidates (>1.0), then
                 truncate after retokenization filtering, to fill the required number of candidates.
                 From PAL paper.
@@ -169,6 +176,7 @@ class GCGPlusOptimizer(BaseOptimizer):
         self.sample_n_replace = sample_n_replace
         self.token_constraints = token_constraints
         self.use_retokenize = use_retokenize
+        self.use_message_retokenize = use_message_retokenize
         self.candidate_oversample_factor = candidate_oversample_factor
         self.momentum = momentum
         self.skip_visited = skip_visited
@@ -223,7 +231,7 @@ class GCGPlusOptimizer(BaseOptimizer):
 
         # Number of candidates to generate (oversample if retokenize is on)
         n_candidates_oversampled = self.n_candidates
-        if self.use_retokenize and self.candidate_oversample_factor > 1.0:
+        if (self.use_retokenize or self.use_message_retokenize) and self.candidate_oversample_factor > 1.0:
             n_candidates_oversampled = math.ceil(self.n_candidates * self.candidate_oversample_factor)
 
         # Initial loss (on full set or first batch)
@@ -320,6 +328,10 @@ class GCGPlusOptimizer(BaseOptimizer):
                 )
 
             # === Retokenization filtering ===
+            if self.use_message_retokenize:
+                candidate_trigger_ids = full_messages_retokenize_filtering(
+                    candidate_trigger_ids, proxy_tokenizer, templates
+                )
             if self.use_retokenize:
                 candidate_trigger_ids = retokenize_filtering(
                     candidate_trigger_ids, proxy_tokenizer
