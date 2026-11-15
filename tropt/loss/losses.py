@@ -565,6 +565,7 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
         full_pre_mlp_hidden_states: Float[Tensor, "bsz n_layers seq_len d_model"],
         target_hidden_states: Float[Tensor, "n_layers d_model"],
         target_class_idx: int,
+        input_slices: dict[SliceKey, slice],
     ) -> Float[Tensor, "bsz"]:
         n_layers = full_pre_mlp_hidden_states.shape[1]
 
@@ -581,7 +582,8 @@ class ContrastiveSteeringOperatorLoss(BaseLoss):
         )
 
         # Compute lambda:
-        a_with = full_pre_mlp_hidden_states[:, self.targeted_layers, -1, :].float()  # (bsz, n_targeted_layers, d_model)
+        last = input_slices[SliceKey.INPUT_LAST_TOKEN].start
+        a_with = full_pre_mlp_hidden_states[:, self.targeted_layers, last, :].float()  # (bsz, n_targeted_layers, d_model)
         a_without = target_hidden_states[self.targeted_layers].float().to(a_with.device)  # (n_targeted_layers, d_model)
         lam = ((a_with * a_without).sum(-1) / a_without.pow(2).sum(-1)).pow(2)  # (bsz, n_targeted_layers)
 
