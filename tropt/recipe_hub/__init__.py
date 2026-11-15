@@ -36,7 +36,7 @@ from .GCGMult__zou2023 import gcg_mult__zou2023
 from .HotFlip__ebrahimi2018 import hotflip__ebrahimi2018
 from .IRIS__huang2025 import iris__huang2025, iris2
 from .MAC__zhang2024 import mac__zhang2024
-from .McPAL import mcpal
+from .McPAL__bentov2026 import mcpal__bentov2026, mcpal_universal__bentov2026
 from .PAL__sitawarin2024 import (
     gcgp_pal__sitawarin2024,
     pal__sitawarin2024,
@@ -129,7 +129,10 @@ RECIPES = {
 
     # MAC (Zhang & Wei 2024)
     "mac__zhang2024": mac__zhang2024,
-    "mcpal": mcpal,
+
+    # McPAL (Ben-Tov 2026) — PAL x MAC
+    "mcpal__bentov2026": mcpal__bentov2026,
+    "mcpal_universal__bentov2026": mcpal_universal__bentov2026,
 
     # FLRT (Thompson & Sklar 2024)
     "flrt_distill": flrt_distill,
