@@ -23,7 +23,10 @@ from tropt.model import (
 )
 from tropt.optimizer import BaseOptimizer, OptimizerResult
 from tropt.optimizer.utils.buffer import TriggerBuffer
-from tropt.optimizer.utils.retokenization import retokenize_filtering
+from tropt.optimizer.utils.retokenization import (
+    full_messages_retokenize_filtering,
+    retokenize_filtering,
+)
 from tropt.optimizer.utils.running_best import RunningBest
 from tropt.optimizer.utils.token_constraints import TokenConstraints
 from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
@@ -321,6 +324,9 @@ class GCGPlusOptimizer(BaseOptimizer):
 
             # === Retokenization filtering ===
             if self.use_retokenize:
+                candidate_trigger_ids = full_messages_retokenize_filtering(
+                    candidate_trigger_ids, proxy_tokenizer, templates
+                )
                 candidate_trigger_ids = retokenize_filtering(
                     candidate_trigger_ids, proxy_tokenizer
                 )
