@@ -137,15 +137,16 @@ class CombinedLoss(BaseLoss):
 
     def get_loss_log_dict(self) -> dict:
         """
-        Returns a loggable dict of the last computed loss value (of *all* the component losses), keyed by loss class name.
-        Useful for verbose loss logging in optimizers.
+        Returns a loggable dict of the lowest combined loss in the last call and that candidate's (unweighted)
+        component losses, keyed by loss class name. Useful for verbose loss logging in optimizers.
         """
         if self._last_loss_vals is None or self._last_component_loss_vals is None:
             return {}
+        best = self._last_loss_vals.argmin()  # the components of the same candidate, so they add up to the total
         return {
-            f"{type(self).__name__}": self._last_loss_vals.min().item(),
+            f"{type(self).__name__}": self._last_loss_vals[best].item(),
             **{
-                f"{type(lf).__name__}": val.min().item()
+                f"{type(lf).__name__}": val[best].item()
                 for lf, val in zip(self.loss_funcs, self._last_component_loss_vals)
             },
         }
