@@ -25,6 +25,7 @@ from tropt.model.huggingface.lm import LMHFModel
 from tropt.optimizer import OptimizerResult
 from tropt.optimizer.gcg_optimizer import GCGOptimizer
 from tropt.optimizer.utils.token_constraints import TokenConstraints
+from tropt.optimizer.utils.token_initializers import get_printable_random_trigger
 from tropt.tracker import BaseTracker
 
 _GCG_TOKEN_CONSTRAINTS = TokenConstraints(disallow_non_ascii=True, disallow_special_tokens=True)
@@ -176,9 +177,11 @@ def classifier_gcg(
     true_class_idx: int = 1,
     model_obj: Optional[ClassifierHFModel] = None,
     tracker: Optional[BaseTracker] = None,
-    num_steps: int = 250,
+    target_class_idx: Optional[int] = None,
+    trigger_len: int = 20,
+    override_opt_kwargs: Optional[dict] = None,
 ) -> OptimizerResult:
-    """Run GCG for untargeted misclassification against a given classifier.
+    """Run GCG for misclassification (untargeted by default) against a given classifier.
 
     *Default run*: Fooling a prompt-injection detector (which outputs: `0 = SAFE, class 1 = INJECTION`).
 
@@ -188,25 +191,31 @@ def classifier_gcg(
         true_class_idx: The class index the model currently predicts (to suppress).
         model_obj: Pre-loaded ClassifierHFModel to reuse.
         tracker: Optional tracker for logging.
-        num_steps: Optimization steps.
+        target_class_idx: If set, push toward this class (targeted) instead of away from `true_class_idx`.
+        trigger_len: Number of trigger tokens (initialized as random printable tokens).
+        override_opt_kwargs: GCGOptimizer kwargs that override the defaults (e.g. `num_steps`, `n_candidates`).
     """
     if model_obj is None:
         model_obj = ClassifierHFModel(model_name=model_name)
 
-    optimizer = GCGOptimizer(
+    targeted = target_class_idx is not None
+    opt_kwargs = dict(
         model=model_obj,
-        loss=MisclassCELoss(targeted=False),
+        loss=MisclassCELoss(targeted=targeted),
         tracker=tracker,
-        num_steps=num_steps,
+        num_steps=250,
         n_candidates=512,
         sample_topk=256,
         sample_n_replace=1,
         token_constraints=_GCG_TOKEN_CONSTRAINTS,
         use_retokenize=True,
     )
+    optimizer = GCGOptimizer(**{**opt_kwargs, **(override_opt_kwargs or {})})
 
     return optimizer.optimize_trigger(
         templates=[template],
-        targets=Targets(true_class_idx=[true_class_idx]),
-        initial_trigger=_INITIAL_TRIGGER,
+        targets=Targets(target_class_idx=[target_class_idx]) if targeted else Targets(true_class_idx=[true_class_idx]),
+        initial_trigger=get_printable_random_trigger(
+            trigger_len, tokenizer=model_obj.tokenizer, token_constraints=_GCG_TOKEN_CONSTRAINTS
+        ),
     )
