@@ -138,10 +138,10 @@ and authorized red-teaming of NLP models.
 If you find this package useful, please cite our paper as follows:
 
 ```bibtex
-@article{tropt2026,
-  title   = {TROPT: An Open Framework for Unifying and Advancing Discrete Text Optimization},
-  author  = {Ben-Tov, Matan and Sharif, Mahmood},
-  journal = {arXiv},
-  year    = {2026},
+@inproceedings{bentov2026troptopenframeworkunifying,
+  title={{TROPT}: {A}n {O}pen {F}ramework for {U}nifying and {A}dvancing {D}iscrete {T}ext {O}ptimization},
+  author={Ben-Tov, Matan and Sharif, Mahmood},
+  booktitle={NeurIPS E\&D Track},
+  year={2026}
 }
 ```
