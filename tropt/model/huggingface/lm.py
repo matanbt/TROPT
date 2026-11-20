@@ -588,8 +588,8 @@ class LMHFModel(
             )  # (bsz, prefill_len, vocab_size)
 
         if require_first_token_logprobs:
-            # Left padding: the last real token is always the last position.
-            first_tok_logits = fwd_out.logits[:, -1]  # (bsz, vocab)
+            # Left padding: every prompt ends at the same position, just before any prefilled target tokens.
+            first_tok_logits = fwd_out.logits[:, padded_seq_len - prefill_len - 1]  # (bsz, vocab)
             first_tok_lps = torch.nn.functional.log_softmax(first_tok_logits, dim=-1)
             top_lps, top_ids = torch.topk(
                 first_tok_lps, min(_MAX_TOP_LOGPROBS, first_tok_lps.shape[-1]), dim=-1
