@@ -195,8 +195,8 @@ class LossTextAccessMixin(TextAccessMixin):
 
         # Main Loop: for each template, we compute the loss for all candidates.
         # Candidates are chunked up to `self._forward_pass_batch_size` (defined
-        # on BaseModel, overridable per subclass); on CUDA OOM we halve the
-        # batch size and retry (via accelerate's find_executable_batch_size).
+        # on BaseModel, overridable per subclass); on CUDA OOM we shrink the
+        # batch size (x0.9) and retry (via tropt.utils.memory.find_executable_batch_size).
         losses = []
         for template_idx in range(n_templates):
 
