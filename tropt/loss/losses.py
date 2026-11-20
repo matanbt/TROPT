@@ -407,9 +407,9 @@ class SimilarityLoss(EmbeddingBasedLoss):
     def __call__(
         self,
         output_embeddings: Float[Tensor, "bsz d_model"],
-        target_vectors: Float[Tensor, "d_model"],
+        target_vectors: Float[Tensor, "d_model"] | Float[Tensor, "bsz d_model"],
     ) -> Float[Tensor, "bsz"]:
-        target_vectors = target_vectors.unsqueeze(0).expand(output_embeddings.shape[0], -1)  # (bsz, d_model)
+        target_vectors = target_vectors.expand(output_embeddings.shape[0], -1)  # (bsz, d_model)
         assert output_embeddings.ndim == target_vectors.ndim == 2, "Shape mismatch"
         target_vectors = target_vectors.to(output_embeddings.device)
 
