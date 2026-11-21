@@ -9,6 +9,7 @@ import torch
 from jaxtyping import Float, Int
 from torch import Tensor
 from transformers import BatchEncoding
+from transformers.tokenization_utils_tokenizers import TokenizersBackend
 
 from tropt.common import MessageTargets, ModelOutput
 from tropt.model.flop_counter import FlopCounterBase, ManualFlopCounter
@@ -425,6 +426,17 @@ class HFTokenizerWrapper(BaseTokenizer):
         return self._hf_tokenizer.encode(text, **kwargs)
 
     def batch_decode(self, ids, **kwargs) -> List[str]:
+        if isinstance(ids, torch.Tensor):
+            ids = ids.tolist()
+        # Fast path: parallel Rust batch-decode, equivalent to HF's (clean-up-free) batched decode
+        if (
+            getattr(type(self._hf_tokenizer), "_decode", None) is TokenizersBackend._decode
+            and kwargs.keys() <= {"skip_special_tokens"}
+            and ids and isinstance(ids[0], list)
+        ):
+            return self._hf_tokenizer.backend_tokenizer.decode_batch(
+                ids, skip_special_tokens=kwargs.get("skip_special_tokens", False)
+            )
         return self._hf_tokenizer.batch_decode(ids, **kwargs)
 
     @property
