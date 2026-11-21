@@ -25,6 +25,7 @@ _TOKEN_CONSTRAINTS = TokenConstraints(
     disallow_non_ascii=False,
     disallow_special_tokens=False,
     disallow_unused_tokens=False,
+    disallow_untypeable_tokens=False,
 )
 _INITIAL_TRIGGER = "! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !"
 
