@@ -2,8 +2,6 @@
 # (https://github.com/huggingface/accelerate/blob/v1.16.0/src/accelerate/utils/memory.py),
 # Copyright 2022 The HuggingFace Team, licensed under the Apache License, Version 2.0
 # (http://www.apache.org/licenses/LICENSE-2.0).
-# Modified: the device cache is cleared only after an out-of-memory error, not also before every call
-# (that `gc.collect()` + `empty_cache()` dominates fast loops); `typing.Callable` in the annotations.
 
 import functools
 import inspect
