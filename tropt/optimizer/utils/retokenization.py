@@ -14,22 +14,24 @@ from jaxtyping import Float, Int
 from torch import Tensor
 
 from tropt.common import OPTIMIZED_TRIGGER_PLACEHOLDER, TextTemplates
+from tropt.model.model_base import BaseTokenizer
 
 logger = logging.getLogger(__name__)
 
 def retokenize_mask(
     ids: Int[Tensor, "bsz n_ids"] | List[List[int]],
-    tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer: BaseTokenizer,
 ) -> List[bool]:
-    """Whether each sequence of token ids is unchanged after a decode -> re-encode round-trip (batched)."""
+    """Whether each sequence of token ids is unchanged after a round trip through its trigger string
+    (`decode_triggers` -> `encode_triggers`, batched). Special tokens, which the trigger string drops, fail it."""
     ids_list = ids.tolist() if isinstance(ids, Tensor) else ids
-    ids_encoded = tokenizer(tokenizer.batch_decode(ids_list), add_special_tokens=False)["input_ids"]
+    ids_encoded = tokenizer.encode_triggers(tokenizer.decode_triggers(ids_list))
     return [orig == enc for orig, enc in zip(ids_list, ids_encoded)]
 
 
 def retokenize_filtering(
         ids: Float[Tensor, "bsz n_ids"],
-        tokenizer: transformers.PreTrainedTokenizer
+        tokenizer: BaseTokenizer
     ) -> Float[Tensor, "new_search_width n_optim_ids"]:
     """
     Filters out sequences of token ids that change after retokenization.
@@ -40,12 +42,13 @@ def retokenize_filtering(
     Args:
         ids : Tensor, shape = (bsz, n_ids)
             batch of token ids to be filtered
-        tokenizer : ~transformers.PreTrainedTokenizer
+        tokenizer : BaseTokenizer
             the model's tokenizer
 
     Returns:
         filtered_ids : Tensor, shape = (new_search_width, n_optim_ids)
-            all token ids that are the same after retokenization
+            all token ids that are the same after retokenization (decoding to the trigger string, special
+            tokens skipped, and re-encoding it)
     """
     keep = [i for i, ok in enumerate(retokenize_mask(ids, tokenizer)) if ok]
     filtered_ids = ids[torch.tensor(keep, device=ids.device, dtype=torch.long)]
