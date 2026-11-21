@@ -365,6 +365,10 @@ class BaseTokenizer(ABC):
         ids = self.encode(trigger_str, add_special_tokens=False)
         return torch.tensor(ids, dtype=torch.int64)
 
+    def encode_triggers(self, trigger_strs: List[str]) -> List[List[int]]:
+        """Batch-encode trigger strings -> one list of ids per string (no special tokens, unpadded)."""
+        return [self.encode(trigger_str, add_special_tokens=False) for trigger_str in trigger_strs]
+
     def decode_trigger(self, trigger_ids: Int[Tensor, "trigger_seq_len"]) -> str:
         """Decode a 1-D trigger ids tensor -> string (special tokens skipped)."""
         return self.decode(trigger_ids, skip_special_tokens=True)
@@ -430,3 +434,7 @@ class HFTokenizerWrapper(BaseTokenizer):
     @property
     def name_or_path(self) -> str:
         return self._hf_tokenizer.name_or_path
+
+    def encode_triggers(self, trigger_strs: List[str]) -> List[List[int]]:
+        # One batched (Rust) call instead of one per string; HF does not pad unless asked.
+        return self._hf_tokenizer(trigger_strs, add_special_tokens=False)["input_ids"]
