@@ -1,5 +1,6 @@
-"""`tropt.utils.memory.find_executable_batch_size`: on OOM it shrinks the batch size like accelerate's (x0.9) and
-retries; it clears the device cache only after an OOM; other errors propagate at once."""
+"""`tropt.utils.memory.find_executable_batch_size` (accelerate's, minus the cache clear before every call): on OOM it
+shrinks the batch size (x0.9) and retries, clearing the device cache only then; other errors propagate at once;
+passing the batch size by hand raises a TypeError."""
 
 import pytest
 import torch
@@ -28,4 +29,6 @@ def test_find_executable_batch_size(monkeypatch):
     assert memory.find_executable_batch_size(body, starting_batch_size=8)(tag="y") == (8, "y")
     with pytest.raises(ValueError):
         memory.find_executable_batch_size(body, starting_batch_size=16)(tag="fail")
+    with pytest.raises(TypeError, match="Batch size was passed"):
+        memory.find_executable_batch_size(body, starting_batch_size=16)(16, "z")
     assert tried == [8, 16] and not clears
