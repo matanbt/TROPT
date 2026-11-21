@@ -29,6 +29,12 @@ class LossResolutionError(Exception):
     """
     pass
 
+def loss_reads_input(loss_func: BaseLoss, name: str) -> bool:
+    """Whether `loss_func` (or any `CombinedLoss` component) may read the `name` field of its inputs."""
+    losses = loss_func.loss_funcs if isinstance(loss_func, CombinedLoss) else [loss_func]
+    return any({name, "model_input"} & inspect.signature(f.__call__).parameters.keys() for f in losses)
+
+
 def resolve_and_compute_loss(
     model_output: ModelOutput,
     model_input: ModelInput,
