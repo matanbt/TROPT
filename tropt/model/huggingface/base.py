@@ -8,7 +8,6 @@ from typing import Annotated, Any, Dict, List, Optional, Tuple
 
 import torch
 import transformers
-from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float, Int
 from torch import Tensor
 from transformers.cache_utils import DynamicCache
@@ -28,6 +27,7 @@ from tropt.model import (
     TokenInputManager,
 )
 from tropt.model.model_base import HFTokenizerWrapper
+from tropt.utils.memory import find_executable_batch_size
 
 logger = logging.getLogger(__name__)
 

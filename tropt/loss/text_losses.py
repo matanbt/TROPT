@@ -11,12 +11,12 @@ from typing import Annotated, Any, ClassVar, Dict, List, Optional, Set
 
 import torch
 import transformers
-from accelerate.utils.memory import find_executable_batch_size
 from jaxtyping import Float
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from tropt.loss.base import BaseLoss
 from tropt.loss.utils import masked_mean
+from tropt.utils.memory import find_executable_batch_size
 
 logger = logging.getLogger(__name__)
 
